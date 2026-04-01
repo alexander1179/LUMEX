@@ -731,7 +731,13 @@ export default function AdminDashboardScreen({ navigation }) {
 
       setLastSystemError('');
 
-      const list = (Array.isArray(data) ? data : []).map((u, idx) => {
+      const rows = Array.isArray(data) ? data : [];
+      const nonAdminRows = rows.filter((u) => {
+        const normalizedRole = String(u?.rol || u?.role || '').trim().toLowerCase();
+        return normalizedRole !== 'admin' && normalizedRole !== 'administrador';
+      });
+
+      const list = nonAdminRows.map((u, idx) => {
         const dbIdField =
           u?.id_usuario !== undefined && u?.id_usuario !== null ? 'id_usuario' :
           u?.id !== undefined && u?.id !== null ? 'id' :
@@ -760,7 +766,7 @@ export default function AdminDashboardScreen({ navigation }) {
         }
         return next;
       });
-      setUsuariosRegistrados(typeof count === 'number' ? count : list.length);
+      setUsuariosRegistrados(list.length);
       if (list.length > 0) {
         setSelectedUsuario((prev) => {
           if (!prev) return list[0];

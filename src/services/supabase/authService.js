@@ -150,6 +150,10 @@ export const loginUser = async (identifier, password, acceptTermsIfNeeded = fals
       return { success: false, message: 'Este acceso es solo para administradores.' };
     }
 
+    if (requiredRole === 'usuario' && isAdminRole(userData.rol)) {
+      return { success: false, message: 'Este acceso es solo para usuarios.' };
+    }
+
     // Migración: usuarios registrados previamente con Supabase Auth
     if (userData.contrasena === 'managed_by_supabase_auth') {
       console.log('🔄 Contraseña gestionada por Auth, intentando migración...');

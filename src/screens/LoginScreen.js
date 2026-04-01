@@ -70,7 +70,7 @@ export default function LoginScreen({ navigation, route }) {
         password,
         true,
         deviceInfo,
-        { requiredRole: isAdminAccess ? 'admin' : null }
+        { requiredRole: isAdminAccess ? 'admin' : 'usuario' }
       );
 
       if (result.success) {

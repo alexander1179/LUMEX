@@ -11,8 +11,10 @@ import {
   Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import { supabase } from '../services/supabase/supabaseClient';
 import { registerUser } from '../services/supabase/authService';
+import { getApiUrl } from '../services/services/api/apiConfig';
 
 const TABS = [
   { key: 'inicio', label: 'Inicio', icon: 'home-outline' },
@@ -21,20 +23,111 @@ const TABS = [
   { key: 'ajustes', label: 'Ajustes', icon: 'settings-outline' },
 ];
 
+function ReporteGenBtn({ listo, generando, onPress }) {
+  return (
+    <TouchableOpacity
+      style={[genBtnStyles.btn, (!listo || generando) && genBtnStyles.btnDisabled]}
+      activeOpacity={0.85}
+      disabled={!listo || generando}
+      onPress={onPress}
+    >
+      <Ionicons name={generando ? 'hourglass-outline' : 'download-outline'} size={18} color="#ffffff" />
+      <Text style={genBtnStyles.text}>
+        {generando ? 'Generando reporte...' : 'Generar y exportar'}
+      </Text>
+    </TouchableOpacity>
+  );
+}
+
+const genBtnStyles = {
+  btn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: '#2f7a96',
+    borderRadius: 14,
+    paddingVertical: 14,
+    marginBottom: 4,
+  },
+  btnDisabled: { opacity: 0.4 },
+  text: { color: '#ffffff', fontSize: 15, fontWeight: '700' },
+};
+
 export default function AdminDashboardScreen({ navigation }) {
   const [activeTab, setActiveTab] = useState('inicio');
   const [usuariosRegistrados, setUsuariosRegistrados] = useState(0);
   const [usuarios, setUsuarios] = useState([]);
   const [loadingUsuarios, setLoadingUsuarios] = useState(true);
   const [selectedUsuario, setSelectedUsuario] = useState(null);
+  const [showPatientModulesModal, setShowPatientModulesModal] = useState(false);
   const [citasHoy, setCitasHoy] = useState(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [showUserAdminModal, setShowUserAdminModal] = useState(false);
+  const [showActivityModal, setShowActivityModal] = useState(false);
+  const [showCitasModal, setShowCitasModal] = useState(false);
+  const [citasModalType, setCitasModalType] = useState(null);
+  const [citasRows, setCitasRows] = useState([]);
+  const [loadingCitasRows, setLoadingCitasRows] = useState(false);
+  const [agendaFecha, setAgendaFecha] = useState(new Date());
+  const [showAgendaDatePicker, setShowAgendaDatePicker] = useState(false);
+  const [agendaPaciente, setAgendaPaciente] = useState('');
+  const [agendaEmail, setAgendaEmail] = useState('');
+  const [agendaCelular, setAgendaCelular] = useState('');
+  const [agendaFamiliar, setAgendaFamiliar] = useState('');
+  const [agendaHora, setAgendaHora] = useState('');
+  const [agendaDoctor, setAgendaDoctor] = useState('');
+  const [savingAgendaCita, setSavingAgendaCita] = useState(false);
+  const [showAlertsModal, setShowAlertsModal] = useState(false);
+  const [alertRows, setAlertRows] = useState([]);
+  const [loadingAlerts, setLoadingAlerts] = useState(false);
+  const [lastSystemError, setLastSystemError] = useState('');
+  const [lastDataLoadError, setLastDataLoadError] = useState('');
   const [creatingUser, setCreatingUser] = useState(false);
   const [newNombre, setNewNombre] = useState('');
   const [newEmail, setNewEmail] = useState('');
   const [newUsuario, setNewUsuario] = useState('');
   const [newTelefono, setNewTelefono] = useState('');
   const [newPassword, setNewPassword] = useState('');
+  const [blockedUsers, setBlockedUsers] = useState({});
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editingUser, setEditingUser] = useState(null);
+  const [editNombre, setEditNombre] = useState('');
+  const [editEmail, setEditEmail] = useState('');
+  const [editRol, setEditRol] = useState('usuario');
+  const [savingEdit, setSavingEdit] = useState(false);
+  const [activityRows, setActivityRows] = useState([]);
+  const [loadingActivity, setLoadingActivity] = useState(false);
+  const [showReportesModal, setShowReportesModal] = useState(false);
+  const [reporteTipo, setReporteTipo] = useState(null);
+  const [reporteFormato, setReporteFormato] = useState(null);
+  const [reporteUsuario, setReporteUsuario] = useState(null);
+  const [reporteDataset, setReporteDataset] = useState(null);
+  const [reporteResultado, setReporteResultado] = useState(null);
+  const [generandoReporte, setGenerandoReporte] = useState(false);
+  const [showPickUserModal, setShowPickUserModal] = useState(false);
+  const [buscarUsuario, setBuscarUsuario] = useState('');
+  const [showPickDatasetModal, setShowPickDatasetModal] = useState(false);
+  const [buscarDataset, setBuscarDataset] = useState('');
+  const [datasetMetodo, setDatasetMetodo] = useState(null);
+  const [datasetFecha, setDatasetFecha] = useState(new Date());
+  const [showDatasetDatePicker, setShowDatasetDatePicker] = useState(false);
+  const [showPickResultadoModal, setShowPickResultadoModal] = useState(false);
+  const [buscarResultado, setBuscarResultado] = useState('');
+
+  const resultadoOptions = [
+    { id: 'diagnosticos', nombre: 'Diagnósticos', detalle: 'Resultados de valoración clínica' },
+    { id: 'laboratorio', nombre: 'Laboratorio', detalle: 'Resultados de pruebas de laboratorio' },
+    { id: 'imagenes', nombre: 'Imágenes médicas', detalle: 'Reportes de estudios e imágenes' },
+  ];
+
+  const formatDate = (date) => {
+    if (!date) return '';
+    const d = String(date.getDate()).padStart(2, '0');
+    const m = String(date.getMonth() + 1).padStart(2, '0');
+    const y = date.getFullYear();
+    return `${d}/${m}/${y}`;
+  };
 
   const resetCreateForm = () => {
     setNewNombre('');
@@ -44,28 +137,635 @@ export default function AdminDashboardScreen({ navigation }) {
     setNewPassword('');
   };
 
+  const openEditModal = (user) => {
+    setEditingUser(user);
+    setEditNombre(user?.nombre || '');
+    setEditEmail(user?.email || '');
+    setEditRol((user?.rol || 'usuario').toLowerCase());
+    setShowEditModal(true);
+  };
+
+  const getUserId = (user) => user?._dbId ?? user?.id_usuario ?? user?.id ?? user?.uuid ?? user?.user_id ?? user?._localId ?? null;
+
+  const getUserIdField = (user) => {
+    if (user?._dbIdField) return user._dbIdField;
+    if (user?.user_id !== undefined && user?.user_id !== null) return 'user_id';
+    if (user?.id_usuario !== undefined && user?.id_usuario !== null) return 'id_usuario';
+    if (user?.id !== undefined && user?.id !== null) return 'id';
+    if (user?.uuid !== undefined && user?.uuid !== null) return 'uuid';
+    return null;
+  };
+
+  const isUserBlockedFromRow = (user) => {
+    if (!user || typeof user !== 'object') return false;
+
+    const directBlockedFields = [user?.bloqueado, user?.blocked, user?.acceso_bloqueado, user?.esta_bloqueado, user?.inactivo];
+    for (const raw of directBlockedFields) {
+      if (raw === null || raw === undefined) continue;
+      if (typeof raw === 'boolean') return raw;
+      const normalized = String(raw).trim().toLowerCase();
+      if (['1', 'true', 't', 'yes', 'si', 'sí', 'bloqueado', 'inactivo', 'inactive', 'blocked', 'suspendido'].includes(normalized)) return true;
+      if (['0', 'false', 'f', 'no', 'activo', 'active', 'habilitado'].includes(normalized)) return false;
+    }
+
+    const enabledFields = [user?.habilitado, user?.activo];
+    for (const raw of enabledFields) {
+      if (raw === null || raw === undefined) continue;
+      if (typeof raw === 'boolean') return !raw;
+      const normalized = String(raw).trim().toLowerCase();
+      if (['1', 'true', 't', 'yes', 'si', 'sí', 'activo', 'active', 'habilitado'].includes(normalized)) return false;
+      if (['0', 'false', 'f', 'no', 'bloqueado', 'inactivo', 'inactive', 'blocked', 'suspendido'].includes(normalized)) return true;
+    }
+
+    const statusFields = [user?.estado_acceso, user?.estado];
+    for (const raw of statusFields) {
+      if (raw === null || raw === undefined) continue;
+      const normalized = String(raw).trim().toLowerCase();
+      if (['bloqueado', 'inactivo', 'inactive', 'blocked', 'suspendido'].includes(normalized)) return true;
+      if (['activo', 'active', 'habilitado'].includes(normalized)) return false;
+    }
+
+    return false;
+  };
+
+  const getBlockedValueFromStateOrRow = (user) => {
+    const userId = getUserId(user);
+    if (userId !== null && typeof blockedUsers[userId] === 'boolean') {
+      return blockedUsers[userId];
+    }
+    return isUserBlockedFromRow(user);
+  };
+
+  const tryPersistBlockedStatus = async (user, blocked) => {
+    const idField = getUserIdField(user);
+    const userId = getUserId(user);
+
+    if (!idField || userId === null) {
+      return { success: false, message: 'No se pudo identificar el usuario.' };
+    }
+
+    const attempts = [
+      { col: 'bloqueado', value: blocked },
+      { col: 'blocked', value: blocked },
+      { col: 'acceso_bloqueado', value: blocked },
+      { col: 'esta_bloqueado', value: blocked },
+      { col: 'inactivo', value: blocked },
+      { col: 'habilitado', value: !blocked },
+      { col: 'activo', value: !blocked },
+      { col: 'estado_acceso', value: blocked ? 'bloqueado' : 'activo' },
+      { col: 'estado', value: blocked ? 'bloqueado' : 'activo' },
+    ];
+
+    let lastError = null;
+    for (const attempt of attempts) {
+      const { error } = await supabase
+        .from('usuarios')
+        .update({ [attempt.col]: attempt.value })
+        .eq(idField, userId)
+        .select(idField)
+        .limit(1);
+
+      if (!error) {
+        return { success: true, column: attempt.col };
+      }
+
+      lastError = error;
+    }
+
+    return {
+      success: false,
+      message: lastError?.message || 'No se encontró una columna de bloqueo compatible en la tabla usuarios.',
+    };
+  };
+
+  const deleteUserViaServer = async (user, attempts = []) => {
+    try {
+      const apiUrl = getApiUrl();
+      const response = await fetch(`${apiUrl}/admin/delete-user`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          user: {
+            id_usuario: user?.id_usuario ?? null,
+            id: user?.id ?? null,
+            uuid: user?.uuid ?? null,
+            user_id: user?.user_id ?? null,
+            email: user?.email ?? null,
+            usuario: user?.usuario ?? null,
+          },
+          attempts,
+        }),
+      });
+
+      const json = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        return { success: false, message: json?.message || `Servidor respondió ${response.status}` };
+      }
+
+      return {
+        success: !!json?.success,
+        deletedRows: Number(json?.deletedRows || 0),
+        usedField: json?.usedField || null,
+        usedValue: json?.usedValue ?? null,
+        message: json?.message || '',
+      };
+    } catch (e) {
+      return { success: false, message: e?.message || 'No se pudo contactar el servidor de respaldo.' };
+    }
+  };
+
+  const handleSaveUserEdit = async () => {
+    if (!editingUser || savingEdit) return;
+
+    if (!editNombre.trim() || !editEmail.trim() || !editRol.trim()) {
+      Alert.alert('Datos incompletos', 'Completa nombre, correo y rol.');
+      return;
+    }
+
+    setSavingEdit(true);
+    try {
+      const idField = getUserIdField(editingUser);
+      const userId = getUserId(editingUser);
+
+      if (!idField || userId === null) {
+        Alert.alert('Error', 'No se pudo identificar el usuario a actualizar.');
+        return;
+      }
+
+      const { error } = await supabase
+        .from('usuarios')
+        .update({
+          nombre: editNombre.trim(),
+          email: editEmail.trim().toLowerCase(),
+          rol: editRol.trim().toLowerCase(),
+        })
+        .eq(idField, userId);
+
+      if (error) {
+        Alert.alert('Error', error.message || 'No se pudo actualizar el usuario.');
+        return;
+      }
+
+      setShowEditModal(false);
+      setEditingUser(null);
+      await loadDashboardData();
+      Alert.alert('Éxito', 'Usuario actualizado correctamente.');
+    } finally {
+      setSavingEdit(false);
+    }
+  };
+
+  const handleDeleteUser = async (user) => {
+    Alert.alert(
+      'Eliminar usuario',
+      `¿Deseas eliminar a ${user.nombre || user.usuario || 'este usuario'}?`,
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Eliminar',
+          style: 'destructive',
+          onPress: async () => {
+            const idField = getUserIdField(user);
+            const userId = getUserId(user);
+
+            if (!idField || userId === null) {
+              Alert.alert('Error', 'No se pudo identificar el usuario a eliminar.');
+              return;
+            }
+
+            const attempts = [];
+            const pushAttempt = (field, value) => {
+              if (!field || value === null || value === undefined) return;
+              if (!attempts.find((a) => a.field === field && String(a.value) === String(value))) {
+                attempts.push({ field, value });
+              }
+
+              // Intenta ambas variantes cuando el valor parece numérico (string/number).
+              if (typeof value === 'string' && /^\d+$/.test(value.trim())) {
+                const numVal = Number(value);
+                if (!Number.isNaN(numVal) && !attempts.find((a) => a.field === field && String(a.value) === String(numVal))) {
+                  attempts.push({ field, value: numVal });
+                }
+              }
+              if (typeof value === 'number') {
+                const strVal = String(value);
+                if (!attempts.find((a) => a.field === field && String(a.value) === strVal)) {
+                  attempts.push({ field, value: strVal });
+                }
+              }
+            };
+
+            pushAttempt(idField, userId);
+            pushAttempt('id_usuario', user?.id_usuario);
+            pushAttempt('id', user?.id);
+            pushAttempt('uuid', user?.uuid);
+            pushAttempt('user_id', user?.user_id);
+            pushAttempt('email', user?.email);
+            pushAttempt('usuario', user?.usuario);
+
+            let deletedRows = 0;
+            let lastError = null;
+            let usedField = idField;
+            let usedValue = userId;
+
+            for (const attempt of attempts) {
+              const { data: deletedData, error } = await supabase
+                .from('usuarios')
+                .delete()
+                .eq(attempt.field, attempt.value)
+                .select('id,id_usuario,uuid,user_id');
+
+              if (error) {
+                lastError = error;
+                continue;
+              }
+
+              if (Array.isArray(deletedData) && deletedData.length > 0) {
+                // Verificación adicional: confirma que el registro ya no existe por el mismo criterio.
+                const { data: stillThere, error: verifyError } = await supabase
+                  .from('usuarios')
+                  .select('*')
+                  .eq(attempt.field, attempt.value)
+                  .limit(1);
+
+                if (!verifyError && (!Array.isArray(stillThere) || stillThere.length === 0)) {
+                  deletedRows = deletedData.length;
+                  usedField = attempt.field;
+                  usedValue = attempt.value;
+                  break;
+                }
+              }
+            }
+
+            if (deletedRows === 0) {
+              // Respaldo por backend con service role (evita bloqueos por RLS desde móvil).
+              const serverResult = await deleteUserViaServer(user, attempts);
+
+              if (!(serverResult.success && serverResult.deletedRows > 0)) {
+                await loadDashboardData();
+                Alert.alert(
+                  'No se eliminó',
+                  serverResult.message || lastError?.message || 'Supabase no eliminó filas del usuario seleccionado. Verifica permisos RLS o el identificador del registro.',
+                );
+                return;
+              }
+
+              usedField = serverResult.usedField || usedField;
+              usedValue = serverResult.usedValue ?? usedValue;
+            }
+
+            setSelectedUsuario((prev) => (prev && getUserId(prev) === userId ? null : prev));
+            setBlockedUsers((prev) => {
+              const next = { ...prev };
+              delete next[userId];
+              return next;
+            });
+
+            await loadDashboardData();
+            Alert.alert(
+              'Eliminación confirmada',
+              `Usuario eliminado en Supabase (${usedField}: ${String(usedValue)}) y retirado de la tabla de administración.`,
+            );
+          }
+        }
+      ]
+    );
+  };
+
+  const toggleBlockAccess = async (user) => {
+    const userId = getUserId(user);
+    if (userId === null) return;
+
+    const currentBlocked = getBlockedValueFromStateOrRow(user);
+    const nextValue = !currentBlocked;
+
+    // Refleja el cambio de inmediato en UI.
+    setBlockedUsers((prev) => ({ ...prev, [userId]: nextValue }));
+
+    const persistResult = await tryPersistBlockedStatus(user, nextValue);
+    if (!persistResult.success) {
+      setBlockedUsers((prev) => ({ ...prev, [userId]: currentBlocked }));
+      Alert.alert('No se pudo actualizar', persistResult.message || 'No se logró actualizar el estado de acceso.');
+      return;
+    }
+
+    Alert.alert('Acceso actualizado', nextValue ? 'El usuario quedó bloqueado para iniciar sesión.' : 'El usuario fue habilitado para iniciar sesión.');
+    await loadDashboardData();
+  };
+
+  const loadUserActivity = async () => {
+    setLoadingActivity(true);
+    try {
+      // Si existe tabla de actividad, mostramos registros reales.
+      const { data, error } = await supabase
+        .from('actividad_usuarios')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(30);
+
+      if (error || !Array.isArray(data)) {
+        setActivityRows([]);
+        return;
+      }
+
+      const mapped = data.map((row, idx) => ({
+        id: row.id || row.id_actividad || idx,
+        quien: row.quien_ingreso || row.usuario || row.email || row.user_name || 'Sin datos',
+        consultas: row.consultas_realizadas || row.consulta || row.accion || row.activity || 'Sin datos',
+        datosSubio: row.datos_subio || row.datos_subidos || row.data_uploaded || 'Sin datos',
+        fechaHora: row.fecha_hora || row.created_at || row.timestamp || 'Sin datos',
+      }));
+
+      setActivityRows(mapped);
+    } catch {
+      setActivityRows([]);
+    } finally {
+      setLoadingActivity(false);
+    }
+  };
+
+  const loadSystemAlerts = async () => {
+    setLoadingAlerts(true);
+    try {
+      const rows = [];
+
+      if (lastSystemError) {
+        rows.push({
+          id: 'system-error',
+          level: 'alta',
+          title: 'Errores en el sistema',
+          detail: lastSystemError,
+          possible: 'Posible causa: fallo en consulta principal de usuarios o conectividad con Supabase.',
+        });
+      }
+
+      if (lastDataLoadError) {
+        rows.push({
+          id: 'load-error',
+          level: 'media',
+          title: 'Fallos en carga de datos',
+          detail: lastDataLoadError,
+          possible: 'Posible causa: tabla faltante, permisos de lectura o nombre de columna incorrecto.',
+        });
+      }
+
+      const { data: activityData, error: activityError } = await supabase
+        .from('actividad_usuarios')
+        .select('consultas_realizadas, consulta, accion, activity')
+        .limit(120);
+
+      if (activityError) {
+        rows.push({
+          id: 'activity-read-fail',
+          level: 'media',
+          title: 'Fallos en carga de datos',
+          detail: activityError.message || 'No se pudo leer actividad_usuarios.',
+          possible: 'Posible causa: la tabla actividad_usuarios no existe o la política RLS bloquea lectura.',
+        });
+      } else {
+        const riskCount = (activityData || []).filter((a) => {
+          const text = `${a.consultas_realizadas || ''} ${a.consulta || ''} ${a.accion || ''} ${a.activity || ''}`.toLowerCase();
+          return text.includes('alto riesgo') || text.includes('riesgo alto') || text.includes('high risk');
+        }).length;
+
+        if (riskCount >= 5) {
+          rows.push({
+            id: 'high-risk-cases',
+            level: 'alta',
+            title: 'Muchos casos de alto riesgo detectados',
+            detail: `Se detectaron ${riskCount} eventos con referencia a alto riesgo en actividad de usuarios.`,
+            possible: 'Posible causa: incremento real de casos críticos o reglas de clasificación demasiado sensibles.',
+          });
+        }
+      }
+
+      const incompleteUsers = (usuarios || []).filter((u) => !u.email || !u.nombre).length;
+      if (incompleteUsers > 0) {
+        rows.push({
+          id: 'incomplete-users',
+          level: 'media',
+          title: 'Fallos en carga de datos',
+          detail: `Se detectaron ${incompleteUsers} usuarios con datos incompletos (nombre o correo).`,
+          possible: 'Posible causa: registros incompletos al crear usuarios o migraciones de datos previas.',
+        });
+      }
+
+      if (rows.length === 0) {
+        rows.push({
+          id: 'ok',
+          level: 'baja',
+          title: 'Sin alertas críticas',
+          detail: 'No se detectaron errores del sistema ni eventos críticos en esta revisión.',
+          possible: 'Sugerencia: mantener monitoreo periódico de actividad y calidad de datos.',
+        });
+      }
+
+      setAlertRows(rows);
+    } catch (e) {
+      setAlertRows([
+        {
+          id: 'unexpected',
+          level: 'alta',
+          title: 'Errores en el sistema',
+          detail: e?.message || 'Error inesperado al construir alertas.',
+          possible: 'Posible causa: excepción no controlada en el módulo de Alertas.',
+        },
+      ]);
+    } finally {
+      setLoadingAlerts(false);
+    }
+  };
+
+  const loadCitasRows = async () => {
+    setLoadingCitasRows(true);
+    try {
+      const { data, error } = await supabase
+        .from('citas')
+        .select('*')
+        .order('id', { ascending: false })
+        .limit(80);
+
+      if (error || !Array.isArray(data)) {
+        setCitasRows([]);
+        return;
+      }
+
+      const mapped = data.map((row, idx) => ({
+        id: row.id || row.id_cita || idx,
+        rowId: row.id || row.id_cita || null,
+        rowIdField: row.id ? 'id' : (row.id_cita ? 'id_cita' : null),
+        paciente: row.paciente || row.nombre_paciente || row.usuario || row.email || 'Sin datos',
+        email: row.email || row.correo || row.mail || 'Sin datos',
+        celular: row.celular || row.telefono || row.telefono_celular || 'Sin datos',
+        celularFamiliar: row.telefono_familiar || row.celular_familiar || row.telefono_contacto || 'Sin datos',
+        fecha: row.fecha || row.fecha_cita || row.created_at || 'Sin datos',
+        hora: row.hora || row.hora_cita || row.time || 'Sin datos',
+        estado: (row.estado || row.status || 'pendiente').toString().toLowerCase(),
+      }));
+
+      setCitasRows(mapped);
+    } catch {
+      setCitasRows([]);
+    } finally {
+      setLoadingCitasRows(false);
+    }
+  };
+
+  const handleUpdateCitaEstado = async (cita, nuevoEstado) => {
+    if (!cita?.rowId || !cita?.rowIdField) {
+      Alert.alert('No disponible', 'No se pudo identificar esta cita para actualizar su estado.');
+      return;
+    }
+
+    let query = supabase.from('citas').update({ estado: nuevoEstado });
+    query = query.eq(cita.rowIdField, cita.rowId);
+
+    const { error } = await query;
+    if (error) {
+      Alert.alert('Error', error.message || 'No se pudo actualizar el estado de la cita.');
+      return;
+    }
+
+    await loadCitasRows();
+    Alert.alert('Estado actualizado', `La cita quedó en estado ${nuevoEstado}.`);
+  };
+
+  const handleCreateAgendaCita = async () => {
+    if (savingAgendaCita) return;
+
+    if (
+      !agendaPaciente.trim() ||
+      !agendaEmail.trim() ||
+      !agendaCelular.trim() ||
+      !agendaFamiliar.trim() ||
+      !agendaHora.trim() ||
+      !agendaDoctor.trim()
+    ) {
+      Alert.alert('Datos incompletos', 'Completa paciente, email, celular, contacto familiar, hora y doctor.');
+      return;
+    }
+
+    setSavingAgendaCita(true);
+    try {
+      const payload = {
+        paciente: agendaPaciente.trim(),
+        email: agendaEmail.trim().toLowerCase(),
+        celular: agendaCelular.trim(),
+        telefono_familiar: agendaFamiliar.trim(),
+        fecha: agendaFecha.toISOString().slice(0, 10),
+        hora: agendaHora.trim(),
+        doctor: agendaDoctor.trim(),
+        estado: 'pendiente',
+      };
+
+      let { error } = await supabase.from('citas').insert(payload);
+
+      // Compatibilidad: si la tabla aun no tiene columnas de contacto, guarda la cita con esquema base.
+      if (error && /column .* does not exist/i.test(error.message || '')) {
+        const fallbackPayload = {
+          paciente: agendaPaciente.trim(),
+          fecha: agendaFecha.toISOString().slice(0, 10),
+          hora: agendaHora.trim(),
+          doctor: agendaDoctor.trim(),
+          estado: 'pendiente',
+        };
+
+        const fallbackResult = await supabase.from('citas').insert(fallbackPayload);
+        error = fallbackResult.error;
+      }
+
+      if (error) {
+        Alert.alert('Error', error.message || 'No se pudo agendar la cita.');
+        return;
+      }
+
+      setAgendaPaciente('');
+      setAgendaEmail('');
+      setAgendaCelular('');
+      setAgendaFamiliar('');
+      setAgendaHora('');
+      setAgendaDoctor('');
+      await loadCitasRows();
+      Alert.alert('Éxito', 'Cita agendada correctamente.');
+    } finally {
+      setSavingAgendaCita(false);
+    }
+  };
+
   const loadDashboardData = async () => {
     setLoadingUsuarios(true);
     try {
-      const { data, error, count } = await supabase
+      let queryResult = await supabase
         .from('usuarios')
-        .select('id_usuario, nombre, usuario, email', { count: 'exact' })
+        .select('*', { count: 'exact' })
         .order('id_usuario', { ascending: false });
+
+      // Fallbacks para esquemas con columnas distintas.
+      if (queryResult.error) {
+        queryResult = await supabase
+          .from('usuarios')
+          .select('*', { count: 'exact' })
+          .order('id', { ascending: false });
+      }
+      if (queryResult.error) {
+        queryResult = await supabase
+          .from('usuarios')
+          .select('*', { count: 'exact' })
+          .order('created_at', { ascending: false });
+      }
+      if (queryResult.error) {
+        queryResult = await supabase
+          .from('usuarios')
+          .select('*', { count: 'exact' });
+      }
+
+      const { data, error, count } = queryResult;
 
       if (error) {
         console.log('Error cargando usuarios admin:', error.message);
+        setLastSystemError(error.message || 'Error desconocido al cargar usuarios.');
         setUsuarios([]);
         setUsuariosRegistrados(0);
         return;
       }
 
-      const list = Array.isArray(data) ? data : [];
+      setLastSystemError('');
+
+      const list = (Array.isArray(data) ? data : []).map((u, idx) => {
+        const dbIdField =
+          u?.id_usuario !== undefined && u?.id_usuario !== null ? 'id_usuario' :
+          u?.id !== undefined && u?.id !== null ? 'id' :
+          u?.uuid !== undefined && u?.uuid !== null ? 'uuid' :
+          u?.user_id !== undefined && u?.user_id !== null ? 'user_id' :
+          null;
+
+        const dbId = dbIdField ? u[dbIdField] : null;
+
+        return {
+          ...u,
+          _dbIdField: dbIdField,
+          _dbId: dbId,
+          _localId: `u_${idx}_${u?.email || u?.usuario || u?.username || 'sinid'}`,
+          nombre: u.nombre ?? u.name ?? u.nombres ?? u.usuario ?? u.username ?? 'Usuario',
+          usuario: u.usuario ?? u.username ?? u.user_name ?? u.email ?? `usuario_${idx + 1}`,
+          email: u.email ?? u.correo ?? u.mail ?? 'Sin email',
+        };
+      });
       setUsuarios(list);
+      setBlockedUsers(() => {
+        const next = {};
+        for (const u of list) {
+          const id = getUserId(u);
+          if (id !== null) next[id] = isUserBlockedFromRow(u);
+        }
+        return next;
+      });
       setUsuariosRegistrados(typeof count === 'number' ? count : list.length);
       if (list.length > 0) {
         setSelectedUsuario((prev) => {
           if (!prev) return list[0];
-          const stillExists = list.find((u) => u.id_usuario === prev.id_usuario);
+          const prevId = getUserId(prev);
+          const stillExists = list.find((u) => getUserId(u) === prevId);
           return stillExists || list[0];
         });
       } else {
@@ -79,11 +779,16 @@ export default function AdminDashboardScreen({ navigation }) {
 
         if (!citasError && typeof citasCount === 'number') {
           setCitasHoy(citasCount);
+          setLastDataLoadError('');
         } else {
           setCitasHoy(null);
+          if (citasError?.message) {
+            setLastDataLoadError(citasError.message);
+          }
         }
       } catch {
         setCitasHoy(null);
+        setLastDataLoadError('No se pudo consultar la tabla de citas.');
       }
     } finally {
       setLoadingUsuarios(false);
@@ -136,7 +841,7 @@ export default function AdminDashboardScreen({ navigation }) {
 
       <View style={styles.statsRow}>
         <View style={styles.statCard}>
-          <Text style={styles.statLabel}>Usuarios registrados</Text>
+          <Text style={styles.statLabel}>Usuarios activos</Text>
           <Text style={styles.statValue}>{loadingUsuarios ? '...' : usuariosRegistrados}</Text>
         </View>
         <View style={styles.statCard}>
@@ -156,15 +861,52 @@ export default function AdminDashboardScreen({ navigation }) {
             <Ionicons name="person-add-outline" size={20} color="#2f7a96" />
             <Text style={styles.quickText}>Nuevo paciente</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.quickItem} activeOpacity={0.85}>
+          <TouchableOpacity
+            style={styles.quickItem}
+            activeOpacity={0.85}
+            onPress={() => setShowUserAdminModal(true)}
+          >
+            <Ionicons name="people-circle-outline" size={20} color="#2f7a96" />
+            <Text style={styles.quickText}>Administración usuarios</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.quickItem}
+            activeOpacity={0.85}
+            onPress={() => {
+              setReporteTipo(null);
+              setReporteFormato(null);
+              setReporteUsuario(null);
+              setReporteDataset(null);
+              setReporteResultado(null);
+              setDatasetMetodo(null);
+              setBuscarDataset('');
+              setShowDatasetDatePicker(false);
+              setDatasetFecha(new Date());
+              setShowReportesModal(true);
+            }}
+          >
             <Ionicons name="document-text-outline" size={20} color="#2f7a96" />
             <Text style={styles.quickText}>Reportes</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.quickItem} activeOpacity={0.85}>
-            <Ionicons name="medkit-outline" size={20} color="#2f7a96" />
-            <Text style={styles.quickText}>Servicios</Text>
+          <TouchableOpacity
+            style={styles.quickItem}
+            activeOpacity={0.85}
+            onPress={async () => {
+              setShowActivityModal(true);
+              await loadUserActivity();
+            }}
+          >
+            <Ionicons name="reader-outline" size={20} color="#2f7a96" />
+            <Text style={styles.quickText}>Actividad de Usuarios</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.quickItem} activeOpacity={0.85}>
+          <TouchableOpacity
+            style={styles.quickItem}
+            activeOpacity={0.85}
+            onPress={async () => {
+              setShowAlertsModal(true);
+              await loadSystemAlerts();
+            }}
+          >
             <Ionicons name="notifications-outline" size={20} color="#2f7a96" />
             <Text style={styles.quickText}>Alertas</Text>
           </TouchableOpacity>
@@ -185,12 +927,15 @@ export default function AdminDashboardScreen({ navigation }) {
       ) : (
         <View style={styles.usersList}>
           {usuarios.slice(0, 8).map((u) => {
-            const active = selectedUsuario?.id_usuario === u.id_usuario;
+            const active = getUserId(selectedUsuario) === getUserId(u);
             return (
               <TouchableOpacity
-                key={u.id_usuario}
+                key={`pac-user-${getUserId(u)}`}
                 style={[styles.userRow, active && styles.userRowActive]}
-                onPress={() => setSelectedUsuario(u)}
+                onPress={() => {
+                  setSelectedUsuario(u);
+                  setShowPatientModulesModal(true);
+                }}
                 activeOpacity={0.85}
               >
                 <Ionicons name="person-circle-outline" size={22} color={active ? '#ffffff' : '#2f7a96'} />
@@ -204,40 +949,7 @@ export default function AdminDashboardScreen({ navigation }) {
         </View>
       )}
 
-      {!!selectedUsuario && (
-        <View style={styles.moduleListBlock}>
-          <Text style={styles.modulesForUser}>Módulos habilitados para {selectedUsuario.nombre || selectedUsuario.usuario}</Text>
-          <View style={styles.moduleList}>
-            <TouchableOpacity
-              style={styles.moduleItem}
-              activeOpacity={0.85}
-              onPress={() => navigation.navigate('AdminPatientRecords', { user: selectedUsuario })}
-            >
-              <Ionicons name="folder-open-outline" size={18} color="#2f7a96" />
-              <Text style={styles.moduleItemText}>Historias clínicas digitalizadas</Text>
-              <Ionicons name="chevron-forward-outline" size={18} color="#7da6b7" />
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.moduleItem}
-              activeOpacity={0.85}
-              onPress={() => navigation.navigate('AdminPatientTracking', { user: selectedUsuario })}
-            >
-              <Ionicons name="pulse-outline" size={18} color="#2f7a96" />
-              <Text style={styles.moduleItemText}>Seguimiento de indicadores médicos</Text>
-              <Ionicons name="chevron-forward-outline" size={18} color="#7da6b7" />
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.moduleItem}
-              activeOpacity={0.85}
-              onPress={() => navigation.navigate('AdminPatientAccess', { user: selectedUsuario })}
-            >
-              <Ionicons name="shield-checkmark-outline" size={18} color="#2f7a96" />
-              <Text style={styles.moduleItemText}>Control de acceso por personal autorizado</Text>
-              <Ionicons name="chevron-forward-outline" size={18} color="#7da6b7" />
-            </TouchableOpacity>
-          </View>
-        </View>
-      )}
+
     </View>
   );
 
@@ -246,18 +958,40 @@ export default function AdminDashboardScreen({ navigation }) {
       <Text style={styles.sectionTitle}>Módulo de citas</Text>
       <Text style={styles.moduleDescription}>Coordina agenda médica, disponibilidad y turnos para optimizar la atención.</Text>
       <View style={styles.moduleList}>
-        <View style={styles.moduleItem}>
+        <TouchableOpacity
+          style={styles.moduleItem}
+          activeOpacity={0.85}
+          onPress={async () => {
+            setCitasModalType('agenda');
+            setAgendaFecha(new Date());
+            setShowAgendaDatePicker(false);
+            setAgendaPaciente('');
+            setAgendaEmail('');
+            setAgendaCelular('');
+            setAgendaFamiliar('');
+            setAgendaHora('');
+            setAgendaDoctor('');
+            setShowCitasModal(true);
+            await loadCitasRows();
+          }}
+        >
           <Ionicons name="calendar-number-outline" size={18} color="#2f7a96" />
           <Text style={styles.moduleItemText}>Agenda diaria y semanal</Text>
-        </View>
-        <View style={styles.moduleItem}>
-          <Ionicons name="time-outline" size={18} color="#2f7a96" />
-          <Text style={styles.moduleItemText}>Control de tiempos y puntualidad</Text>
-        </View>
-        <View style={styles.moduleItem}>
+          <Ionicons name="chevron-forward-outline" size={18} color="#7da6b7" />
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.moduleItem}
+          activeOpacity={0.85}
+          onPress={async () => {
+            setCitasModalType('estados');
+            setShowCitasModal(true);
+            await loadCitasRows();
+          }}
+        >
           <Ionicons name="checkmark-done-outline" size={18} color="#2f7a96" />
           <Text style={styles.moduleItemText}>Confirmación de citas y estados</Text>
-        </View>
+          <Ionicons name="chevron-forward-outline" size={18} color="#7da6b7" />
+        </TouchableOpacity>
       </View>
     </View>
   );
@@ -400,6 +1134,1098 @@ export default function AdminDashboardScreen({ navigation }) {
         </View>
       </Modal>
 
+      <Modal
+        visible={showUserAdminModal}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setShowUserAdminModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalLargeCard}>
+            <View style={styles.modalHeaderRow}>
+              <Text style={styles.modalTitle}>Administración de Usuarios</Text>
+              <TouchableOpacity onPress={() => setShowUserAdminModal(false)} activeOpacity={0.85}>
+                <Ionicons name="close-outline" size={24} color="#2f7a96" />
+              </TouchableOpacity>
+            </View>
+
+            <Text style={styles.modalSubTitle}>Gestiona usuarios, roles y estado de acceso.</Text>
+
+            <ScrollView style={styles.modalListArea} showsVerticalScrollIndicator={false}>
+              {usuarios.length === 0 ? (
+                <Text style={styles.emptyText}>Sin usuarios para administrar.</Text>
+              ) : (
+                <View style={styles.adminRowsWrap}>
+                  {usuarios.slice(0, 20).map((u) => {
+                    const userId = getUserId(u);
+                    const blocked = getBlockedValueFromStateOrRow(u);
+                    const rol = (u.rol || 'usuario').toLowerCase();
+
+                    return (
+                      <View key={`admin-row-${userId}`} style={styles.adminRowCard}>
+                        <View style={styles.adminCardTop}>
+                          <View style={styles.adminCardAvatar}>
+                            <Ionicons name="person-circle-outline" size={36} color="#2f7a96" />
+                          </View>
+                          <View style={styles.adminCardInfo}>
+                            <Text style={styles.adminCardName}>{u.nombre || u.usuario || 'Usuario'}</Text>
+                            <Text style={styles.adminCardEmail}>{u.email || 'Sin email'}</Text>
+                            <Text style={styles.adminCardUser}>{u.usuario ? `@${u.usuario}` : ''}</Text>
+                          </View>
+                        </View>
+
+                        <View style={styles.adminCardBadgeRow}>
+                          <View style={styles.adminRolBadge}>
+                            <Ionicons name="shield-outline" size={12} color="#2f7a96" />
+                            <Text style={styles.adminRolBadgeText}>{rol}</Text>
+                          </View>
+                          <View style={[styles.adminEstadoBadge, blocked ? styles.estadoBadgeInactivo : styles.estadoBadgeActivo]}>
+                            <View style={[styles.estadoDot, blocked ? styles.estadoDotInactivo : styles.estadoDotActivo]} />
+                            <Text style={[styles.adminEstadoBadgeText, blocked ? styles.estadoTextInactivo : styles.estadoTextActivo]}>
+                              {blocked ? 'Inactivo' : 'Activo'}
+                            </Text>
+                          </View>
+                        </View>
+
+                        <View style={styles.actionRow}>
+                          <TouchableOpacity
+                            style={[styles.actionBtn, styles.actionEdit]}
+                            onPress={() => openEditModal(u)}
+                            activeOpacity={0.85}
+                          >
+                            <Ionicons name="create-outline" size={13} color="#2f7a96" />
+                            <Text style={styles.actionEditText}>Editar</Text>
+                          </TouchableOpacity>
+
+                          <TouchableOpacity
+                            style={[styles.actionBtn, styles.actionBlock]}
+                            onPress={() => toggleBlockAccess(u)}
+                            activeOpacity={0.85}
+                          >
+                            <Ionicons name={blocked ? 'lock-open-outline' : 'lock-closed-outline'} size={13} color="#7a7545" />
+                            <Text style={styles.actionBlockText}>{blocked ? 'Habilitar' : 'Bloquear'}</Text>
+                          </TouchableOpacity>
+                        </View>
+                      </View>
+                    );
+                  })}
+                </View>
+              )}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
+        visible={showActivityModal}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setShowActivityModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalLargeCard}>
+            <View style={styles.modalHeaderRow}>
+              <Text style={styles.modalTitle}>Actividad de Usuarios</Text>
+              <TouchableOpacity onPress={() => setShowActivityModal(false)} activeOpacity={0.85}>
+                <Ionicons name="close-outline" size={24} color="#2f7a96" />
+              </TouchableOpacity>
+            </View>
+
+            <Text style={styles.modalSubTitle}>Registro de actividad operativa del sistema.</Text>
+
+            <ScrollView style={styles.modalListArea} showsVerticalScrollIndicator={false}>
+              {loadingActivity ? (
+                <Text style={styles.emptyText}>Cargando actividad...</Text>
+              ) : (
+                <View style={styles.activityRowsWrap}>
+                  {activityRows.length === 0 && (
+                    <Text style={styles.activityHint}>Mostrando estructura base. Aun no hay actividad registrada.</Text>
+                  )}
+                  {(activityRows.length > 0 ? activityRows : [{
+                    id: 'empty-activity-row',
+                    quien: 'Sin datos',
+                    consultas: 'Sin datos',
+                    datosSubio: 'Sin datos',
+                    fechaHora: 'Sin datos',
+                  }]).map((item, idx) => (
+                    <View key={`activity-${item.id}`} style={styles.activityRowCard}>
+                      <View style={styles.activityCardHeader}>
+                        <View style={styles.activityBadge}>
+                          <Text style={styles.activityBadgeText}>Registro {idx + 1}</Text>
+                        </View>
+                        <Text style={styles.activityDateChip}>{String(item.fechaHora)}</Text>
+                      </View>
+
+                      <View style={styles.activityField}>
+                        <View style={styles.activityLabelWrap}>
+                          <Ionicons name="person-outline" size={13} color="#5d7f8d" />
+                          <Text style={styles.activityLabel}>Quién ingresó</Text>
+                        </View>
+                        <Text style={styles.activityValue}>{item.quien}</Text>
+                      </View>
+                      <View style={styles.activityField}>
+                        <View style={styles.activityLabelWrap}>
+                          <Ionicons name="search-outline" size={13} color="#5d7f8d" />
+                          <Text style={styles.activityLabel}>Qué consultas realizó</Text>
+                        </View>
+                        <Text style={styles.activityValue}>{item.consultas}</Text>
+                      </View>
+                      <View style={styles.activityField}>
+                        <View style={styles.activityLabelWrap}>
+                          <Ionicons name="cloud-upload-outline" size={13} color="#5d7f8d" />
+                          <Text style={styles.activityLabel}>Qué datos subió</Text>
+                        </View>
+                        <Text style={styles.activityValue}>{item.datosSubio}</Text>
+                      </View>
+                      <View style={[styles.activityField, styles.activityFieldLast]}>
+                        <View style={styles.activityLabelWrap}>
+                          <Ionicons name="time-outline" size={13} color="#5d7f8d" />
+                          <Text style={styles.activityLabel}>Hora y fecha</Text>
+                        </View>
+                        <Text style={styles.activityValue}>{String(item.fechaHora)}</Text>
+                      </View>
+                    </View>
+                  ))}
+                </View>
+              )}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
+        visible={showAlertsModal}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setShowAlertsModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalLargeCard}>
+            <View style={styles.modalHeaderRow}>
+              <Text style={styles.modalTitle}>Alertas del sistema</Text>
+              <TouchableOpacity onPress={() => setShowAlertsModal(false)} activeOpacity={0.85}>
+                <Ionicons name="close-outline" size={24} color="#2f7a96" />
+              </TouchableOpacity>
+            </View>
+
+            <Text style={styles.modalSubTitle}>Monitoreo de riesgo clínico, errores técnicos y fallos de carga de datos.</Text>
+
+            <ScrollView style={styles.modalListArea} showsVerticalScrollIndicator={false}>
+              {loadingAlerts ? (
+                <Text style={styles.emptyText}>Analizando alertas...</Text>
+              ) : (
+                <View style={styles.alertRowsWrap}>
+                  {alertRows.map((a) => {
+                    const isHigh = a.level === 'alta';
+                    const isMedium = a.level === 'media';
+                    return (
+                      <View
+                        key={a.id}
+                        style={[
+                          styles.alertCard,
+                          isHigh && styles.alertCardHigh,
+                          isMedium && styles.alertCardMedium,
+                        ]}
+                      >
+                        <View style={styles.alertHeader}>
+                          <Ionicons
+                            name={isHigh ? 'warning-outline' : isMedium ? 'alert-circle-outline' : 'checkmark-circle-outline'}
+                            size={18}
+                            color={isHigh ? '#b85a5a' : isMedium ? '#9a6b15' : '#2f9b6f'}
+                          />
+                          <Text style={styles.alertTitle}>{a.title}</Text>
+                          <Text style={[styles.alertLevelChip, isHigh && styles.alertLevelHigh, isMedium && styles.alertLevelMedium]}>
+                            {a.level.toUpperCase()}
+                          </Text>
+                        </View>
+                        <Text style={styles.alertDetail}>{a.detail}</Text>
+                        <Text style={styles.alertPossible}>{a.possible}</Text>
+                      </View>
+                    );
+                  })}
+                </View>
+              )}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
+        visible={showPatientModulesModal}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setShowPatientModulesModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <View style={styles.modalHeaderRow}>
+              <Text style={styles.modalTitle}>Módulo de paciente</Text>
+              <TouchableOpacity onPress={() => setShowPatientModulesModal(false)} activeOpacity={0.85}>
+                <Ionicons name="close-outline" size={24} color="#2f7a96" />
+              </TouchableOpacity>
+            </View>
+
+            <Text style={styles.modalSubTitle}>
+              {selectedUsuario
+                ? `Opciones para ${selectedUsuario.nombre || selectedUsuario.usuario}`
+                : 'Selecciona un usuario para ver sus opciones.'}
+            </Text>
+
+            <View style={styles.moduleList}>
+              <TouchableOpacity
+                style={styles.moduleItem}
+                activeOpacity={0.85}
+                onPress={() => {
+                  if (!selectedUsuario) return;
+                  setShowPatientModulesModal(false);
+                  navigation.navigate('AdminPatientRecords', { user: selectedUsuario });
+                }}
+              >
+                <Ionicons name="folder-open-outline" size={18} color="#2f7a96" />
+                <Text style={styles.moduleItemText}>Historias clínicas digitalizadas</Text>
+                <Ionicons name="chevron-forward-outline" size={18} color="#7da6b7" />
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.moduleItem}
+                activeOpacity={0.85}
+                onPress={() => {
+                  if (!selectedUsuario) return;
+                  setShowPatientModulesModal(false);
+                  navigation.navigate('AdminPatientTracking', { user: selectedUsuario });
+                }}
+              >
+                <Ionicons name="pulse-outline" size={18} color="#2f7a96" />
+                <Text style={styles.moduleItemText}>Seguimiento de indicadores médicos</Text>
+                <Ionicons name="chevron-forward-outline" size={18} color="#7da6b7" />
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.moduleItem}
+                activeOpacity={0.85}
+                onPress={() => {
+                  if (!selectedUsuario) return;
+                  setShowPatientModulesModal(false);
+                  navigation.navigate('AdminPatientAccess', { user: selectedUsuario });
+                }}
+              >
+                <Ionicons name="shield-checkmark-outline" size={18} color="#2f7a96" />
+                <Text style={styles.moduleItemText}>Control de acceso por personal autorizado</Text>
+                <Ionicons name="chevron-forward-outline" size={18} color="#7da6b7" />
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
+        visible={showReportesModal}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setShowReportesModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalLargeCard}>
+            <View style={styles.modalHeaderRow}>
+              <Text style={styles.modalTitle}>Reportes</Text>
+              <TouchableOpacity onPress={() => setShowReportesModal(false)} activeOpacity={0.85}>
+                <Ionicons name="close-outline" size={24} color="#2f7a96" />
+              </TouchableOpacity>
+            </View>
+            <Text style={styles.modalSubTitle}>Configura y exporta reportes del sistema clínico.</Text>
+
+            <ScrollView showsVerticalScrollIndicator={false}>
+
+              {/* --- Exportar análisis en --- */}
+              <View style={styles.reportSection}>
+                <View style={styles.reportSectionHeader}>
+                  <Ionicons name="share-outline" size={16} color="#2f7a96" />
+                  <Text style={styles.reportSectionTitle}>Exportar análisis en</Text>
+                </View>
+                <View style={styles.reportFormatoRow}>
+                  {[
+                    { key: 'pdf',   label: 'PDF',   icon: 'document-outline',       color: '#c0392b', bg: '#fdf2f1' },
+                    { key: 'excel', label: 'Excel', icon: 'grid-outline',           color: '#1e7e45', bg: '#f0faf4' },
+                  ].map((f) => {
+                    const active = reporteFormato === f.key;
+                    return (
+                      <TouchableOpacity
+                        key={f.key}
+                        style={[styles.formatoCard, { backgroundColor: active ? f.color : f.bg, borderColor: active ? f.color : '#deedf3' }]}
+                        activeOpacity={0.85}
+                        onPress={() => setReporteFormato(active ? null : f.key)}
+                      >
+                        <Ionicons name={f.icon} size={28} color={active ? '#ffffff' : f.color} />
+                        <Text style={[styles.formatoLabel, { color: active ? '#ffffff' : f.color }]}>{f.label}</Text>
+                        {active && <Ionicons name="checkmark-circle" size={16} color="#ffffff" style={styles.formatoCheck} />}
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </View>
+
+              {/* --- Reportes por --- */}
+              <View style={styles.reportSection}>
+                <View style={styles.reportSectionHeader}>
+                  <Ionicons name="filter-outline" size={16} color="#2f7a96" />
+                  <Text style={styles.reportSectionTitle}>Reportes por</Text>
+                </View>
+                <View style={styles.reportTipoList}>
+                  {[
+                    { key: 'usuario',           label: 'Usuario',           desc: 'Actividad y datos por usuario registrado.',        icon: 'person-outline' },
+                    { key: 'dataset',           label: 'Dataset',           desc: 'Conjuntos de datos cargados al sistema.',           icon: 'server-outline' },
+                    { key: 'resultados_medicos', label: 'Resultados médicos', desc: 'Diagnósticos, exámenes y resultados clínicos.',    icon: 'pulse-outline' },
+                  ].map((t) => {
+                    const active = reporteTipo === t.key;
+                    return (
+                      <TouchableOpacity
+                        key={t.key}
+                        style={[styles.tipoCard, active && styles.tipoCardActive]}
+                        activeOpacity={0.85}
+                        onPress={() => {
+                          const next = active ? null : t.key;
+                          setReporteTipo(next);
+                          setReporteUsuario(null);
+                          setReporteDataset(null);
+                          setReporteResultado(null);
+                          setDatasetMetodo(null);
+                          setBuscarDataset('');
+                          setShowDatasetDatePicker(false);
+                        }}
+                      >
+                        <View style={[styles.tipoIconWrap, active && styles.tipoIconWrapActive]}>
+                          <Ionicons name={t.icon} size={20} color={active ? '#ffffff' : '#2f7a96'} />
+                        </View>
+                        <View style={styles.tipoInfo}>
+                          <Text style={[styles.tipoLabel, active && styles.tipoLabelActive]}>{t.label}</Text>
+                          <Text style={[styles.tipoDesc, active && styles.tipoDescActive]}>{t.desc}</Text>
+                        </View>
+                        {active && <Ionicons name="checkmark-circle" size={20} color="#2f7a96" />}
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </View>
+
+              {/* --- Selector de usuario (visible sólo cuando tipo = usuario) --- */}
+              {reporteTipo === 'usuario' && (
+                <View style={styles.reportSection}>
+                  <View style={styles.reportSectionHeader}>
+                    <Ionicons name="people-outline" size={16} color="#2f7a96" />
+                    <Text style={styles.reportSectionTitle}>Usuario seleccionado</Text>
+                  </View>
+                  <TouchableOpacity
+                    style={styles.pickUserBtn}
+                    activeOpacity={0.85}
+                    onPress={() => { setBuscarUsuario(''); setShowPickUserModal(true); }}
+                  >
+                    {reporteUsuario ? (
+                      <View style={styles.pickUserSelected}>
+                        <View style={styles.reportUsuarioAvatar}>
+                          <Ionicons name="person-outline" size={16} color="#2f7a96" />
+                        </View>
+                        <View style={styles.reportUsuarioInfo}>
+                          <Text style={styles.reportUsuarioNombre}>
+                            {reporteUsuario.nombre || reporteUsuario.usuario || 'Usuario'}
+                          </Text>
+                          <Text style={styles.reportUsuarioEmail}>{reporteUsuario.email || 'Sin email'}</Text>
+                        </View>
+                        <Ionicons name="checkmark-circle" size={20} color="#2f9b6f" />
+                      </View>
+                    ) : (
+                      <View style={styles.pickUserPlaceholder}>
+                        <Ionicons name="person-add-outline" size={18} color="#7da6b7" />
+                        <Text style={styles.pickUserPlaceholderText}>Toca para seleccionar un usuario</Text>
+                        <Ionicons name="chevron-forward-outline" size={16} color="#b0cdd8" />
+                      </View>
+                    )}
+                  </TouchableOpacity>
+                </View>
+              )}
+
+              {reporteTipo === 'dataset' && (
+                <View style={styles.reportSection}>
+                  <View style={styles.reportSectionHeader}>
+                    <Ionicons name="server-outline" size={16} color="#2f7a96" />
+                    <Text style={styles.reportSectionTitle}>Dataset seleccionado</Text>
+                  </View>
+                  <TouchableOpacity
+                    style={styles.pickUserBtn}
+                    activeOpacity={0.85}
+                    onPress={() => { setBuscarDataset(''); setShowPickDatasetModal(true); }}
+                  >
+                    {reporteDataset ? (
+                      <View style={styles.pickUserSelected}>
+                        <View style={styles.reportUsuarioAvatar}>
+                          <Ionicons name="server-outline" size={16} color="#2f7a96" />
+                        </View>
+                        <View style={styles.reportUsuarioInfo}>
+                          <Text style={styles.reportUsuarioNombre}>{reporteDataset.nombre}</Text>
+                          <Text style={styles.reportUsuarioEmail}>{reporteDataset.detalle}</Text>
+                        </View>
+                        <Ionicons name="checkmark-circle" size={20} color="#2f9b6f" />
+                      </View>
+                    ) : (
+                      <View style={styles.pickUserPlaceholder}>
+                        <Ionicons name="add-circle-outline" size={18} color="#7da6b7" />
+                        <Text style={styles.pickUserPlaceholderText}>Toca para seleccionar un dataset</Text>
+                        <Ionicons name="chevron-forward-outline" size={16} color="#b0cdd8" />
+                      </View>
+                    )}
+                  </TouchableOpacity>
+                </View>
+              )}
+
+              {reporteTipo === 'resultados_medicos' && (
+                <View style={styles.reportSection}>
+                  <View style={styles.reportSectionHeader}>
+                    <Ionicons name="medkit-outline" size={16} color="#2f7a96" />
+                    <Text style={styles.reportSectionTitle}>Resultado médico seleccionado</Text>
+                  </View>
+                  <TouchableOpacity
+                    style={styles.pickUserBtn}
+                    activeOpacity={0.85}
+                    onPress={() => { setBuscarResultado(''); setShowPickResultadoModal(true); }}
+                  >
+                    {reporteResultado ? (
+                      <View style={styles.pickUserSelected}>
+                        <View style={styles.reportUsuarioAvatar}>
+                          <Ionicons name="medkit-outline" size={16} color="#2f7a96" />
+                        </View>
+                        <View style={styles.reportUsuarioInfo}>
+                          <Text style={styles.reportUsuarioNombre}>{reporteResultado.nombre}</Text>
+                          <Text style={styles.reportUsuarioEmail}>{reporteResultado.detalle}</Text>
+                        </View>
+                        <Ionicons name="checkmark-circle" size={20} color="#2f9b6f" />
+                      </View>
+                    ) : (
+                      <View style={styles.pickUserPlaceholder}>
+                        <Ionicons name="add-circle-outline" size={18} color="#7da6b7" />
+                        <Text style={styles.pickUserPlaceholderText}>Toca para seleccionar resultados médicos</Text>
+                        <Ionicons name="chevron-forward-outline" size={16} color="#b0cdd8" />
+                      </View>
+                    )}
+                  </TouchableOpacity>
+                </View>
+              )}
+
+              {/* --- Resumen selección --- */}
+              {(reporteTipo || reporteFormato) && (
+                <View style={styles.reportResumen}>
+                  <Ionicons name="information-circle-outline" size={15} color="#2f7a96" />
+                  <Text style={styles.reportResumenText}>
+                    {(() => {
+                      if (!reporteTipo) return 'Selecciona el tipo de reporte.';
+                      if (!reporteFormato) return 'Selecciona el formato de exportación.';
+                      if (reporteTipo === 'usuario' && !reporteUsuario) return 'Selecciona el usuario para el reporte.';
+                      if (reporteTipo === 'dataset' && !reporteDataset) return 'Selecciona el dataset para el reporte.';
+                      if (reporteTipo === 'resultados_medicos' && !reporteResultado) return 'Selecciona el tipo de resultado médico.';
+                      const tipoLabel = reporteTipo === 'resultados_medicos' ? 'resultados médicos' : reporteTipo;
+                      const target =
+                        reporteTipo === 'usuario'
+                          ? (reporteUsuario?.nombre || reporteUsuario?.usuario || '')
+                          : reporteTipo === 'dataset'
+                          ? (reporteDataset?.nombre || '')
+                          : reporteTipo === 'resultados_medicos'
+                          ? (reporteResultado?.nombre || '')
+                          : '';
+                      const quien = target ? ` — ${target}` : '';
+                      return `Listo para generar reporte de ${tipoLabel}${quien} en formato ${reporteFormato.toUpperCase()}.`;
+                    })()}
+                  </Text>
+                </View>
+              )}
+
+              {/* --- Botón generar --- */}
+              <ReporteGenBtn
+                listo={!!(
+                  reporteTipo &&
+                  reporteFormato &&
+                  ((reporteTipo === 'usuario' && reporteUsuario) ||
+                    (reporteTipo === 'dataset' && reporteDataset) ||
+                    (reporteTipo === 'resultados_medicos' && reporteResultado))
+                )}
+                generando={generandoReporte}
+                onPress={async () => {
+                  setGenerandoReporte(true);
+                  await new Promise((r) => setTimeout(r, 1400));
+                  setGenerandoReporte(false);
+                  const tipoLabel = reporteTipo === 'resultados_medicos' ? 'resultados médicos' : reporteTipo;
+                  const target =
+                    reporteTipo === 'usuario'
+                      ? (reporteUsuario?.nombre || reporteUsuario?.usuario || '')
+                      : reporteTipo === 'dataset'
+                      ? (reporteDataset?.nombre || '')
+                      : reporteTipo === 'resultados_medicos'
+                      ? (reporteResultado?.nombre || '')
+                      : '';
+                  const quien = target ? ` de ${target}` : '';
+                  Alert.alert(
+                    'Reporte generado',
+                    `El reporte de ${tipoLabel}${quien} en ${reporteFormato.toUpperCase()} está listo.`,
+                  );
+                }}
+              />
+
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      {/* -------- Modal selección de usuario para reporte -------- */}
+      <Modal
+        visible={showPickUserModal}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setShowPickUserModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalLargeCard}>
+
+            <View style={styles.modalHeaderRow}>
+              <Text style={styles.modalTitle}>Seleccionar usuario</Text>
+              <TouchableOpacity onPress={() => setShowPickUserModal(false)} activeOpacity={0.85}>
+                <Ionicons name="close-outline" size={24} color="#2f7a96" />
+              </TouchableOpacity>
+            </View>
+            <Text style={styles.modalSubTitle}>Elige el usuario para el cual deseas generar el reporte.</Text>
+
+            {/* Buscador */}
+            <View style={styles.pickUserSearchRow}>
+              <Ionicons name="search-outline" size={18} color="#7da6b7" style={styles.pickUserSearchIcon} />
+              <TextInput
+                style={styles.pickUserSearchInput}
+                placeholder="Buscar por nombre, usuario o correo..."
+                placeholderTextColor="#9bbeca"
+                value={buscarUsuario}
+                onChangeText={setBuscarUsuario}
+                autoCapitalize="none"
+                autoCorrect={false}
+              />
+              {buscarUsuario.length > 0 && (
+                <TouchableOpacity onPress={() => setBuscarUsuario('')} activeOpacity={0.85}>
+                  <Ionicons name="close-circle" size={18} color="#b0cdd8" />
+                </TouchableOpacity>
+              )}
+            </View>
+
+            <ScrollView style={styles.modalListArea} showsVerticalScrollIndicator={false}>
+              {(() => {
+                const q = buscarUsuario.trim().toLowerCase();
+                const filtrados = q
+                  ? usuarios.filter(
+                      (u) =>
+                        (u.nombre || '').toLowerCase().includes(q) ||
+                        (u.usuario || '').toLowerCase().includes(q) ||
+                        (u.email || '').toLowerCase().includes(q),
+                    )
+                  : usuarios;
+
+                if (filtrados.length === 0) {
+                  return (
+                    <View style={styles.pickUserEmpty}>
+                      <Ionicons name="search-circle-outline" size={40} color="#c8dfe9" />
+                      <Text style={styles.pickUserEmptyText}>Sin resultados para "{buscarUsuario}"</Text>
+                    </View>
+                  );
+                }
+
+                return filtrados.map((u) => {
+                  const sel = getUserId(reporteUsuario) === getUserId(u);
+                  return (
+                    <TouchableOpacity
+                      key={`report-user-${getUserId(u)}`}
+                      style={[styles.pickUserItem, sel && styles.pickUserItemActive]}
+                      activeOpacity={0.85}
+                      onPress={() => {
+                        setReporteUsuario(sel ? null : u);
+                        setShowPickUserModal(false);
+                      }}
+                    >
+                      <View style={[styles.pickUserItemAvatar, sel && styles.pickUserItemAvatarActive]}>
+                        <Ionicons name="person-outline" size={17} color={sel ? '#ffffff' : '#2f7a96'} />
+                      </View>
+                      <View style={styles.reportUsuarioInfo}>
+                        <Text style={[styles.reportUsuarioNombre, sel && styles.reportUsuarioNombreActive]}>
+                          {u.nombre || u.usuario || 'Usuario'}
+                        </Text>
+                        <Text style={[styles.reportUsuarioEmail, sel && styles.reportUsuarioEmailActive]}>
+                          {u.email || 'Sin email'}
+                        </Text>
+                        {u.usuario ? <Text style={styles.pickUserHandle}>@{u.usuario}</Text> : null}
+                      </View>
+                      {sel
+                        ? <Ionicons name="checkmark-circle" size={22} color="#2f9b6f" />
+                        : <Ionicons name="chevron-forward-outline" size={18} color="#b0cdd8" />}
+                    </TouchableOpacity>
+                  );
+                });
+              })()}
+            </ScrollView>
+
+          </View>
+        </View>
+      </Modal>
+
+      {/* -------- Modal selección de dataset para reporte -------- */}
+      <Modal
+        visible={showPickDatasetModal}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setShowPickDatasetModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalLargeCard}>
+            <View style={styles.modalHeaderRow}>
+              <Text style={styles.modalTitle}>Seleccionar dataset</Text>
+              <TouchableOpacity onPress={() => setShowPickDatasetModal(false)} activeOpacity={0.85}>
+                <Ionicons name="close-outline" size={24} color="#2f7a96" />
+              </TouchableOpacity>
+            </View>
+            <Text style={styles.modalSubTitle}>Elige cómo deseas generar el reporte: por fecha o por nombre de archivo.</Text>
+
+            <View style={styles.datasetMethodRow}>
+              <TouchableOpacity
+                style={[styles.datasetMethodCard, datasetMetodo === 'fecha' && styles.datasetMethodCardActive]}
+                activeOpacity={0.85}
+                onPress={() => {
+                  setDatasetMetodo('fecha');
+                  setBuscarDataset('');
+                  setReporteDataset(null);
+                }}
+              >
+                <Ionicons name="calendar-outline" size={18} color={datasetMetodo === 'fecha' ? '#ffffff' : '#2f7a96'} />
+                <Text style={[styles.datasetMethodText, datasetMetodo === 'fecha' && styles.datasetMethodTextActive]}>Por fecha</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.datasetMethodCard, datasetMetodo === 'archivo' && styles.datasetMethodCardActive]}
+                activeOpacity={0.85}
+                onPress={() => {
+                  setDatasetMetodo('archivo');
+                  setShowDatasetDatePicker(false);
+                  setReporteDataset(null);
+                }}
+              >
+                <Ionicons name="document-text-outline" size={18} color={datasetMetodo === 'archivo' ? '#ffffff' : '#2f7a96'} />
+                <Text style={[styles.datasetMethodText, datasetMetodo === 'archivo' && styles.datasetMethodTextActive]}>Por nombre de archivo</Text>
+              </TouchableOpacity>
+            </View>
+
+            {datasetMetodo === 'fecha' && (
+              <View style={styles.datasetSelectionBlock}>
+                <TouchableOpacity
+                  style={styles.datasetPickBtn}
+                  activeOpacity={0.85}
+                  onPress={() => setShowDatasetDatePicker(true)}
+                >
+                  <Ionicons name="calendar-clear-outline" size={18} color="#2f7a96" />
+                  <Text style={styles.datasetPickBtnText}>Elegir fecha</Text>
+                  <Text style={styles.datasetPickDateText}>{formatDate(datasetFecha)}</Text>
+                </TouchableOpacity>
+
+                {showDatasetDatePicker && (
+                  <DateTimePicker
+                    value={datasetFecha}
+                    mode="date"
+                    display="default"
+                    onChange={(event, selectedDate) => {
+                      setShowDatasetDatePicker(false);
+                      if (!selectedDate) return;
+                      setDatasetFecha(selectedDate);
+                      setReporteDataset({
+                        id: `fecha-${selectedDate.toISOString().slice(0, 10)}`,
+                        nombre: `Fecha ${formatDate(selectedDate)}`,
+                        detalle: 'Reporte generado por fecha seleccionada',
+                      });
+                      setShowPickDatasetModal(false);
+                    }}
+                  />
+                )}
+              </View>
+            )}
+
+            {datasetMetodo === 'archivo' && (
+              <View style={styles.datasetSelectionBlock}>
+                <View style={styles.pickUserSearchRow}>
+                  <Ionicons name="search-outline" size={18} color="#7da6b7" style={styles.pickUserSearchIcon} />
+                  <TextInput
+                    style={styles.pickUserSearchInput}
+                    placeholder="Buscar nombre de archivo..."
+                    placeholderTextColor="#9bbeca"
+                    value={buscarDataset}
+                    onChangeText={setBuscarDataset}
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                  />
+                  {buscarDataset.length > 0 && (
+                    <TouchableOpacity onPress={() => setBuscarDataset('')} activeOpacity={0.85}>
+                      <Ionicons name="close-circle" size={18} color="#b0cdd8" />
+                    </TouchableOpacity>
+                  )}
+                </View>
+
+                <TouchableOpacity
+                  style={[styles.datasetUseBtn, !buscarDataset.trim() && styles.datasetUseBtnDisabled]}
+                  disabled={!buscarDataset.trim()}
+                  activeOpacity={0.85}
+                  onPress={() => {
+                    const fileName = buscarDataset.trim();
+                    setReporteDataset({
+                      id: `archivo-${fileName.toLowerCase()}`,
+                      nombre: fileName,
+                      detalle: 'Reporte generado por nombre de archivo',
+                    });
+                    setShowPickDatasetModal(false);
+                  }}
+                >
+                  <Ionicons name="checkmark-circle-outline" size={16} color="#ffffff" />
+                  <Text style={styles.datasetUseBtnText}>Usar este nombre de archivo</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+
+            {reporteDataset && (
+              <View style={styles.datasetPreview}>
+                <Ionicons name="checkmark-circle" size={16} color="#2f9b6f" />
+                <Text style={styles.datasetPreviewText}>Seleccionado: {reporteDataset.nombre}</Text>
+              </View>
+            )}
+          </View>
+        </View>
+      </Modal>
+
+      {/* -------- Modal selección de resultados médicos para reporte -------- */}
+      <Modal
+        visible={showPickResultadoModal}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setShowPickResultadoModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalLargeCard}>
+            <View style={styles.modalHeaderRow}>
+              <Text style={styles.modalTitle}>Seleccionar resultado médico</Text>
+              <TouchableOpacity onPress={() => setShowPickResultadoModal(false)} activeOpacity={0.85}>
+                <Ionicons name="close-outline" size={24} color="#2f7a96" />
+              </TouchableOpacity>
+            </View>
+            <Text style={styles.modalSubTitle}>Elige el tipo de resultado médico para el reporte.</Text>
+
+            <View style={styles.pickUserSearchRow}>
+              <Ionicons name="search-outline" size={18} color="#7da6b7" style={styles.pickUserSearchIcon} />
+              <TextInput
+                style={styles.pickUserSearchInput}
+                placeholder="Buscar resultado médico..."
+                placeholderTextColor="#9bbeca"
+                value={buscarResultado}
+                onChangeText={setBuscarResultado}
+                autoCapitalize="none"
+                autoCorrect={false}
+              />
+              {buscarResultado.length > 0 && (
+                <TouchableOpacity onPress={() => setBuscarResultado('')} activeOpacity={0.85}>
+                  <Ionicons name="close-circle" size={18} color="#b0cdd8" />
+                </TouchableOpacity>
+              )}
+            </View>
+
+            <ScrollView style={styles.modalListArea} showsVerticalScrollIndicator={false}>
+              {(() => {
+                const q = buscarResultado.trim().toLowerCase();
+                const filtrados = q
+                  ? resultadoOptions.filter(
+                      (r) => r.nombre.toLowerCase().includes(q) || r.detalle.toLowerCase().includes(q),
+                    )
+                  : resultadoOptions;
+
+                if (filtrados.length === 0) {
+                  return (
+                    <View style={styles.pickUserEmpty}>
+                      <Ionicons name="search-circle-outline" size={40} color="#c8dfe9" />
+                      <Text style={styles.pickUserEmptyText}>Sin resultados para "{buscarResultado}"</Text>
+                    </View>
+                  );
+                }
+
+                return filtrados.map((r) => {
+                  const sel = reporteResultado?.id === r.id;
+                  return (
+                    <TouchableOpacity
+                      key={r.id}
+                      style={[styles.pickUserItem, sel && styles.pickUserItemActive]}
+                      activeOpacity={0.85}
+                      onPress={() => {
+                        setReporteResultado(sel ? null : r);
+                        setShowPickResultadoModal(false);
+                      }}
+                    >
+                      <View style={[styles.pickUserItemAvatar, sel && styles.pickUserItemAvatarActive]}>
+                        <Ionicons name="medkit-outline" size={17} color={sel ? '#ffffff' : '#2f7a96'} />
+                      </View>
+                      <View style={styles.reportUsuarioInfo}>
+                        <Text style={[styles.reportUsuarioNombre, sel && styles.reportUsuarioNombreActive]}>{r.nombre}</Text>
+                        <Text style={[styles.reportUsuarioEmail, sel && styles.reportUsuarioEmailActive]}>{r.detalle}</Text>
+                      </View>
+                      {sel
+                        ? <Ionicons name="checkmark-circle" size={22} color="#2f9b6f" />
+                        : <Ionicons name="chevron-forward-outline" size={18} color="#b0cdd8" />}
+                    </TouchableOpacity>
+                  );
+                });
+              })()}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
+        visible={showCitasModal}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setShowCitasModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalLargeCard}>
+            <View style={styles.modalHeaderRow}>
+              <Text style={styles.modalTitle}>Gestión de citas</Text>
+              <TouchableOpacity onPress={() => setShowCitasModal(false)} activeOpacity={0.85}>
+                <Ionicons name="close-outline" size={24} color="#2f7a96" />
+              </TouchableOpacity>
+            </View>
+
+            <Text style={styles.modalSubTitle}>
+              {citasModalType === 'agenda'
+                ? 'Agenda diaria y semanal del servicio clínico.'
+                : 'Seguimiento de confirmaciones y estado de citas.'}
+            </Text>
+
+            <>
+              {citasModalType === 'agenda' && (
+                <View style={styles.agendaFormCard}>
+                  <TouchableOpacity
+                    style={styles.agendaDateBtn}
+                    activeOpacity={0.85}
+                    onPress={() => setShowAgendaDatePicker(true)}
+                  >
+                    <Ionicons name="calendar-clear-outline" size={18} color="#2f7a96" />
+                    <Text style={styles.agendaDateBtnLabel}>Fecha de la cita</Text>
+                    <Text style={styles.agendaDateBtnValue}>{formatDate(agendaFecha)}</Text>
+                  </TouchableOpacity>
+
+                  {showAgendaDatePicker && (
+                    <DateTimePicker
+                      value={agendaFecha}
+                      mode="date"
+                      display="default"
+                      onChange={(event, selectedDate) => {
+                        setShowAgendaDatePicker(false);
+                        if (selectedDate) setAgendaFecha(selectedDate);
+                      }}
+                    />
+                  )}
+
+                  <TextInput
+                    style={styles.agendaInput}
+                    placeholder="Usuario o persona que agenda la cita"
+                    placeholderTextColor="#8aaab6"
+                    value={agendaPaciente}
+                    onChangeText={setAgendaPaciente}
+                  />
+                  <TextInput
+                    style={styles.agendaInput}
+                    placeholder="Email"
+                    placeholderTextColor="#8aaab6"
+                    value={agendaEmail}
+                    onChangeText={setAgendaEmail}
+                    keyboardType="email-address"
+                    autoCapitalize="none"
+                  />
+                  <TextInput
+                    style={styles.agendaInput}
+                    placeholder="Número de celular"
+                    placeholderTextColor="#8aaab6"
+                    value={agendaCelular}
+                    onChangeText={setAgendaCelular}
+                    keyboardType="phone-pad"
+                  />
+                  <TextInput
+                    style={styles.agendaInput}
+                    placeholder="Número de otro familiar"
+                    placeholderTextColor="#8aaab6"
+                    value={agendaFamiliar}
+                    onChangeText={setAgendaFamiliar}
+                    keyboardType="phone-pad"
+                  />
+                  <TextInput
+                    style={styles.agendaInput}
+                    placeholder="Hora (ejemplo: 09:30)"
+                    placeholderTextColor="#8aaab6"
+                    value={agendaHora}
+                    onChangeText={setAgendaHora}
+                  />
+                  <TextInput
+                    style={styles.agendaInput}
+                    placeholder="Doctor que realizará la consulta"
+                    placeholderTextColor="#8aaab6"
+                    value={agendaDoctor}
+                    onChangeText={setAgendaDoctor}
+                  />
+
+                  <TouchableOpacity
+                    style={[styles.agendaSaveBtn, savingAgendaCita && styles.reportGenBtnDisabled]}
+                    activeOpacity={0.85}
+                    onPress={handleCreateAgendaCita}
+                    disabled={savingAgendaCita}
+                  >
+                    <Ionicons name="save-outline" size={16} color="#ffffff" />
+                    <Text style={styles.agendaSaveBtnText}>{savingAgendaCita ? 'Guardando...' : 'Agendar cita'}</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+
+              <ScrollView style={styles.modalListArea} showsVerticalScrollIndicator={false}>
+                {loadingCitasRows ? (
+                  <Text style={styles.emptyText}>Cargando citas...</Text>
+                ) : (
+                  <View style={styles.citasRowsWrap}>
+                    {(citasRows.length > 0
+                      ? citasRows.slice(0, 20)
+                      : citasModalType === 'estados'
+                      ? [{
+                          id: 'cita-estado-empty',
+                          paciente: 'Sin datos',
+                          email: 'Sin datos',
+                          celular: 'Sin datos',
+                          celularFamiliar: 'Sin datos',
+                          fecha: 'Sin datos',
+                          hora: 'Sin datos',
+                          estado: 'pendiente',
+                        }]
+                      : []).map((c) => (
+                      <View key={`cita-${c.id}`} style={styles.citaRowCard}>
+                        <View style={styles.citaRowTop}>
+                          <Text style={styles.citaPaciente}>{c.paciente}</Text>
+                          <Text style={styles.citaEstado}>{c.estado}</Text>
+                        </View>
+                        <Text style={styles.citaMeta}>Fecha: {String(c.fecha)}</Text>
+                        <Text style={styles.citaMeta}>Hora: {String(c.hora)}</Text>
+
+                        {citasModalType === 'estados' && (
+                          <>
+                            <View style={styles.citaInfoDivider} />
+                            <Text style={styles.citaMeta}><Text style={styles.citaMetaStrong}>Email:</Text> {c.email}</Text>
+                            <Text style={styles.citaMeta}><Text style={styles.citaMetaStrong}>Núm. celular:</Text> {c.celular}</Text>
+                            <Text style={styles.citaMeta}><Text style={styles.citaMetaStrong}>Núm. familiar:</Text> {c.celularFamiliar}</Text>
+
+                            <View style={styles.citaActionsRow}>
+                              <TouchableOpacity
+                                style={[styles.citaActionBtn, styles.citaActionContinue, c.id === 'cita-estado-empty' && styles.citaActionBtnDisabled]}
+                                activeOpacity={0.85}
+                                onPress={() => handleUpdateCitaEstado(c, 'confirmada')}
+                                disabled={c.id === 'cita-estado-empty'}
+                              >
+                                <Ionicons name="checkmark-circle-outline" size={14} color="#2f9b6f" />
+                                <Text style={styles.citaActionContinueText}>Sigue con cita</Text>
+                              </TouchableOpacity>
+
+                              <TouchableOpacity
+                                style={[styles.citaActionBtn, styles.citaActionCancel, c.id === 'cita-estado-empty' && styles.citaActionBtnDisabled]}
+                                activeOpacity={0.85}
+                                onPress={() => handleUpdateCitaEstado(c, 'cancelada')}
+                                disabled={c.id === 'cita-estado-empty'}
+                              >
+                                <Ionicons name="close-circle-outline" size={14} color="#b85a5a" />
+                                <Text style={styles.citaActionCancelText}>Cancelar cita</Text>
+                              </TouchableOpacity>
+                            </View>
+                          </>
+                        )}
+                      </View>
+                    ))}
+
+                    {citasRows.length === 0 && citasModalType !== 'estados' && (
+                      <Text style={styles.emptyText}>Sin datos de citas.</Text>
+                    )}
+                  </View>
+                )}
+              </ScrollView>
+            </>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
+        visible={showEditModal}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setShowEditModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>Editar usuario</Text>
+            <Text style={styles.modalSubTitle}>Actualiza nombre, correo y rol.</Text>
+
+            <TextInput
+              style={styles.modalInput}
+              placeholder="Nombre"
+              placeholderTextColor="#7a9aa8"
+              value={editNombre}
+              onChangeText={setEditNombre}
+            />
+
+            <TextInput
+              style={styles.modalInput}
+              placeholder="Correo"
+              placeholderTextColor="#7a9aa8"
+              value={editEmail}
+              onChangeText={setEditEmail}
+              autoCapitalize="none"
+              keyboardType="email-address"
+            />
+
+            <Text style={styles.modalRoleLabel}>Rol</Text>
+            <View style={styles.rolesRow}>
+              {['admin', 'medico', 'usuario'].map((rolOpt) => {
+                const active = editRol === rolOpt;
+                return (
+                  <TouchableOpacity
+                    key={rolOpt}
+                    style={[styles.roleChip, active && styles.roleChipActive]}
+                    onPress={() => setEditRol(rolOpt)}
+                    activeOpacity={0.85}
+                  >
+                    <Text style={[styles.roleChipText, active && styles.roleChipTextActive]}>{rolOpt}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
+            <View style={styles.modalActions}>
+              <TouchableOpacity
+                style={[styles.modalButton, styles.modalButtonSecondary]}
+                onPress={() => {
+                  setShowEditModal(false);
+                  setEditingUser(null);
+                }}
+                activeOpacity={0.85}
+              >
+                <Text style={styles.modalButtonSecondaryText}>Cancelar</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.modalButton, savingEdit && styles.modalButtonDisabled]}
+                onPress={handleSaveUserEdit}
+                activeOpacity={0.85}
+                disabled={savingEdit}
+              >
+                <Text style={styles.modalButtonText}>{savingEdit ? 'Guardando...' : 'Guardar cambios'}</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
       <View style={styles.bottomBar}>
         {TABS.map((tab) => {
           const active = activeTab === tab.key;
@@ -499,16 +2325,20 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#d4e7ee',
     padding: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   statLabel: {
     color: '#587886',
     fontSize: 12,
     marginBottom: 8,
+    textAlign: 'center',
   },
   statValue: {
     color: '#193f4f',
     fontSize: 24,
     fontWeight: '800',
+    textAlign: 'center',
   },
   actionsCard: {
     backgroundColor: '#ffffff',
@@ -526,10 +2356,11 @@ const styles = StyleSheet.create({
   quickGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 10,
+    justifyContent: 'space-between',
+    rowGap: 10,
   },
   quickItem: {
-    width: '48.5%',
+    width: '48%',
     backgroundColor: '#f3fafc',
     borderRadius: 12,
     borderWidth: 1,
@@ -542,6 +2373,842 @@ const styles = StyleSheet.create({
     color: '#2d5b6d',
     fontSize: 12,
     fontWeight: '600',
+  },
+  adminHeaderRow: {
+    flexDirection: 'row',
+    marginBottom: 8,
+    paddingHorizontal: 4,
+  },
+  adminHeaderText: {
+    color: '#5d7f8d',
+    fontSize: 11,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+  },
+  adminRowsWrap: {
+    gap: 9,
+  },
+  activityHeaderRow: {
+    flexDirection: 'row',
+    marginTop: 2,
+    marginBottom: 8,
+    paddingHorizontal: 4,
+  },
+  activityHeaderText: {
+    color: '#5d7f8d',
+    fontSize: 10,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+  },
+  activityRowsWrap: {
+    gap: 10,
+  },
+  activityRowCard: {
+    borderWidth: 1,
+    borderColor: '#d9eaf1',
+    backgroundColor: '#fbfeff',
+    borderRadius: 14,
+    padding: 12,
+    borderLeftWidth: 4,
+    borderLeftColor: '#2f7a96',
+    shadowColor: '#123746',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  colQuien: {
+    flex: 1,
+  },
+  colConsultas: {
+    flex: 1.2,
+  },
+  colSubio: {
+    flex: 1.1,
+  },
+  colFecha: {
+    flex: 1,
+  },
+  adminRowCard: {
+    borderWidth: 1,
+    borderColor: '#deedf3',
+    backgroundColor: '#f8fcfd',
+    borderRadius: 12,
+    padding: 10,
+  },
+  adminDataRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  adminDataText: {
+    color: '#214b5d',
+    fontSize: 12,
+  },
+  colNombre: {
+    flex: 1.2,
+    paddingRight: 4,
+  },
+  colEmail: {
+    flex: 1.4,
+    paddingRight: 4,
+  },
+  colRol: {
+    flex: 0.8,
+    textAlign: 'center',
+    paddingRight: 4,
+  },
+  colEstado: {
+    flex: 0.8,
+    textAlign: 'center',
+  },
+  estadoActivo: {
+    color: '#2f9b6f',
+    fontWeight: '700',
+  },
+  estadoInactivo: {
+    color: '#b85a5a',
+    fontWeight: '700',
+  },
+  actionRow: {
+    flexDirection: 'row',
+    gap: 8,
+    flexWrap: 'wrap',
+  },
+  actionBtn: {
+    borderRadius: 10,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  adminCardTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  adminCardAvatar: {
+    marginRight: 10,
+  },
+  adminCardInfo: {
+    flex: 1,
+  },
+  adminCardName: {
+    color: '#173746',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  adminCardEmail: {
+    color: '#587886',
+    fontSize: 12,
+    marginTop: 2,
+  },
+  adminCardUser: {
+    color: '#8aaab6',
+    fontSize: 11,
+    marginTop: 1,
+  },
+  adminCardBadgeRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 10,
+  },
+  adminRolBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#e8f4f9',
+    borderRadius: 999,
+    paddingVertical: 4,
+    paddingHorizontal: 10,
+  },
+  adminRolBadgeText: {
+    color: '#2f7a96',
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  adminEstadoBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    borderRadius: 999,
+    paddingVertical: 4,
+    paddingHorizontal: 10,
+  },
+  estadoBadgeActivo: {
+    backgroundColor: '#e2f4ed',
+  },
+  estadoBadgeInactivo: {
+    backgroundColor: '#f9ebeb',
+  },
+  estadoDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+  },
+  estadoDotActivo: {
+    backgroundColor: '#2f9b6f',
+  },
+  estadoDotInactivo: {
+    backgroundColor: '#b85a5a',
+  },
+  adminEstadoBadgeText: {
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  estadoTextActivo: {
+    color: '#2f9b6f',
+  },
+  estadoTextInactivo: {
+    color: '#b85a5a',
+  },
+  activityField: {
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#edf4f7',
+  },
+  activityFieldLast: {
+    borderBottomWidth: 0,
+  },
+  activityLabelWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    marginBottom: 6,
+  },
+  activityLabel: {
+    color: '#4f7281',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  activityValue: {
+    color: '#214b5d',
+    fontSize: 13,
+    lineHeight: 19,
+    paddingLeft: 18,
+  },
+  activityHint: {
+    color: '#7a9aaa',
+    fontSize: 12,
+    marginBottom: 6,
+  },
+  activityCardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  activityBadge: {
+    backgroundColor: '#e8f4f9',
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+  },
+  activityBadgeText: {
+    color: '#2f7a96',
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  activityDateChip: {
+    color: '#6d8d9a',
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  reportSection: {
+    marginBottom: 18,
+  },
+  reportSectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 12,
+  },
+  reportSectionTitle: {
+    color: '#173746',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  reportFormatoRow: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  formatoCard: {
+    flex: 1,
+    borderRadius: 14,
+    borderWidth: 1.5,
+    paddingVertical: 18,
+    alignItems: 'center',
+    gap: 8,
+    position: 'relative',
+  },
+  formatoLabel: {
+    fontSize: 14,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+  },
+  formatoCheck: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+  },
+  reportTipoList: {
+    gap: 10,
+  },
+  tipoCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    borderWidth: 1.5,
+    borderColor: '#deedf3',
+    borderRadius: 14,
+    backgroundColor: '#f8fcfd',
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+  },
+  tipoCardActive: {
+    borderColor: '#2f7a96',
+    backgroundColor: '#eaf5fa',
+  },
+  tipoIconWrap: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: '#e8f4f9',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  tipoIconWrapActive: {
+    backgroundColor: '#2f7a96',
+  },
+  tipoInfo: {
+    flex: 1,
+  },
+  tipoLabel: {
+    color: '#173746',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  tipoLabelActive: {
+    color: '#1b5f79',
+  },
+  tipoDesc: {
+    color: '#7da6b7',
+    fontSize: 11,
+    marginTop: 2,
+    lineHeight: 15,
+  },
+  tipoDescActive: {
+    color: '#4a7f94',
+  },
+  reportResumen: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 6,
+    backgroundColor: '#e8f4f9',
+    borderRadius: 10,
+    padding: 10,
+    marginBottom: 14,
+  },
+  reportResumenText: {
+    flex: 1,
+    color: '#2f7a96',
+    fontSize: 12,
+    lineHeight: 17,
+    fontWeight: '600',
+  },
+  reportGenBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: '#2f7a96',
+    borderRadius: 14,
+    paddingVertical: 14,
+    marginBottom: 4,
+  },
+  reportGenBtnDisabled: {
+    opacity: 0.4,
+  },
+  reportGenBtnText: {
+    color: '#ffffff',
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  reportUsuarioList: {
+    gap: 8,
+  },
+  reportUsuarioRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    borderWidth: 1.5,
+    borderColor: '#deedf3',
+    borderRadius: 12,
+    backgroundColor: '#f8fcfd',
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+  },
+  reportUsuarioRowActive: {
+    borderColor: '#2f7a96',
+    backgroundColor: '#eaf5fa',
+  },
+  reportUsuarioAvatar: {
+    width: 34,
+    height: 34,
+    borderRadius: 10,
+    backgroundColor: '#e8f4f9',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  reportUsuarioAvatarActive: {
+    backgroundColor: '#2f7a96',
+  },
+  reportUsuarioInfo: {
+    flex: 1,
+  },
+  reportUsuarioNombre: {
+    color: '#173746',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  reportUsuarioNombreActive: {
+    color: '#1b5f79',
+  },
+  reportUsuarioEmail: {
+    color: '#7da6b7',
+    fontSize: 11,
+    marginTop: 2,
+  },
+  reportUsuarioEmailActive: {
+    color: '#4a7f94',
+  },
+  pickUserBtn: {
+    borderWidth: 1.5,
+    borderColor: '#deedf3',
+    borderRadius: 14,
+    backgroundColor: '#f8fcfd',
+    overflow: 'hidden',
+  },
+  pickUserSelected: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+  },
+  pickUserPlaceholder: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 14,
+    paddingHorizontal: 14,
+  },
+  pickUserPlaceholderText: {
+    flex: 1,
+    color: '#7da6b7',
+    fontSize: 13,
+  },
+  pickUserSearchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1.5,
+    borderColor: '#d4e7ee',
+    borderRadius: 12,
+    backgroundColor: '#f4fbfd',
+    paddingHorizontal: 10,
+    marginBottom: 10,
+    gap: 6,
+  },
+  pickUserSearchIcon: {
+    flexShrink: 0,
+  },
+  pickUserSearchInput: {
+    flex: 1,
+    paddingVertical: 11,
+    color: '#20495a',
+    fontSize: 14,
+  },
+  pickUserItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    borderWidth: 1,
+    borderColor: '#deedf3',
+    borderRadius: 12,
+    backgroundColor: '#f8fcfd',
+    paddingVertical: 11,
+    paddingHorizontal: 12,
+    marginBottom: 8,
+  },
+  pickUserItemActive: {
+    borderColor: '#2f7a96',
+    backgroundColor: '#eaf5fa',
+  },
+  pickUserItemAvatar: {
+    width: 36,
+    height: 36,
+    borderRadius: 11,
+    backgroundColor: '#e8f4f9',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
+  pickUserItemAvatarActive: {
+    backgroundColor: '#2f7a96',
+  },
+  pickUserHandle: {
+    color: '#8aaab6',
+    fontSize: 11,
+    marginTop: 2,
+  },
+  pickUserEmpty: {
+    alignItems: 'center',
+    paddingVertical: 28,
+    gap: 8,
+  },
+  pickUserEmptyText: {
+    color: '#8aaab6',
+    fontSize: 13,
+    textAlign: 'center',
+  },
+  datasetMethodRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 12,
+  },
+  datasetMethodCard: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    borderWidth: 1,
+    borderColor: '#c8dfe9',
+    borderRadius: 12,
+    backgroundColor: '#f4fbfd',
+    paddingVertical: 10,
+    paddingHorizontal: 8,
+  },
+  datasetMethodCardActive: {
+    backgroundColor: '#2f7a96',
+    borderColor: '#2f7a96',
+  },
+  datasetMethodText: {
+    color: '#2f7a96',
+    fontSize: 12,
+    fontWeight: '700',
+    textAlign: 'center',
+  },
+  datasetMethodTextActive: {
+    color: '#ffffff',
+  },
+  datasetSelectionBlock: {
+    marginBottom: 10,
+  },
+  datasetPickBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#d4e7ee',
+    borderRadius: 12,
+    backgroundColor: '#f4fbfd',
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    gap: 8,
+  },
+  datasetPickBtnText: {
+    color: '#2f7a96',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  datasetPickDateText: {
+    marginLeft: 'auto',
+    color: '#173746',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  datasetUseBtn: {
+    marginTop: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    backgroundColor: '#2f7a96',
+    borderRadius: 12,
+    paddingVertical: 11,
+  },
+  datasetUseBtnDisabled: {
+    opacity: 0.45,
+  },
+  datasetUseBtnText: {
+    color: '#ffffff',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  datasetPreview: {
+    marginTop: 2,
+    backgroundColor: '#ecfaf3',
+    borderWidth: 1,
+    borderColor: '#ccebdc',
+    borderRadius: 10,
+    paddingVertical: 9,
+    paddingHorizontal: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  datasetPreviewText: {
+    color: '#2f9b6f',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  alertRowsWrap: {
+    gap: 10,
+  },
+  alertCard: {
+    borderWidth: 1,
+    borderColor: '#deedf3',
+    backgroundColor: '#f8fcfd',
+    borderRadius: 12,
+    padding: 10,
+  },
+  alertCardHigh: {
+    borderColor: '#f0c6c6',
+    backgroundColor: '#fff6f6',
+  },
+  alertCardMedium: {
+    borderColor: '#f1dfb7',
+    backgroundColor: '#fffaf0',
+  },
+  alertHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 6,
+  },
+  alertTitle: {
+    flex: 1,
+    color: '#173746',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  alertLevelChip: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#2f9b6f',
+    backgroundColor: '#e2f4ed',
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    overflow: 'hidden',
+  },
+  alertLevelHigh: {
+    color: '#b85a5a',
+    backgroundColor: '#f9e7e7',
+  },
+  alertLevelMedium: {
+    color: '#9a6b15',
+    backgroundColor: '#fff2d8',
+  },
+  alertDetail: {
+    color: '#214b5d',
+    fontSize: 12,
+    lineHeight: 17,
+    marginBottom: 4,
+  },
+  alertPossible: {
+    color: '#5d7f8d',
+    fontSize: 11,
+    lineHeight: 16,
+  },
+  citasMetricsRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginBottom: 10,
+  },
+  citasMetricCard: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: '#deedf3',
+    backgroundColor: '#f8fcfd',
+    borderRadius: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 10,
+    alignItems: 'center',
+  },
+  citasMetricLabel: {
+    color: '#5d7f8d',
+    fontSize: 11,
+    marginBottom: 4,
+  },
+  citasMetricValue: {
+    color: '#173746',
+    fontSize: 20,
+    fontWeight: '800',
+  },
+  citasRowsWrap: {
+    gap: 8,
+  },
+  citaRowCard: {
+    borderWidth: 1,
+    borderColor: '#deedf3',
+    borderRadius: 12,
+    backgroundColor: '#f8fcfd',
+    paddingVertical: 10,
+    paddingHorizontal: 10,
+  },
+  citaRowTop: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  citaPaciente: {
+    flex: 1,
+    color: '#173746',
+    fontSize: 13,
+    fontWeight: '700',
+    marginRight: 8,
+  },
+  citaEstado: {
+    color: '#2f7a96',
+    fontSize: 11,
+    fontWeight: '700',
+    textTransform: 'capitalize',
+  },
+  citaMeta: {
+    color: '#5d7f8d',
+    fontSize: 12,
+    lineHeight: 17,
+  },
+  citaMetaStrong: {
+    color: '#173746',
+    fontWeight: '700',
+  },
+  citaInfoDivider: {
+    height: 1,
+    backgroundColor: '#e6f1f5',
+    marginVertical: 8,
+  },
+  citaActionsRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 8,
+  },
+  citaActionBtn: {
+    flex: 1,
+    borderRadius: 10,
+    paddingVertical: 8,
+    paddingHorizontal: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+  },
+  citaActionBtnDisabled: {
+    opacity: 0.45,
+  },
+  citaActionContinue: {
+    backgroundColor: '#e7f6ee',
+    borderWidth: 1,
+    borderColor: '#cbe9d8',
+  },
+  citaActionCancel: {
+    backgroundColor: '#fdeeee',
+    borderWidth: 1,
+    borderColor: '#f3cece',
+  },
+  citaActionContinueText: {
+    color: '#2f9b6f',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  citaActionCancelText: {
+    color: '#b85a5a',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  agendaFormCard: {
+    borderWidth: 1,
+    borderColor: '#deedf3',
+    backgroundColor: '#f8fcfd',
+    borderRadius: 12,
+    padding: 10,
+    marginBottom: 10,
+  },
+  agendaDateBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    borderWidth: 1,
+    borderColor: '#d4e7ee',
+    borderRadius: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 10,
+    backgroundColor: '#ffffff',
+    marginBottom: 8,
+  },
+  agendaDateBtnLabel: {
+    color: '#2f7a96',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  agendaDateBtnValue: {
+    marginLeft: 'auto',
+    color: '#173746',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  agendaInput: {
+    borderWidth: 1,
+    borderColor: '#d4e7ee',
+    borderRadius: 10,
+    backgroundColor: '#ffffff',
+    paddingHorizontal: 10,
+    paddingVertical: 10,
+    color: '#20495a',
+    fontSize: 13,
+    marginBottom: 8,
+  },
+  agendaSaveBtn: {
+    marginTop: 2,
+    borderRadius: 10,
+    backgroundColor: '#2f7a96',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 10,
+  },
+  agendaSaveBtnText: {
+    color: '#ffffff',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  actionEdit: {
+    backgroundColor: '#e8f4f9',
+  },
+  actionDelete: {
+    backgroundColor: '#f9ebeb',
+  },
+  actionBlock: {
+    backgroundColor: '#f3f2e8',
+  },
+  actionEditText: {
+    color: '#2f7a96',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  actionDeleteText: {
+    color: '#b35a5a',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  actionBlockText: {
+    color: '#7a7545',
+    fontSize: 12,
+    fontWeight: '700',
   },
   moduleDescription: {
     color: '#587886',
@@ -700,6 +3367,22 @@ const styles = StyleSheet.create({
     borderColor: '#d4e7ee',
     padding: 16,
   },
+  modalLargeCard: {
+    backgroundColor: '#ffffff',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#d4e7ee',
+    padding: 16,
+    maxHeight: '82%',
+  },
+  modalHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  modalListArea: {
+    marginTop: 6,
+  },
   modalTitle: {
     color: '#173746',
     fontSize: 18,
@@ -721,6 +3404,38 @@ const styles = StyleSheet.create({
     color: '#20495a',
     marginBottom: 9,
     fontSize: 14,
+  },
+  modalRoleLabel: {
+    color: '#587886',
+    fontSize: 12,
+    fontWeight: '700',
+    marginBottom: 8,
+    marginTop: 2,
+  },
+  rolesRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 12,
+  },
+  roleChip: {
+    borderWidth: 1,
+    borderColor: '#c8dfe9',
+    borderRadius: 999,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    backgroundColor: '#f4fbfd',
+  },
+  roleChipActive: {
+    backgroundColor: '#2f7a96',
+    borderColor: '#2f7a96',
+  },
+  roleChipText: {
+    color: '#2f7a96',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  roleChipTextActive: {
+    color: '#ffffff',
   },
   modalActions: {
     flexDirection: 'row',

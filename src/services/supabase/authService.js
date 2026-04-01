@@ -9,6 +9,48 @@ const isAdminRole = (roleValue) => {
   return normalizedRole === 'admin' || normalizedRole === 'administrador';
 };
 
+const isTruthy = (value) => {
+  if (typeof value === 'boolean') return value;
+  const normalized = String(value ?? '').trim().toLowerCase();
+  return ['1', 'true', 't', 'yes', 'si', 'sí', 'bloqueado', 'blocked', 'inactivo', 'inactive', 'suspendido'].includes(normalized);
+};
+
+const isFalsy = (value) => {
+  if (typeof value === 'boolean') return !value;
+  const normalized = String(value ?? '').trim().toLowerCase();
+  return ['0', 'false', 'f', 'no', 'activo', 'active', 'habilitado'].includes(normalized);
+};
+
+const isUserBlocked = (user) => {
+  if (!user || typeof user !== 'object') return false;
+
+  const blockedFields = [user?.bloqueado, user?.blocked, user?.acceso_bloqueado, user?.esta_bloqueado, user?.inactivo];
+  for (const value of blockedFields) {
+    if (value === null || value === undefined || value === '') continue;
+    if (isTruthy(value)) return true;
+    if (isFalsy(value)) return false;
+  }
+
+  const enabledFields = [user?.habilitado, user?.activo];
+  for (const value of enabledFields) {
+    if (value === null || value === undefined || value === '') continue;
+    if (isTruthy(value)) return false;
+    if (isFalsy(value)) return true;
+  }
+
+  const statusFields = [user?.estado_acceso, user?.estado];
+  for (const value of statusFields) {
+    if (value === null || value === undefined || value === '') continue;
+    const normalized = String(value).trim().toLowerCase();
+    if (['bloqueado', 'blocked', 'inactivo', 'inactive', 'suspendido'].includes(normalized)) return true;
+    if (['activo', 'active', 'habilitado'].includes(normalized)) return false;
+  }
+
+  return false;
+};
+
+const BLOCKED_LOGIN_MESSAGE = 'Tu cuenta está bloqueada. Contacta al administrador para habilitar el acceso.';
+
 // Hash SHA-256 usando Web Crypto API (React Native 0.71+)
 const hashPassword = async (password) => {
   try {
@@ -99,6 +141,10 @@ export const loginUser = async (identifier, password, acceptTermsIfNeeded = fals
 
     if (searchError) throw searchError;
     if (!userData) return { success: false, message: 'Usuario no encontrado' };
+
+    if (isUserBlocked(userData)) {
+      return { success: false, message: BLOCKED_LOGIN_MESSAGE };
+    }
 
     if (requiredRole === 'admin' && !isAdminRole(userData.rol)) {
       return { success: false, message: 'Este acceso es solo para administradores.' };
@@ -262,6 +308,40 @@ export const getCurrentUser = async () => {
     const sessionStr = await AsyncStorage.getItem(SESSION_KEY);
     if (!sessionStr) return { success: false, message: 'No hay sesión activa' };
     const user = JSON.parse(sessionStr);
+
+    const queryAttempts = [
+      { field: 'id_usuario', value: user?.id_usuario },
+      { field: 'id', value: user?.id },
+      { field: 'uuid', value: user?.uuid },
+      { field: 'user_id', value: user?.user_id },
+      { field: 'email', value: user?.email },
+      { field: 'usuario', value: user?.usuario },
+    ].filter((a) => a.value !== null && a.value !== undefined && String(a.value).trim() !== '');
+
+    for (const attempt of queryAttempts) {
+      const { data: freshUser, error } = await supabase
+        .from('usuarios')
+        .select('*')
+        .eq(attempt.field, attempt.value)
+        .maybeSingle();
+
+      if (error) continue;
+      if (!freshUser) continue;
+
+      if (isUserBlocked(freshUser)) {
+        await AsyncStorage.removeItem(SESSION_KEY);
+        return { success: false, message: BLOCKED_LOGIN_MESSAGE, blocked: true };
+      }
+
+      await AsyncStorage.setItem(SESSION_KEY, JSON.stringify(freshUser));
+      return { success: true, user: freshUser };
+    }
+
+    if (isUserBlocked(user)) {
+      await AsyncStorage.removeItem(SESSION_KEY);
+      return { success: false, message: BLOCKED_LOGIN_MESSAGE, blocked: true };
+    }
+
     return { success: true, user };
   } catch (error) {
     return { success: false, message: error.message };

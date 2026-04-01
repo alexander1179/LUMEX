@@ -133,6 +133,80 @@ app.post('/forgot-password', async (req, res) => {
   }
 });
 
+app.post('/admin/delete-user', async (req, res) => {
+  try {
+    const user = req.body?.user || {};
+    const attemptsInput = Array.isArray(req.body?.attempts) ? req.body.attempts : [];
+
+    const attempts = [];
+    const pushAttempt = (field, value) => {
+      if (!field || value === null || value === undefined || value === '') return;
+      if (!attempts.find((a) => a.field === field && String(a.value) === String(value))) {
+        attempts.push({ field, value });
+      }
+      if (typeof value === 'string' && /^\d+$/.test(value.trim())) {
+        const numVal = Number(value);
+        if (!Number.isNaN(numVal) && !attempts.find((a) => a.field === field && String(a.value) === String(numVal))) {
+          attempts.push({ field, value: numVal });
+        }
+      }
+      if (typeof value === 'number') {
+        const strVal = String(value);
+        if (!attempts.find((a) => a.field === field && String(a.value) === strVal)) {
+          attempts.push({ field, value: strVal });
+        }
+      }
+    };
+
+    for (const at of attemptsInput) {
+      pushAttempt(at?.field, at?.value);
+    }
+
+    pushAttempt('id_usuario', user.id_usuario);
+    pushAttempt('id', user.id);
+    pushAttempt('uuid', user.uuid);
+    pushAttempt('user_id', user.user_id);
+    pushAttempt('email', user.email);
+    pushAttempt('usuario', user.usuario);
+
+    if (attempts.length === 0) {
+      return res.status(400).json({ success: false, message: 'No hay identificadores para eliminar el usuario.' });
+    }
+
+    let lastError = null;
+    for (const attempt of attempts) {
+      const { data: deletedData, error } = await supabaseAdmin
+        .from('usuarios')
+        .delete()
+        .eq(attempt.field, attempt.value)
+        .select('id,id_usuario,uuid,user_id,email,usuario');
+
+      if (error) {
+        lastError = error;
+        continue;
+      }
+
+      if (Array.isArray(deletedData) && deletedData.length > 0) {
+        return res.json({
+          success: true,
+          deletedRows: deletedData.length,
+          usedField: attempt.field,
+          usedValue: attempt.value,
+        });
+      }
+    }
+
+    return res.status(409).json({
+      success: false,
+      message: lastError?.message || 'No se eliminó ninguna fila en usuarios.',
+      deletedRows: 0,
+    });
+  } catch (error) {
+    console.error('Error en /admin/delete-user:', error.message);
+    return res.status(500).json({ success: false, message: error.message || 'Error inesperado en eliminación.' });
+  }
+});
+
 app.use((req, res) => {
   res.status(404).json({ success: false, message: 'Ruta no encontrada' });
 });

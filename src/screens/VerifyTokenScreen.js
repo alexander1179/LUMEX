@@ -8,41 +8,89 @@ import {
   StyleSheet
 } from 'react-native';
 import { useTranslation } from 'react-i18next';
-import { verifyToken } from '../services/supabase/authService';
+import { forgotPassword, verifyToken } from '../services/supabase/authService';
 import { colors } from '../styles/colors';
 import { useCountdown } from '../hooks/useCountdown';
 import { CustomButton } from '../components/common/CustomButton';
 import { LanguageSelector } from '../components/common/LanguageSelector';
+import { AUTH_CONFIG } from '../config/authConfig';
+
+const MAX_ATTEMPTS = 5;
+const OTP_MIN_LENGTH = AUTH_CONFIG.OTP_MIN_LENGTH;
+const OTP_MAX_LENGTH = AUTH_CONFIG.OTP_MAX_LENGTH;
 
 export default function VerifyTokenScreen({ route, navigation }) {
   const { t } = useTranslation();
-  const { userId, metodo } = route.params;
+  const { email, metodo } = route.params;
   const [token, setToken] = useState('');
   const [loading, setLoading] = useState(false);
-  const { formatTime, timeLeft } = useCountdown(900);
+  const [resendLoading, setResendLoading] = useState(false);
+  const [attempts, setAttempts] = useState(0);
+  const { formatTime, timeLeft, reset } = useCountdown(900);
 
   const verificarToken = async () => {
-    if (loading) return;
+    if (loading || resendLoading) return;
 
-    if (!token.trim() || token.length !== 6) {
-      Alert.alert("Error", "Ingresa el código de 6 dígitos");
+    if (attempts >= MAX_ATTEMPTS) {
+      Alert.alert("Bloqueado", "Demasiados intentos. Solicita un nuevo código.");
+      return;
+    }
+
+    const normalizedToken = token.trim();
+
+    const otpRegex = new RegExp(`^\\d{${OTP_MIN_LENGTH},${OTP_MAX_LENGTH}}$`);
+
+    if (!otpRegex.test(normalizedToken)) {
+      Alert.alert("Error", `Ingresa un código válido de ${OTP_MIN_LENGTH} a ${OTP_MAX_LENGTH} dígitos`);
       return;
     }
 
     setLoading(true);
 
     try {
-      const result = await verifyToken(userId, token);
+      const result = await verifyToken(email, normalizedToken);
 
       if (result.success) {
-        navigation.replace("ResetPassword", { userId, token, metodo });
+        navigation.replace("ResetPassword", { email, metodo });
       } else {
+        const nextAttempts = attempts + 1;
+        setAttempts(nextAttempts);
+
+        if (nextAttempts >= MAX_ATTEMPTS) {
+          Alert.alert(
+            "Intentos agotados",
+            "Alcanzaste el máximo de intentos. Solicita un nuevo código para continuar."
+          );
+          return;
+        }
+
         Alert.alert("Error", result.message || "Código inválido");
       }
     } catch (error) {
       Alert.alert("Error", "Error de conexión");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const reenviarCodigo = async () => {
+    if (resendLoading) return;
+
+    setResendLoading(true);
+    try {
+      const result = await forgotPassword(email);
+      if (result.success) {
+        setAttempts(0);
+        setToken('');
+        reset(900);
+        Alert.alert("✅ Código reenviado", "Revisa tu correo e ingresa el nuevo código.");
+      } else {
+        Alert.alert("Error", result.message || "No se pudo reenviar el código");
+      }
+    } catch (error) {
+      Alert.alert("Error", "No se pudo reenviar el código");
+    } finally {
+      setResendLoading(false);
     }
   };
 
@@ -64,16 +112,16 @@ export default function VerifyTokenScreen({ route, navigation }) {
 
       <View style={styles.card}>
         <Text style={styles.description}>
-          Ingresa el código enviado a tu correo
+          Ingresa el código enviado a {email} ({OTP_MIN_LENGTH} a {OTP_MAX_LENGTH} dígitos). Si abriste el enlace del correo, ignóralo y usa solo el código.
         </Text>
 
         <TextInput
-          placeholder="000000"
+          placeholder={OTP_MAX_LENGTH === 8 ? "00000000" : "000000"}
           placeholderTextColor="#aaa"
           style={styles.codeInput}
           value={token}
-          onChangeText={setToken}
-          maxLength={6}
+          onChangeText={(value) => setToken(value.replace(/\D/g, ''))}
+          maxLength={OTP_MAX_LENGTH}
           keyboardType="number-pad"
         />
 
@@ -81,15 +129,19 @@ export default function VerifyTokenScreen({ route, navigation }) {
           ⏰ Tiempo restante: {formatTime}
         </Text>
 
-        {timeLeft === 0 && (
+        <Text style={styles.attemptsText}>
+          Intentos restantes: {Math.max(MAX_ATTEMPTS - attempts, 0)}
+        </Text>
+
+        {(timeLeft === 0 || attempts >= MAX_ATTEMPTS) && (
           <TouchableOpacity 
             style={styles.resendButton}
-            onPress={() => {
-              Alert.alert("Código expirado", "Por favor, solicita un nuevo código");
-              navigation.goBack();
-            }}
+            onPress={reenviarCodigo}
+            disabled={resendLoading}
           >
-            <Text style={styles.resendText}>Solicitar nuevo código</Text>
+            <Text style={styles.resendText}>
+              {resendLoading ? 'Reenviando...' : 'Solicitar nuevo código'}
+            </Text>
           </TouchableOpacity>
         )}
 
@@ -97,7 +149,7 @@ export default function VerifyTokenScreen({ route, navigation }) {
           title={loading ? "Verificando..." : "Verificar código"}
           onPress={verificarToken}
           loading={loading}
-          disabled={loading || timeLeft === 0}
+          disabled={loading || resendLoading || timeLeft === 0 || attempts >= MAX_ATTEMPTS}
         />
       </View>
     </View>
@@ -170,6 +222,12 @@ const styles = StyleSheet.create({
     fontSize: 14,
     textAlign: 'center',
     marginVertical: 10,
+  },
+  attemptsText: {
+    color: '#bbb',
+    fontSize: 13,
+    textAlign: 'center',
+    marginBottom: 8,
   },
   resendButton: {
     marginTop: 15,

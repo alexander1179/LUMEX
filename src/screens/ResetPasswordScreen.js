@@ -17,7 +17,7 @@ import { LanguageSelector } from '../components/common/LanguageSelector';
 
 export default function ResetPasswordScreen({ route, navigation }) {
   const { t } = useTranslation();
-  const { userId, token, metodo } = route.params;
+  const { metodo = 'email' } = route.params || {};
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -55,7 +55,7 @@ export default function ResetPasswordScreen({ route, navigation }) {
     setLoading(true);
 
     try {
-      const result = await resetPassword(userId, token, newPassword);
+      const result = await resetPassword(newPassword);
 
       if (result.success) {
         Alert.alert(

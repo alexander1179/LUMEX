@@ -37,10 +37,3 @@ const validateConfig = () => {
 if (!validateConfig()) {
   console.warn('⚠️ ADVERTENCIA: Revisa la configuración de Supabase en src/config/supabaseConfig.js');
 }
-
-// ⚠️ ADVERTENCIA DE SEGURIDAD: Cómo obtener credenciales seguras:
-// 1. Ve a https://app.supabase.com/
-// 2. Selecciona tu proyecto
-// 3. Settings > API Keys
-// 4. Copia "Project URL" y "anon public" key
-// 5. Guarda en variables de ambiente o archivo .env (NO en código)

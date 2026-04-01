@@ -12,6 +12,7 @@ import {
 import { useTranslation } from 'react-i18next';
 import Checkbox from "expo-checkbox";
 import { StatusBar } from 'expo-status-bar';
+import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../styles/colors';
 import { CustomButton } from '../components/common/CustomButton';
 import { LanguageSelector } from '../components/common/LanguageSelector';
@@ -21,8 +22,21 @@ import { supabase } from '../services/supabase/supabaseClient';
 
 const icon = require('../../assets/lumex.jpeg');
 
-export default function LoginScreen({ navigation }) {
+export default function LoginScreen({ navigation, route }) {
   const { t } = useTranslation();
+  const isAdminAccess = route?.params?.role === 'admin';
+  const adminTheme = {
+    background: '#f3f1ec',
+    card: '#fbfaf7',
+    cardBorder: '#dfd9cf',
+    input: '#f0ebe3',
+    inputText: '#161616',
+    mutedText: '#5f5a54',
+    title: '#161616',
+    accent: '#6f6a62',
+    backButton: '#ece7de',
+    backIcon: '#161616',
+  };
   const [usuario, setUsuario] = useState("");
   const [password, setPassword] = useState("");
   const [visible, setVisible] = useState(false);
@@ -51,7 +65,13 @@ export default function LoginScreen({ navigation }) {
         model: 'React Native App'
       };
 
-      const result = await loginUser(usuario.trim(), password, true, deviceInfo);
+      const result = await loginUser(
+        usuario.trim(),
+        password,
+        true,
+        deviceInfo,
+        { requiredRole: isAdminAccess ? 'admin' : null }
+      );
 
       if (result.success) {
         await storageService.saveUser(result.user);
@@ -61,8 +81,9 @@ export default function LoginScreen({ navigation }) {
           console.log('✅ Términos aceptados automáticamente durante login');
         }
 
-        Alert.alert('Éxito', `Bienvenido ${result.user.user_metadata?.name || 'Usuario'}`, [
-          { text: 'OK', onPress: () => navigation.replace("Main") }
+        const welcomeName = result.user?.nombre || result.user?.name || result.user?.usuario || 'Usuario';
+        Alert.alert('Éxito', `Bienvenido ${welcomeName}`, [
+          { text: 'OK', onPress: () => navigation.replace(isAdminAccess ? "AdminDashboard" : "Main") }
         ]);
       } else {
         Alert.alert('Error', result.message);
@@ -76,83 +97,111 @@ export default function LoginScreen({ navigation }) {
   };
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, isAdminAccess && { backgroundColor: adminTheme.background }] }>
       <View style={styles.header}>
         <TouchableOpacity 
-          style={styles.backButton}
-          onPress={() => navigation.goBack()}
+          style={[styles.backButton, isAdminAccess && { backgroundColor: adminTheme.backButton }]}
+          onPress={() => navigation.replace(isAdminAccess ? "RoleSelect" : "Welcome")}
           activeOpacity={0.7}
         >
-          <Text style={styles.backButtonText}>←</Text>
+          <Text style={[styles.backButtonText, isAdminAccess && { color: adminTheme.backIcon }]}>←</Text>
         </TouchableOpacity>
         <LanguageSelector />
       </View>
       
-      <Image source={icon} style={styles.logo} />
-      <Text style={styles.subtitle}>{t('login.title')}</Text>
+      <View style={[styles.logoShell, isAdminAccess && styles.logoShellAdmin]}>
+        <View style={[styles.logoContour, isAdminAccess && styles.logoContourAdmin]}>
+          <Image source={icon} style={[styles.logo, isAdminAccess && styles.adminLogo]} />
+        </View>
+      </View>
+      <Text style={[styles.subtitle, isAdminAccess && { color: adminTheme.title }]}>{isAdminAccess ? 'Acceso Administrador' : t('login.title')}</Text>
 
-      <View style={styles.card}>
+      <View style={[styles.card, isAdminAccess && { backgroundColor: adminTheme.card, borderColor: adminTheme.cardBorder, shadowOpacity: 0.08, elevation: 4 }] }>
+        {isAdminAccess && (
+          <Text style={[styles.adminCaption, { color: adminTheme.mutedText }]}>Ingresa con una cuenta autorizada para administrar la plataforma.</Text>
+        )}
         <TextInput
-          placeholder="Usuario"
-          placeholderTextColor="#aaa"
-          style={styles.input}
+          placeholder={isAdminAccess ? 'Usuario administrador' : 'Usuario'}
+          placeholderTextColor={isAdminAccess ? '#7a746d' : '#aaa'}
+          style={[styles.input, isAdminAccess && { backgroundColor: adminTheme.input, color: adminTheme.inputText }]}
           value={usuario}
           onChangeText={setUsuario}
           autoCapitalize="none"
         />
 
-        <View style={styles.passwordRow}>
+        <View style={[styles.passwordRow, isAdminAccess && { backgroundColor: adminTheme.input }] }>
           <TextInput
             placeholder={t('login.password')}
-            placeholderTextColor="#aaa"
+            placeholderTextColor={isAdminAccess ? '#7a746d' : '#aaa'}
             secureTextEntry={!visible}
-            style={styles.inputPassword}
+            style={[styles.inputPassword, isAdminAccess && { color: adminTheme.inputText }]}
             value={password}
             onChangeText={setPassword}
           />
-          <TouchableOpacity onPress={() => setVisible(!visible)}>
-            <Text style={styles.eyeIcon}>
-              {visible ? "👁" : "👁‍🗨"}
-            </Text>
+          <TouchableOpacity
+            onPress={() => setVisible(!visible)}
+            style={[styles.eyeButton, isAdminAccess && styles.eyeButtonAdmin]}
+            activeOpacity={0.8}
+          >
+            <Ionicons
+              name={visible ? 'eye-outline' : 'eye-off-outline'}
+              size={20}
+              color={isAdminAccess ? adminTheme.accent : '#bcbcbc'}
+            />
           </TouchableOpacity>
         </View>
 
         <TouchableOpacity onPress={() => navigation.navigate("ForgotPassword")}>
-          <Text style={styles.forgot}>{t('login.forgotPassword')}</Text>
+          <Text style={[styles.forgot, isAdminAccess && { color: adminTheme.accent }]}>{t('login.forgotPassword')}</Text>
         </TouchableOpacity>
 
         <View style={styles.checkboxRow}>
           <Checkbox 
             value={acepta} 
             onValueChange={setAcepta} 
-            color={acepta ? colors.primary : undefined} 
+            color={acepta ? (isAdminAccess ? adminTheme.accent : colors.primary) : undefined} 
           />
-          <Text style={styles.checkboxText}>{t('login.acceptTerms')}</Text>
+          <Text style={[styles.checkboxText, isAdminAccess && { color: adminTheme.mutedText }]}>{t('login.acceptTerms')}</Text>
         </View>
 
-        <CustomButton 
-          title={loading ? t('common.loading') : t('login.loginButton')}
-          onPress={handleLogin}
-          loading={loading}
-          disabled={loading}
-        />
+        {isAdminAccess ? (
+          <TouchableOpacity
+            style={[styles.adminLoginButton, loading && styles.adminLoginButtonDisabled]}
+            onPress={handleLogin}
+            disabled={loading}
+            activeOpacity={0.9}
+          >
+            <Text style={styles.adminLoginButtonText}>{loading ? t('common.loading') : t('login.loginButton')}</Text>
+          </TouchableOpacity>
+        ) : (
+          <CustomButton 
+            title={loading ? t('common.loading') : t('login.loginButton')}
+            onPress={handleLogin}
+            loading={loading}
+            disabled={loading}
+          />
+        )}
 
-        <Text style={styles.divider}>──────── o ────────</Text>
+        {!isAdminAccess && (
+          <>
+            <Text style={styles.divider}>──────── o ────────</Text>
 
-        <TouchableOpacity onPress={() => navigation.navigate("Register")}>
-          <Text style={styles.register}>{t('login.noAccount')}</Text>
-        </TouchableOpacity>
+            <TouchableOpacity onPress={() => navigation.navigate("Register") }>
+              <Text style={styles.register}>{t('login.noAccount')}</Text>
+            </TouchableOpacity>
 
-        <TouchableOpacity 
-          style={styles.testBtn}
-          onPress={() => navigation.navigate("TestRegistro")}
-        >
-          <Text style={styles.testBtnText}>🧪 Prueba de Registro</Text>
-        </TouchableOpacity>
+            <TouchableOpacity 
+              style={styles.testBtn}
+              onPress={() => navigation.navigate("TestRegistro")}
+            >
+              <Text style={styles.testBtnText}>🧪 Prueba de Registro</Text>
+            </TouchableOpacity>
+          </>
+        )}
 
       </View>
 
-      <StatusBar style="light" />
+      <StatusBar style={isAdminAccess ? 'dark' : 'light'} />
     </View>
   );
 }
@@ -189,10 +238,30 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
   },
   logo: {
-    width: 350,
+    width: 330,
     height: 150,
-    marginBottom: 10,
+    borderRadius: 32,
+  },
+  logoShell: {
     marginTop: 100,
+    marginBottom: 12,
+    borderRadius: 40,
+    padding: 3,
+    backgroundColor: '#ffd4d4',
+  },
+  logoShellAdmin: {
+    backgroundColor: '#e4ded4',
+  },
+  logoContour: {
+    borderRadius: 37,
+    padding: 4,
+    backgroundColor: '#ffefef',
+  },
+  logoContourAdmin: {
+    backgroundColor: '#f2ede4',
+  },
+  adminLogo: {
+    opacity: 0.9,
   },
   subtitle: {
     color: "#fff",
@@ -204,11 +273,18 @@ const styles = StyleSheet.create({
     backgroundColor: "#1c1c1c",
     borderRadius: 25,
     padding: 20,
+    borderWidth: 1,
+    borderColor: 'transparent',
     elevation: 5,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.25,
     shadowRadius: 3.84,
+  },
+  adminCaption: {
+    fontSize: 14,
+    lineHeight: 20,
+    marginBottom: 14,
   },
   input: {
     backgroundColor: "#333",
@@ -231,6 +307,17 @@ const styles = StyleSheet.create({
     color: "white",
     paddingVertical: 15,
     fontSize: 16
+  },
+  eyeButton: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.08)',
+  },
+  eyeButtonAdmin: {
+    backgroundColor: '#e7e1d8',
   },
   eyeIcon: {
     color: "#aaa",
@@ -278,6 +365,23 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     fontSize: 13,
     fontWeight: '600',
+  },
+  adminLoginButton: {
+    backgroundColor: '#716a63',
+    paddingVertical: 14,
+    borderRadius: 22,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#5f5852',
+  },
+  adminLoginButtonDisabled: {
+    opacity: 0.6,
+  },
+  adminLoginButtonText: {
+    color: '#f8f5ef',
+    fontWeight: '700',
+    fontSize: 16,
+    letterSpacing: 0.2,
   },
   newUserButton: {
     marginTop: 10,

@@ -10,6 +10,7 @@ import {
   StyleSheet
 } from 'react-native';
 import { useTranslation } from 'react-i18next';
+import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '../services/supabase/supabaseClient';
 import { colors } from '../styles/colors';
 import { validators } from '../utils/validators';
@@ -26,6 +27,8 @@ export default function RegisterScreen({ navigation }) {
   const [usuario, setUsuario] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [passwordReqs, setPasswordReqs] = useState({
     length: false, uppercase: false, lowercase: false, number: false
@@ -165,28 +168,54 @@ export default function RegisterScreen({ navigation }) {
           autoCapitalize="none" 
         />
         
-        <TextInput
-          placeholder={t('register.password')}
-          placeholderTextColor="#aaa"
-          secureTextEntry
-          style={styles.input}
-          value={password}
-          onChangeText={(text) => { 
-            setPassword(text); 
-            validatePassword(text); 
-          }}
-        />
+        <View style={styles.passwordRow}>
+          <TextInput
+            placeholder={t('register.password')}
+            placeholderTextColor="#aaa"
+            secureTextEntry={!showPassword}
+            style={styles.inputPassword}
+            value={password}
+            onChangeText={(text) => { 
+              setPassword(text); 
+              validatePassword(text); 
+            }}
+          />
+          <TouchableOpacity
+            onPress={() => setShowPassword(!showPassword)}
+            style={styles.eyeButton}
+            activeOpacity={0.8}
+          >
+            <Ionicons
+              name={showPassword ? 'eye-outline' : 'eye-off-outline'}
+              size={20}
+              color="#bcbcbc"
+            />
+          </TouchableOpacity>
+        </View>
 
         <PasswordRequirements requirements={passwordReqs} />
 
-        <TextInput
-          placeholder={t('register.confirmPassword')}
-          placeholderTextColor="#aaa"
-          secureTextEntry
-          style={styles.input}
-          value={confirmPassword}
-          onChangeText={setConfirmPassword}
-        />
+        <View style={styles.passwordRow}>
+          <TextInput
+            placeholder={t('register.confirmPassword')}
+            placeholderTextColor="#aaa"
+            secureTextEntry={!showConfirmPassword}
+            style={styles.inputPassword}
+            value={confirmPassword}
+            onChangeText={setConfirmPassword}
+          />
+          <TouchableOpacity
+            onPress={() => setShowConfirmPassword(!showConfirmPassword)}
+            style={styles.eyeButton}
+            activeOpacity={0.8}
+          >
+            <Ionicons
+              name={showConfirmPassword ? 'eye-outline' : 'eye-off-outline'}
+              size={20}
+              color="#bcbcbc"
+            />
+          </TouchableOpacity>
+        </View>
 
         <CustomButton 
           title={loading ? t('common.loading') : t('register.registerButton')}
@@ -263,6 +292,28 @@ const styles = StyleSheet.create({
     marginBottom: 15,
     color: "white",
     fontSize: 16,
+  },
+  passwordRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#333',
+    borderRadius: 20,
+    paddingHorizontal: 15,
+    marginBottom: 15,
+  },
+  inputPassword: {
+    flex: 1,
+    color: 'white',
+    paddingVertical: 15,
+    fontSize: 16,
+  },
+  eyeButton: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.08)',
   },
   phoneHint: {
     color: "#aaa",

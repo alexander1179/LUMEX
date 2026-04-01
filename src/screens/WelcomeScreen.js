@@ -68,11 +68,22 @@ export default function WelcomeScreen({ navigation }) {
           }
         ]}
       >
-        {/* Logo con animación de escala */}
-        <Animated.Image 
-          source={icon} 
-          style={[styles.logo, { transform: [{ scale: scaleAnim }] }]} 
-        />
+        {/* Logo con presentación más limpia y sin contorno rectangular */}
+        <Animated.View
+          style={[
+            styles.logoWrap,
+            { transform: [{ scale: scaleAnim }] }
+          ]}
+        >
+          <View style={styles.logoGlowLarge} />
+          <View style={styles.logoGlowSmall} />
+          <View style={styles.logoFrame}>
+            <Image
+              source={icon}
+              style={styles.logo}
+            />
+          </View>
+        </Animated.View>
         
         {/* Título */}
         <Text style={styles.title}>Lumex</Text>
@@ -160,11 +171,45 @@ const styles = StyleSheet.create({
     paddingHorizontal: 30,
     marginTop: 80,
   },
+  logoWrap: {
+    width: 220,
+    height: 220,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 12,
+    position: 'relative',
+  },
+  logoGlowLarge: {
+    position: 'absolute',
+    width: 210,
+    height: 210,
+    borderRadius: 105,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+  },
+  logoGlowSmall: {
+    position: 'absolute',
+    width: 156,
+    height: 156,
+    borderRadius: 78,
+    backgroundColor: 'rgba(255,255,255,0.13)',
+  },
+  logoFrame: {
+    width: 118,
+    height: 118,
+    borderRadius: 34,
+    overflow: 'hidden',
+    backgroundColor: 'rgba(0,0,0,0.08)',
+    zIndex: 2,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.2,
+    shadowRadius: 18,
+    elevation: 8,
+  },
   logo: {
-    width: width * 0.7,
-    height: 120,
-    marginBottom: 20,
-    resizeMode: 'contain',
+    width: '100%',
+    height: '100%',
+    resizeMode: 'cover',
   },
   title: {
     fontSize: 36,

@@ -2,6 +2,7 @@
   "expo": {
     "name": "aplicacion-lumex-app",
     "slug": "aplicacion-lumex-app",
+    "scheme": "lumex",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",

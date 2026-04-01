@@ -1,216 +1,148 @@
 // src/services/supabase/authService.js
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from './supabaseClient';
 
-// Registrar nuevo usuario con Supabase Auth
+const SESSION_KEY = 'lumex_user_session';
+
+const isAdminRole = (roleValue) => {
+  const normalizedRole = String(roleValue || '').trim().toLowerCase();
+  return normalizedRole === 'admin' || normalizedRole === 'administrador';
+};
+
+// Hash SHA-256 usando Web Crypto API (React Native 0.71+)
+const hashPassword = async (password) => {
+  try {
+    const encoder = new TextEncoder();
+    const buf = encoder.encode(String(password));
+    const hashBuffer = await global.crypto.subtle.digest('SHA-256', buf);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+  } catch {
+    // Fallback simple para entornos sin Web Crypto
+    let h = 5381;
+    const s = String(password);
+    for (let i = 0; i < s.length; i++) h = ((h << 5) + h) ^ s.charCodeAt(i);
+    return Math.abs(h).toString(16).padStart(8, '0').repeat(8);
+  }
+};
+
+// Registrar nuevo usuario (directamente en tabla usuarios, SIN Supabase Auth)
 export const registerUser = async (userData) => {
   try {
-    // Normalizar parámetros para evitar confusiones entre "nombre/email/usuario" y "name/email/username"
     let email = (userData.email || userData.usuario || userData.username || '').trim().toLowerCase();
     let username = (userData.username || userData.usuario || '').trim().toLowerCase();
     const name = (userData.name || userData.nombre || '').trim();
     const phone = (userData.phone || userData.telefono || '').trim() || null;
-    const acceptTerms = userData.acceptTerms || userData.aceptaTerminos || false;
 
     const isEmail = (value) => typeof value === 'string' && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
     if (!isEmail(email) && isEmail(username)) {
-      console.warn('📌 Intercambio de email/username detectado automáticamente');
       [email, username] = [username, email];
     }
 
-    console.log('📝 Registrando usuario:', email, 'username:', username, 'acepta términos:', acceptTerms);
+    console.log('📝 Registrando usuario:', email, 'username:', username);
 
-    // Chequear si el email o usuario ya está registrado en la tabla usuarios
-    const { data: existingUserCheck, error: existingCheckError } = await supabase
+    // Verificar si el email o usuario ya existe en la tabla usuarios
+    const { data: existingUser, error: checkError } = await supabase
       .from('usuarios')
-      .select('id_usuario, email, usuario')
+      .select('id_usuario')
       .or(`email.eq.${email},usuario.eq.${username}`)
       .maybeSingle();
 
-    if (existingCheckError) {
-      console.warn('⚠️ Error en verificación de usuario existente:', existingCheckError.message);
+    if (checkError) console.warn('⚠️ Error en verificación:', checkError.message);
+
+    if (existingUser) {
+      return { success: false, message: 'El correo o nombre de usuario ya está registrado.' };
     }
 
-    if (existingUserCheck) {
-      return {
-        success: false,
-        message: 'El correo o nombre de usuario ya está registrado.'
-      };
-    }
+    // Hash de la contraseña antes de guardar
+    const passwordHash = await hashPassword(userData.password);
 
-    let authUser = null;
-    let isExistingUser = false;
-
-    // Intentar registrar en Auth
-    const { data, error } = await supabase.auth.signUp({
-      email,
-      password: userData.password,
-      options: {
-        data: {
-          name,
-          username,
-          phone,
-        }
-      }
-    });
-
-    if (error) {
-      // Si el usuario ya existe, intentar hacer signIn para obtener el usuario
-      if (error.message.includes('User already registered')) {
-        console.log('👤 Usuario ya existe en Auth, intentando signIn temporal...');
-        const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
-          email,
-          password: userData.password,
-        });
-
-        if (signInError) {
-          throw new Error('Usuario ya registrado pero contraseña incorrecta');
-        }
-
-        authUser = signInData.user;
-        isExistingUser = true;
-
-        // No cerrar sesión todavía; queremos usar la sesión para la inserción/actualización RLS (si aplica).
-      } else {
-        throw error;
-      }
-    } else {
-      authUser = data.user;
-
-      // Si signUp no establece session (ej. requiere confirmación por email), forzamos signIn
-      if (!data.session) {
-        console.log('🔐 signUp no devuelto session. Forzando signInWithPassword para establecer auth.uid()...');
-        const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
-          email,
-          password: userData.password,
-        });
-
-        if (signInError) {
-          throw new Error(`Error forzando login después de signUp: ${signInError.message}`);
-        }
-
-        authUser = signInData.user;
-      }
-    }
-
-    // Ahora insertar/actualizar en tabla usuarios
-    if (authUser) {
-      // Verificar si ya existe en la tabla usuarios por email o username
-      const { data: existingUser, error: existingError } = await supabase
-        .from('usuarios')
-        .select('id_usuario, nombre, email, usuario, auth_uid')
-        .or(`email.eq.${email},usuario.eq.${username}`)
-        .maybeSingle();
-
-      if (existingError) {
-        console.warn('⚠️ Error al verificar usuario existente:', existingError);
-      }
-
-      // Crear payload con solo los campos que existen en la tabla usuarios
-      const userPayload = {
-        auth_uid: authUser.id,
+    // Insertar directamente en la tabla usuarios (SIN supabase.auth.signUp)
+    const { data: newUser, error: insertError } = await supabase
+      .from('usuarios')
+      .insert([{
         nombre: name,
         email,
         usuario: username,
-        contrasena: userData.password || 'supabase_auth',
+        rol: 'usuario',
+        contrasena: passwordHash,
         telefono: phone,
         fecha_registro: new Date().toISOString(),
-      };
+      }])
+      .select()
+      .single();
 
-      console.log('📦 Payload a insertar/actualizar:', userPayload);
+    if (insertError) throw new Error(insertError.message);
 
-      if (existingUser) {
-        // Actualizar usuario existente
-        console.log('🔄 Actualizando usuario existente:', existingUser.id_usuario);
-        const { data: updateData, error: updateError } = await supabase
-          .from('usuarios')
-          .update(userPayload)
-          .eq('id_usuario', existingUser.id_usuario)
-          .select();
-
-        if (updateError) {
-          console.error('❌ Error actualizando usuario:', updateError.message, updateError.details);
-          throw new Error(`Error actualizando usuario: ${updateError.message}`);
-        } else {
-          console.log('✅ Usuario actualizado exitosamente:', updateData);
-        }
-      } else {
-        // Insertar nuevo usuario
-        console.log('📝 Insertando nuevo usuario en tabla usuarios');
-        const { data: insertData, error: insertError } = await supabase
-          .from('usuarios')
-          .insert([userPayload])
-          .select();
-
-        if (insertError) {
-          console.error('❌ Error insertando usuario:', insertError.code, insertError.message, insertError.details);
-          throw new Error(`Error registrando usuario en BD: ${insertError.message}`);
-        } else {
-          console.log('✅ Usuario insertado exitosamente:', insertData);
-        }
-      }
-    }
-
-    return {
-      success: true,
-      user: authUser,
-      message: isExistingUser ? 'Usuario actualizado correctamente' : 'Usuario registrado correctamente'
-    };
+    console.log('✅ Usuario registrado:', newUser);
+    return { success: true, user: newUser, message: 'Usuario registrado correctamente' };
   } catch (error) {
     console.log('❌ Error en registro:', error.message);
     return { success: false, message: error.message };
   }
 };
 
-// Iniciar sesión con Supabase Auth (acepta username o email)
-export const loginUser = async (identifier, password, acceptTermsIfNeeded = false, deviceInfo = null) => {
+// Iniciar sesión (contra tabla usuarios, SIN supabase.auth.signInWithPassword)
+export const loginUser = async (identifier, password, acceptTermsIfNeeded = false, deviceInfo = null, options = {}) => {
   try {
+    const { requiredRole = null } = options;
     const isEmail = identifier.includes('@');
-    console.log('🔐 Intentando login con:', identifier, 'esEmail:', isEmail);
+    const field = isEmail ? 'email' : 'usuario';
+    console.log('🔐 Intentando login con:', identifier);
 
-    let emailToUse = identifier.trim().toLowerCase();
+    // Buscar usuario en tabla usuarios
+    const { data: userData, error: searchError } = await supabase
+      .from('usuarios')
+      .select('*')
+      .eq(field, identifier.trim().toLowerCase())
+      .maybeSingle();
 
-    if (!isEmail) {
-      // Buscar el email del usuario en la tabla usuarios por campo usuario
-      const { data: userData, error: searchError } = await supabase
-        .from('usuarios')
-        .select('email')
-        .eq('usuario', identifier.trim().toLowerCase())
-        .maybeSingle();
+    if (searchError) throw searchError;
+    if (!userData) return { success: false, message: 'Usuario no encontrado' };
 
-      if (searchError) throw searchError;
-
-      if (!userData) {
-        return { success: false, message: 'Usuario no encontrado' };
-      }
-
-      emailToUse = userData.email;
+    if (requiredRole === 'admin' && !isAdminRole(userData.rol)) {
+      return { success: false, message: 'Este acceso es solo para administradores.' };
     }
 
-    // Login con email encontrado o directo
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email: emailToUse,
-      password: password,
-    });
-    if (error) throw error;
+    // Migración: usuarios registrados previamente con Supabase Auth
+    if (userData.contrasena === 'managed_by_supabase_auth') {
+      console.log('🔄 Contraseña gestionada por Auth, intentando migración...');
+      const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+        email: userData.email,
+        password,
+      });
+      if (authError) return { success: false, message: 'Contraseña incorrecta' };
 
-    // Verificar si el usuario ha aceptado términos (opcional)
-    const userId = data.user.id;
-    const termsCheck = await checkTermsAcceptance(userId);
+      // Migrar: guardar hash SHA-256 en la tabla
+      const newHash = await hashPassword(password);
+      await supabase.from('usuarios').update({ contrasena: newHash }).eq('id_usuario', userData.id_usuario);
+      const migratedUser = { ...userData, contrasena: newHash };
+      await AsyncStorage.setItem(SESSION_KEY, JSON.stringify(migratedUser));
+      try { await supabase.auth.signOut(); } catch {}
 
+      const termsCheck = await checkTermsAcceptance(migratedUser.id_usuario);
+      return { success: true, user: migratedUser, termsAccepted: termsCheck.accepted || false };
+    }
+
+    // Verificar contraseña con hash SHA-256
+    const inputHash = await hashPassword(password);
+    if (userData.contrasena !== inputHash) {
+      return { success: false, message: 'Contraseña incorrecta' };
+    }
+
+    // Guardar sesión en AsyncStorage
+    await AsyncStorage.setItem(SESSION_KEY, JSON.stringify(userData));
+
+    const termsCheck = await checkTermsAcceptance(userData.id_usuario);
     if (!termsCheck.success) {
-      console.warn('No se pudo verificar aceptación de términos, continuando con login...');
+      console.warn('No se pudo verificar términos, continuando...');
     } else if (!termsCheck.accepted && acceptTermsIfNeeded) {
-      // Aceptar términos automáticamente durante login si se solicita
-      console.log('📋 Usuario no ha aceptado términos, intentando aceptar automáticamente...');
-      const acceptResult = await acceptSecurityTerms(userId, deviceInfo);
-      if (!acceptResult.success) {
-        console.warn('Error aceptando términos durante login:', acceptResult.message);
-      }
+      await acceptSecurityTerms(userData.id_usuario, deviceInfo);
     }
 
     return {
       success: true,
-      user: data.user,
+      user: userData,
       termsAccepted: termsCheck.success ? termsCheck.accepted : true
     };
   } catch (error) {
@@ -219,48 +151,94 @@ export const loginUser = async (identifier, password, acceptTermsIfNeeded = fals
   }
 };
 
-// Recuperar contraseña
+// Recuperar contraseña: enviar código desde Supabase Auth usando el flujo de recovery
 export const forgotPassword = async (email) => {
   try {
-    const { error } = await supabase.auth.resetPasswordForEmail(email);
+    const normalizedEmail = email.trim().toLowerCase();
+
+    // Verificar que el correo existe en la tabla usuarios
+    const { data: userExists } = await supabase
+      .from('usuarios')
+      .select('email')
+      .eq('email', normalizedEmail)
+      .maybeSingle();
+
+    if (!userExists) {
+      return { success: false, message: 'No existe ninguna cuenta con ese correo.' };
+    }
+
+    // Este flujo usa la plantilla Reset Password de Supabase.
+    const { error } = await supabase.auth.resetPasswordForEmail(normalizedEmail);
+
+    if (error) {
+      const msg = error.message || '';
+      // Rate-limit de Supabase: "you can only request this after X seconds"
+      const waitMatch = msg.match(/after (\d+) second/i);
+      if (waitMatch) {
+        return { success: false, message: `Espera ${waitMatch[1]} segundos antes de solicitar otro código.`, rateLimited: true, waitSeconds: parseInt(waitMatch[1], 10) };
+      }
+
+      if (/for security purposes|only request this/i.test(msg)) {
+        return { success: false, message: 'Espera unos segundos antes de solicitar otro código.', rateLimited: true };
+      }
+
+      throw error;
+    }
+
+    return { success: true, message: 'Código de recuperación enviado a tu email', email: normalizedEmail };
+  } catch (error) {
+    const msg = error?.message || '';
+    if (/for security purposes|only request this/i.test(msg)) {
+      return { success: false, message: 'Espera unos segundos antes de solicitar otro código.', rateLimited: true };
+    }
+    return { success: false, message: msg };
+  }
+};
+
+// Verificar código OTP de recovery
+export const verifyToken = async (email, token) => {
+  try {
+    const { data, error } = await supabase.auth.verifyOtp({
+      email,
+      token,
+      type: 'recovery',
+    });
 
     if (error) throw error;
 
     return {
       success: true,
-      message: 'Código de recuperación enviado a tu email'
+      user: data?.user || null,
+      session: data?.session || null,
     };
   } catch (error) {
     return { success: false, message: error.message };
   }
 };
 
-// Verificar token
-export const verifyToken = async (userId, token) => {
+// Resetear contraseña: actualizar hash en tabla usuarios
+export const resetPassword = async (newPassword) => {
   try {
-    const { data, error } = await supabase.auth.verifyOtp({
-      token_hash: token,
-      type: 'recovery'
-    });
+    const passwordHash = await hashPassword(newPassword);
 
-    if (error) throw error;
+    // Obtener email del usuario desde la sesión creada por verifyOtp
+    const { data: authData } = await supabase.auth.getUser();
+    const userEmail = authData?.user?.email;
 
-    return { success: true };
-  } catch (error) {
-    return { success: false, message: error.message };
-  }
-};
+    if (!userEmail) throw new Error('No se pudo identificar el usuario. Intentá el proceso de nuevo.');
 
-// Resetear contraseña
-export const resetPassword = async (userId, token, newPassword) => {
-  try {
-    const { error } = await supabase.auth.updateUser({
-      password: newPassword
-    });
+    // Actualizar hash en la tabla usuarios
+    const { error: updateError } = await supabase
+      .from('usuarios')
+      .update({ contrasena: passwordHash })
+      .eq('email', userEmail);
 
-    if (error) throw error;
+    if (updateError) throw new Error(updateError.message);
 
-    return { success: true, message: 'Contraseña actualizada' };
+    // Cerrar sesión de Auth (el login a partir de ahora usa la tabla usuarios)
+    try { await supabase.auth.signOut(); } catch {}
+
+    return { success: true, message: 'Contraseña actualizada correctamente' };
   } catch (error) {
     return { success: false, message: error.message };
   }
@@ -269,24 +247,22 @@ export const resetPassword = async (userId, token, newPassword) => {
 // Cerrar sesión
 export const logoutUser = async () => {
   try {
-    const { error } = await supabase.auth.signOut();
-
-    if (error) throw error;
-
+    await AsyncStorage.removeItem(SESSION_KEY);
+    // Cerrar sesión de Auth si quedó activa por migración o recuperación
+    try { await supabase.auth.signOut(); } catch {}
     return { success: true, message: 'Sesión cerrada' };
   } catch (error) {
     return { success: false, message: error.message };
   }
 };
 
-// Obtener usuario actual
+// Obtener usuario actual desde AsyncStorage
 export const getCurrentUser = async () => {
   try {
-    const { data: { user }, error } = await supabase.auth.getUser();
-
-    if (error) throw error;
-
-    return { success: true, user: user };
+    const sessionStr = await AsyncStorage.getItem(SESSION_KEY);
+    if (!sessionStr) return { success: false, message: 'No hay sesión activa' };
+    const user = JSON.parse(sessionStr);
+    return { success: true, user };
   } catch (error) {
     return { success: false, message: error.message };
   }

@@ -20,6 +20,7 @@
     "crypto": "^1.0.1",
     "expo": "~55.0.5",
     "expo-checkbox": "~55.0.3",
+    "expo-linking": "~55.0.9",
     "expo-status-bar": "~55.0.4",
     "express": "^5.2.1",
     "i18next": "^25.10.5",

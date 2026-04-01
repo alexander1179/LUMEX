@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -17,9 +17,24 @@ export default function ForgotPasswordScreen({ navigation }) {
   const { t } = useTranslation();
   const [email, setEmail] = useState('');
   const [loading, setLoading] = useState(false);
+  const [countdown, setCountdown] = useState(0);
+  const timerRef = useRef(null);
+
+  const startCountdown = (seconds) => {
+    setCountdown(seconds);
+    if (timerRef.current) clearInterval(timerRef.current);
+    timerRef.current = setInterval(() => {
+      setCountdown(prev => {
+        if (prev <= 1) { clearInterval(timerRef.current); return 0; }
+        return prev - 1;
+      });
+    }, 1000);
+  };
+
+  useEffect(() => () => { if (timerRef.current) clearInterval(timerRef.current); }, []);
 
   const solicitarRecuperacion = async () => {
-    if (loading) return;
+    if (loading || countdown > 0) return;
 
     if (!email.trim()) {
       Alert.alert("Error", "Ingresa tu correo electrónico");
@@ -29,23 +44,30 @@ export default function ForgotPasswordScreen({ navigation }) {
     setLoading(true);
 
     try {
-      const result = await forgotPassword(email);
+      const normalizedEmail = email.trim().toLowerCase();
+      const result = await forgotPassword(normalizedEmail);
 
       if (result.success) {
+          startCountdown(60);
         Alert.alert(
-          "✅ Código enviado", 
-          `Se ha enviado un código a tu correo`,
+          "Código enviado",
+          "Ingresa el código que recibiste en tu correo.",
           [
-            { 
-              text: "OK", 
+            {
+              text: "OK",
               onPress: () => navigation.navigate("VerifyToken", {
-                userId: result.userId,
+                email: normalizedEmail,
                 metodo: 'email'
               })
             }
           ]
         );
       } else {
+        if (result.rateLimited && result.waitSeconds) {
+          startCountdown(result.waitSeconds);
+          Alert.alert("Espera un momento", `Podrás solicitar otro código en ${result.waitSeconds} segundos.`);
+          return;
+        }
         Alert.alert("Error", result.message);
       }
     } catch (error) {
@@ -73,7 +95,7 @@ export default function ForgotPasswordScreen({ navigation }) {
 
       <View style={styles.card}>
         <Text style={styles.description}>
-          Ingresa tu correo electrónico para recibir un código de recuperación
+          Ingresa tu correo electrónico para recibir un código de recuperación. Luego regresa a la app para ingresarlo.
         </Text>
 
         <TextInput
@@ -87,10 +109,10 @@ export default function ForgotPasswordScreen({ navigation }) {
         />
 
         <CustomButton
-          title={loading ? "Enviando..." : "Enviar código"}
+          title={loading ? "Enviando..." : countdown > 0 ? `Reenviar en ${countdown}s` : "Enviar código"}
           onPress={solicitarRecuperacion}
           loading={loading}
-          disabled={loading}
+          disabled={loading || countdown > 0}
         />
 
         <TouchableOpacity 

@@ -1,5 +1,5 @@
 // src/screens/LoginScreen.js
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   View,
   Text,
@@ -7,7 +7,10 @@ import {
   TouchableOpacity,
   Image,
   Alert,
-  StyleSheet
+  StyleSheet,
+  Dimensions,
+  Animated,
+  ScrollView,
 } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import Checkbox from "expo-checkbox";
@@ -21,6 +24,7 @@ import { storageService } from '../services/storage/storageService';
 import { supabase } from '../services/supabase/supabaseClient';
 
 const icon = require('../../assets/lumex.jpeg');
+const { width, height } = Dimensions.get('window');
 
 export default function LoginScreen({ navigation, route }) {
   const { t } = useTranslation();
@@ -37,11 +41,49 @@ export default function LoginScreen({ navigation, route }) {
     backButton: '#ece7de',
     backIcon: '#161616',
   };
+  const userTheme = {
+    background: '#eaf6f5',
+    card: 'rgba(255,255,255,0.86)',
+    cardBorder: 'rgba(15,109,120,0.22)',
+    input: '#f4fbfb',
+    inputText: '#15333d',
+    mutedText: '#4f666c',
+    title: '#15333d',
+    accent: '#0f6d78',
+    backButton: 'rgba(255,255,255,0.8)',
+    backIcon: '#0f6d78',
+  };
   const [usuario, setUsuario] = useState("");
   const [password, setPassword] = useState("");
   const [visible, setVisible] = useState(false);
   const [acepta, setAcepta] = useState(false);
   const [loading, setLoading] = useState(false);
+  const userFadeAnim = useRef(new Animated.Value(0)).current;
+  const userLogoScaleAnim = useRef(new Animated.Value(0.94)).current;
+  const userCardSlideAnim = useRef(new Animated.Value(22)).current;
+
+  useEffect(() => {
+    if (isAdminAccess) return;
+
+    Animated.parallel([
+      Animated.timing(userFadeAnim, {
+        toValue: 1,
+        duration: 520,
+        useNativeDriver: true,
+      }),
+      Animated.spring(userLogoScaleAnim, {
+        toValue: 1,
+        friction: 8,
+        tension: 65,
+        useNativeDriver: true,
+      }),
+      Animated.timing(userCardSlideAnim, {
+        toValue: 0,
+        duration: 460,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  }, [isAdminAccess, userCardSlideAnim, userFadeAnim, userLogoScaleAnim]);
 
   const handleLogin = async () => {
     if (!acepta) {
@@ -97,111 +139,168 @@ export default function LoginScreen({ navigation, route }) {
   };
 
   return (
-    <View style={[styles.container, isAdminAccess && { backgroundColor: adminTheme.background }] }>
-      <View style={styles.header}>
+    <View style={[styles.container, { backgroundColor: isAdminAccess ? adminTheme.background : userTheme.background }] }>
+      {!isAdminAccess && <View style={styles.bgBlobTop} />}
+      {!isAdminAccess && <View style={styles.bgBlobMid} />}
+      {!isAdminAccess && <View style={styles.bgBlobBottom} />}
+
+      <View style={styles.header} pointerEvents="box-none">
         <TouchableOpacity 
-          style={[styles.backButton, isAdminAccess && { backgroundColor: adminTheme.backButton }]}
+          style={[styles.backButton, { backgroundColor: isAdminAccess ? adminTheme.backButton : userTheme.backButton }]}
           onPress={() => navigation.replace(isAdminAccess ? "RoleSelect" : "Welcome")}
           activeOpacity={0.7}
         >
-          <Text style={[styles.backButtonText, isAdminAccess && { color: adminTheme.backIcon }]}>←</Text>
+          <Text style={[styles.backButtonText, { color: isAdminAccess ? adminTheme.backIcon : userTheme.backIcon }]}>←</Text>
         </TouchableOpacity>
         <LanguageSelector />
       </View>
-      
-      <View style={[styles.logoShell, isAdminAccess && styles.logoShellAdmin]}>
-        <View style={[styles.logoContour, isAdminAccess && styles.logoContourAdmin]}>
-          <Image source={icon} style={[styles.logo, isAdminAccess && styles.adminLogo]} />
-        </View>
-      </View>
-      <Text style={[styles.subtitle, isAdminAccess && { color: adminTheme.title }]}>{isAdminAccess ? 'Acceso Administrador' : t('login.title')}</Text>
 
-      <View style={[styles.card, isAdminAccess && { backgroundColor: adminTheme.card, borderColor: adminTheme.cardBorder, shadowOpacity: 0.08, elevation: 4 }] }>
-        {isAdminAccess && (
-          <Text style={[styles.adminCaption, { color: adminTheme.mutedText }]}>Ingresa con una cuenta autorizada para administrar la plataforma.</Text>
-        )}
-        <TextInput
-          placeholder={isAdminAccess ? 'Usuario administrador' : 'Usuario'}
-          placeholderTextColor={isAdminAccess ? '#7a746d' : '#aaa'}
-          style={[styles.input, isAdminAccess && { backgroundColor: adminTheme.input, color: adminTheme.inputText }]}
-          value={usuario}
-          onChangeText={setUsuario}
-          autoCapitalize="none"
-        />
-
-        <View style={[styles.passwordRow, isAdminAccess && { backgroundColor: adminTheme.input }] }>
-          <TextInput
-            placeholder={t('login.password')}
-            placeholderTextColor={isAdminAccess ? '#7a746d' : '#aaa'}
-            secureTextEntry={!visible}
-            style={[styles.inputPassword, isAdminAccess && { color: adminTheme.inputText }]}
-            value={password}
-            onChangeText={setPassword}
-          />
-          <TouchableOpacity
-            onPress={() => setVisible(!visible)}
-            style={[styles.eyeButton, isAdminAccess && styles.eyeButtonAdmin]}
-            activeOpacity={0.8}
-          >
-            <Ionicons
-              name={visible ? 'eye-outline' : 'eye-off-outline'}
-              size={20}
-              color={isAdminAccess ? adminTheme.accent : '#bcbcbc'}
-            />
-          </TouchableOpacity>
-        </View>
-
-        <TouchableOpacity onPress={() => navigation.navigate("ForgotPassword")}>
-          <Text style={[styles.forgot, isAdminAccess && { color: adminTheme.accent }]}>{t('login.forgotPassword')}</Text>
-        </TouchableOpacity>
-
-        <View style={styles.checkboxRow}>
-          <Checkbox 
-            value={acepta} 
-            onValueChange={setAcepta} 
-            color={acepta ? (isAdminAccess ? adminTheme.accent : colors.primary) : undefined} 
-          />
-          <Text style={[styles.checkboxText, isAdminAccess && { color: adminTheme.mutedText }]}>{t('login.acceptTerms')}</Text>
-        </View>
-
+      <ScrollView 
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={styles.scrollContent}
+        scrollEventThrottle={16}
+      >
         {isAdminAccess ? (
-          <TouchableOpacity
-            style={[styles.adminLoginButton, loading && styles.adminLoginButtonDisabled]}
-            onPress={handleLogin}
-            disabled={loading}
-            activeOpacity={0.9}
-          >
-            <Text style={styles.adminLoginButtonText}>{loading ? t('common.loading') : t('login.loginButton')}</Text>
-          </TouchableOpacity>
+          <View style={[styles.logoShell, styles.logoShellAdmin]}>
+            <View style={[styles.logoContour, styles.logoContourAdmin]}>
+              <Image source={icon} style={[styles.logo, styles.adminLogo]} />
+            </View>
+          </View>
         ) : (
-          <CustomButton 
-            title={loading ? t('common.loading') : t('login.loginButton')}
-            onPress={handleLogin}
-            loading={loading}
-            disabled={loading}
-          />
+          <Animated.View
+            style={[
+              styles.userLogoWrap,
+              {
+                opacity: userFadeAnim,
+                transform: [{ scale: userLogoScaleAnim }],
+              },
+            ]}
+          >
+            <View style={styles.userLogoGlowLarge} />
+            <View style={styles.userLogoGlowSmall} />
+            <View style={styles.userLogoFrame}>
+              <Image source={icon} style={styles.userLogoImage} />
+            </View>
+          </Animated.View>
         )}
 
+        <Animated.Text
+          style={[
+            styles.subtitle,
+            { color: isAdminAccess ? adminTheme.title : userTheme.title },
+            !isAdminAccess && { opacity: userFadeAnim },
+          ]}
+        >
+          {isAdminAccess ? 'Acceso Administrador' : 'Acceso de usuario'}
+        </Animated.Text>
         {!isAdminAccess && (
-          <>
-            <Text style={styles.divider}>──────── o ────────</Text>
-
-            <TouchableOpacity onPress={() => navigation.navigate("Register") }>
-              <Text style={styles.register}>{t('login.noAccount')}</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity 
-              style={styles.testBtn}
-              onPress={() => navigation.navigate("TestRegistro")}
-            >
-              <Text style={styles.testBtnText}>🧪 Prueba de Registro</Text>
-            </TouchableOpacity>
-          </>
+          <Animated.Text style={[styles.userIntroText, { opacity: userFadeAnim }]}>Ingresa con tus credenciales para continuar en un entorno seguro de salud.</Animated.Text>
         )}
 
-      </View>
+        <Animated.View
+          style={[
+            styles.card,
+            {
+              backgroundColor: isAdminAccess ? adminTheme.card : userTheme.card,
+              borderColor: isAdminAccess ? adminTheme.cardBorder : userTheme.cardBorder,
+              shadowOpacity: isAdminAccess ? 0.08 : 0.16,
+              elevation: isAdminAccess ? 4 : 6,
+            },
+            !isAdminAccess && styles.userCard,
+            !isAdminAccess && {
+              opacity: userFadeAnim,
+              transform: [{ translateY: userCardSlideAnim }],
+            },
+          ]}
+        >
+          {isAdminAccess && (
+            <Text style={[styles.adminCaption, { color: adminTheme.mutedText }]}>Ingresa con una cuenta autorizada para administrar la plataforma.</Text>
+          )}
+          <TextInput
+            placeholder={isAdminAccess ? 'Usuario administrador' : 'Usuario'}
+            placeholderTextColor={isAdminAccess ? '#7a746d' : '#6b848b'}
+            style={[styles.input, { backgroundColor: isAdminAccess ? adminTheme.input : userTheme.input, color: isAdminAccess ? adminTheme.inputText : userTheme.inputText }]}
+            value={usuario}
+            onChangeText={setUsuario}
+            autoCapitalize="none"
+          />
 
-      <StatusBar style={isAdminAccess ? 'dark' : 'light'} />
+          <View style={[styles.passwordRow, { backgroundColor: isAdminAccess ? adminTheme.input : userTheme.input }] }>
+            <TextInput
+              placeholder={t('login.password')}
+              placeholderTextColor={isAdminAccess ? '#7a746d' : '#6b848b'}
+              secureTextEntry={!visible}
+              style={[styles.inputPassword, { color: isAdminAccess ? adminTheme.inputText : userTheme.inputText }]}
+              value={password}
+              onChangeText={setPassword}
+            />
+            <TouchableOpacity
+              onPress={() => setVisible(!visible)}
+              style={[styles.eyeButton, isAdminAccess && styles.eyeButtonAdmin]}
+              activeOpacity={0.8}
+            >
+              <Ionicons
+                name={visible ? 'eye-outline' : 'eye-off-outline'}
+                size={20}
+                color={isAdminAccess ? adminTheme.accent : userTheme.accent}
+              />
+            </TouchableOpacity>
+          </View>
+
+          <TouchableOpacity onPress={() => navigation.navigate("ForgotPassword")}>
+            <Text style={[styles.forgot, { color: isAdminAccess ? adminTheme.accent : userTheme.accent }]}>{t('login.forgotPassword')}</Text>
+          </TouchableOpacity>
+
+          <View style={styles.checkboxRow}>
+            <Checkbox 
+              value={acepta} 
+              onValueChange={setAcepta} 
+              color={acepta ? (isAdminAccess ? adminTheme.accent : userTheme.accent) : undefined} 
+            />
+            <Text style={[styles.checkboxText, { color: isAdminAccess ? adminTheme.mutedText : userTheme.mutedText }]}>{t('login.acceptTerms')}</Text>
+          </View>
+
+          {isAdminAccess ? (
+            <TouchableOpacity
+              style={[styles.adminLoginButton, loading && styles.adminLoginButtonDisabled]}
+              onPress={handleLogin}
+              disabled={loading}
+              activeOpacity={0.9}
+            >
+              <Text style={styles.adminLoginButtonText}>{loading ? t('common.loading') : t('login.loginButton')}</Text>
+            </TouchableOpacity>
+          ) : (
+            <CustomButton 
+              title={loading ? t('common.loading') : t('login.loginButton')}
+              onPress={handleLogin}
+              loading={loading}
+              disabled={loading}
+              backgroundColor="#0f6d78"
+              backgroundColorPressed="#074f57"
+            />
+          )}
+
+          {!isAdminAccess && (
+            <>
+              <Text style={styles.divider}>──────── o ────────</Text>
+
+              <TouchableOpacity onPress={() => navigation.navigate("Register") }>
+                <Text style={styles.register}>{t('login.noAccount')}</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity 
+                style={styles.testBtn}
+                onPress={() => navigation.navigate("TestRegistro")}
+              >
+                <Text style={styles.testBtnText}>Prueba de registro</Text>
+              </TouchableOpacity>
+            </>
+          )}
+
+        </Animated.View>
+      </ScrollView>
+
+      <StatusBar style="dark" />
     </View>
   );
 }
@@ -209,19 +308,49 @@ export default function LoginScreen({ navigation, route }) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.primary,
     alignItems: "center",
-    paddingTop: 60,
+  },
+  scrollContent: {
+    paddingTop: 100,
+    paddingBottom: 30,
+    alignItems: 'center',
+  },
+  bgBlobTop: {
+    position: 'absolute',
+    width: width * 0.9,
+    height: width * 0.9,
+    borderRadius: width,
+    backgroundColor: 'rgba(139, 214, 197, 0.25)',
+    top: -width * 0.32,
+    right: -width * 0.15,
+  },
+  bgBlobMid: {
+    position: 'absolute',
+    width: width * 0.75,
+    height: width * 0.75,
+    borderRadius: width,
+    backgroundColor: 'rgba(121, 200, 214, 0.2)',
+    top: height * 0.3,
+    left: -width * 0.35,
+  },
+  bgBlobBottom: {
+    position: 'absolute',
+    width: width * 0.85,
+    height: width * 0.85,
+    borderRadius: width,
+    backgroundColor: 'rgba(15, 109, 120, 0.1)',
+    bottom: -width * 0.4,
+    right: -width * 0.3,
   },
   header: {
     position: 'absolute',
-    top: 50,
+    top: 10,
     left: 0,
     right: 0,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: 15,
+    paddingHorizontal: 12,
     zIndex: 10,
   },
   backButton: {
@@ -247,7 +376,10 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     borderRadius: 40,
     padding: 3,
-    backgroundColor: '#ffd4d4',
+    backgroundColor: '#cde9e5',
+  },
+  logoShellUser: {
+    backgroundColor: 'rgba(15,109,120,0.14)',
   },
   logoShellAdmin: {
     backgroundColor: '#e4ded4',
@@ -255,7 +387,10 @@ const styles = StyleSheet.create({
   logoContour: {
     borderRadius: 37,
     padding: 4,
-    backgroundColor: '#ffefef',
+    backgroundColor: '#eaf7f6',
+  },
+  logoContourUser: {
+    backgroundColor: '#f4fbfb',
   },
   logoContourAdmin: {
     backgroundColor: '#f2ede4',
@@ -263,58 +398,108 @@ const styles = StyleSheet.create({
   adminLogo: {
     opacity: 0.9,
   },
+  userLogoWrap: {
+    width: 160,
+    height: 160,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 20,
+    marginBottom: 8,
+    position: 'relative',
+  },
+  userLogoGlowLarge: {
+    position: 'absolute',
+    width: 150,
+    height: 150,
+    borderRadius: 75,
+    backgroundColor: 'rgba(15, 109, 120, 0.08)',
+  },
+  userLogoGlowSmall: {
+    position: 'absolute',
+    width: 106,
+    height: 106,
+    borderRadius: 53,
+    backgroundColor: 'rgba(15, 109, 120, 0.15)',
+  },
+  userLogoFrame: {
+    width: 90,
+    height: 90,
+    borderRadius: 45,
+    overflow: 'hidden',
+    backgroundColor: 'rgba(255,255,255,0.92)',
+    shadowColor: '#0f6d78',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.18,
+    shadowRadius: 16,
+    elevation: 8,
+  },
+  userLogoImage: {
+    width: '100%',
+    height: '100%',
+    resizeMode: 'cover',
+  },
   subtitle: {
-    color: "#fff",
-    marginBottom: 20,
-    fontSize: 16
+    marginBottom: 12,
+    fontSize: 18,
+    fontWeight: '700',
+    letterSpacing: 0.2,
+  },
+  userIntroText: {
+    color: '#4d6970',
+    fontSize: 12,
+    lineHeight: 17,
+    textAlign: 'center',
+    marginTop: -4,
+    marginBottom: 14,
+    paddingHorizontal: 20,
   },
   card: {
     width: "90%",
-    backgroundColor: "#1c1c1c",
-    borderRadius: 25,
-    padding: 20,
+    borderRadius: 22,
+    padding: 16,
     borderWidth: 1,
-    borderColor: 'transparent',
     elevation: 5,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 3.84,
+    shadowColor: "#0f6d78",
+    shadowOffset: { width: 0, height: 8 },
+    shadowRadius: 14,
+    marginTop: 4,
+    marginBottom: 0,
+  },
+  userCard: {
+    borderRadius: 24,
+    paddingTop: 18,
+    paddingBottom: 14,
   },
   adminCaption: {
-    fontSize: 14,
-    lineHeight: 20,
-    marginBottom: 14,
+    fontSize: 13,
+    lineHeight: 18,
+    marginBottom: 12,
   },
   input: {
-    backgroundColor: "#333",
-    padding: 15,
-    borderRadius: 20,
-    marginBottom: 15,
-    color: "white",
-    fontSize: 16,
+    padding: 12,
+    borderRadius: 14,
+    marginBottom: 12,
+    fontSize: 15,
   },
   passwordRow: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#333",
-    borderRadius: 20,
-    paddingHorizontal: 15,
-    marginBottom: 10
+    borderRadius: 14,
+    paddingHorizontal: 12,
+    marginBottom: 8
   },
   inputPassword: {
     flex: 1,
-    color: "white",
-    paddingVertical: 15,
-    fontSize: 16
+    paddingVertical: 12,
+    fontSize: 15
   },
   eyeButton: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(255,255,255,0.08)',
+    backgroundColor: 'rgba(15,109,120,0.08)',
   },
   eyeButtonAdmin: {
     backgroundColor: '#e7e1d8',
@@ -324,52 +509,54 @@ const styles = StyleSheet.create({
     fontSize: 20
   },
   forgot: {
-    color: "#ff5252",
     textAlign: "right",
-    marginBottom: 15,
-    fontSize: 14
+    marginBottom: 12,
+    fontSize: 12,
+    fontWeight: '600',
   },
   checkboxRow: {
     flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 20
+    alignItems: "flex-start",
+    marginBottom: 16
   },
   checkboxText: {
-    color: "#ccc",
-    marginLeft: 10,
-    fontSize: 14
+    marginLeft: 8,
+    fontSize: 12,
+    lineHeight: 16,
+    flex: 1,
   },
   divider: {
-    color: "#aaa",
+    color: "#6f8389",
     textAlign: "center",
-    marginVertical: 15,
-    fontSize: 14
+    marginVertical: 12,
+    fontSize: 13
   },
   register: {
-    color: colors.primary,
+    color: '#0f6d78',
     textAlign: "center",
-    fontSize: 16,
-    fontWeight: "bold"
+    fontSize: 14,
+    fontWeight: "700",
+    marginVertical: 4,
   },
   testBtn: {
-    marginTop: 15,
-    paddingVertical: 10,
-    paddingHorizontal: 15,
-    backgroundColor: 'rgba(255, 152, 0, 0.3)',
-    borderRadius: 8,
+    marginTop: 11,
+    paddingVertical: 9,
+    paddingHorizontal: 12,
+    backgroundColor: 'rgba(121,200,214,0.18)',
+    borderRadius: 10,
     borderWidth: 1,
-    borderColor: '#ff9800',
+    borderColor: 'rgba(15,109,120,0.25)',
   },
   testBtnText: {
-    color: '#ff9800',
+    color: '#0f6d78',
     textAlign: 'center',
-    fontSize: 13,
+    fontSize: 11,
     fontWeight: '600',
   },
   adminLoginButton: {
     backgroundColor: '#716a63',
-    paddingVertical: 14,
-    borderRadius: 22,
+    paddingVertical: 12,
+    borderRadius: 20,
     alignItems: 'center',
     borderWidth: 1,
     borderColor: '#5f5852',

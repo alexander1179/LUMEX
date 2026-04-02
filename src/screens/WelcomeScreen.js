@@ -11,6 +11,7 @@ import {
   Dimensions
 } from 'react-native';
 import { useTranslation } from 'react-i18next';
+import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../styles/colors';
 import { LanguageSelector } from '../components/common/LanguageSelector';  // 🔥 Ruta corregida
 import { ThemeToggle } from '../components/common/ThemeToggle';  // 🔥 Ruta corregida
@@ -50,6 +51,10 @@ export default function WelcomeScreen({ navigation }) {
 
   return (
     <View style={styles.container}>
+      <View style={styles.bgBlobTop} />
+      <View style={styles.bgBlobMid} />
+      <View style={styles.bgBlobBottom} />
+
       {/* Header con selectores */}
       <View style={styles.header}>
         <View style={styles.headerRight}>
@@ -107,32 +112,42 @@ export default function WelcomeScreen({ navigation }) {
           }
         ]}
       >
-        {/* Botón "Ya tengo cuenta" */}
+        <Text style={styles.accessTitle}>Acceso a la plataforma</Text>
+
         <TouchableOpacity
-          style={styles.loginButton}
+          style={styles.accessRow}
           onPress={() => navigation.replace("Login")}
           activeOpacity={0.8}
         >
-          <Text style={styles.loginButtonText}>
-            {t('welcome.alreadyHaveAccount', '🔐 Ya tengo cuenta')}
-          </Text>
-          <Text style={styles.loginButtonSubtext}>
-            {t('welcome.loginSubtext', 'Inicia sesión con tus datos')}
-          </Text>
+          <View style={styles.accessRowContent}>
+            <View style={styles.accessIconWrapPrimary}>
+              <Ionicons name="log-in-outline" size={20} color="#0f6d78" />
+            </View>
+            <View style={styles.accessTextWrap}>
+              <Text style={styles.accessTitleMain}>{t('welcome.alreadyHaveAccount', 'Ya tengo cuenta')}</Text>
+              <Text style={styles.accessHintText}>{t('welcome.loginSubtext', 'Inicia sesión con tus credenciales')}</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={20} color="#0f6d78" />
+          </View>
         </TouchableOpacity>
 
-        {/* Botón "Soy nuevo usuario" */}
+        <View style={styles.separator} />
+
         <TouchableOpacity
-          style={styles.registerButton}
+          style={styles.accessRow}
           onPress={() => navigation.navigate("Privacy")}
           activeOpacity={0.8}
         >
-          <Text style={styles.registerButtonText}>
-            {t('welcome.newUser', '✨ Soy nuevo usuario')}
-          </Text>
-          <Text style={styles.registerButtonSubtext}>
-            {t('welcome.registerSubtext', 'Crea tu cuenta en pocos pasos')}
-          </Text>
+          <View style={styles.accessRowContent}>
+            <View style={styles.accessIconWrapSecondary}>
+              <Ionicons name="person-add-outline" size={20} color="#0f6d78" />
+            </View>
+            <View style={styles.accessTextWrap}>
+              <Text style={styles.accessTitleMain}>{t('welcome.newUser', 'Soy nuevo usuario')}</Text>
+              <Text style={styles.accessHintText}>{t('welcome.registerSubtext', 'Regístrate de forma guiada y segura')}</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={20} color="#0f6d78" />
+          </View>
         </TouchableOpacity>
 
       </Animated.View>
@@ -142,7 +157,7 @@ export default function WelcomeScreen({ navigation }) {
         {t('common.version', 'Versión 1.0')}
       </Text>
 
-      <StatusBar barStyle="light-content" backgroundColor={colors.primary} />
+      <StatusBar barStyle="dark-content" backgroundColor="#eaf6f5" />
     </View>
   );
 }
@@ -150,9 +165,37 @@ export default function WelcomeScreen({ navigation }) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.primary,
+    backgroundColor: '#eaf6f5',
     alignItems: 'center',
     justifyContent: 'space-between',
+    overflow: 'hidden',
+  },
+  bgBlobTop: {
+    position: 'absolute',
+    width: width * 0.9,
+    height: width * 0.9,
+    borderRadius: width,
+    backgroundColor: 'rgba(139, 214, 197, 0.25)',
+    top: -width * 0.32,
+    right: -width * 0.15,
+  },
+  bgBlobMid: {
+    position: 'absolute',
+    width: width * 0.75,
+    height: width * 0.75,
+    borderRadius: width,
+    backgroundColor: 'rgba(121, 200, 214, 0.2)',
+    top: height * 0.28,
+    left: -width * 0.35,
+  },
+  bgBlobBottom: {
+    position: 'absolute',
+    width: width * 0.85,
+    height: width * 0.85,
+    borderRadius: width,
+    backgroundColor: 'rgba(15, 109, 120, 0.1)',
+    bottom: -width * 0.4,
+    right: -width * 0.3,
   },
   header: {
     position: 'absolute',
@@ -169,7 +212,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 30,
-    marginTop: 80,
+    marginTop: 60,
   },
   logoWrap: {
     width: 220,
@@ -184,26 +227,26 @@ const styles = StyleSheet.create({
     width: 210,
     height: 210,
     borderRadius: 105,
-    backgroundColor: 'rgba(255,255,255,0.08)',
+    backgroundColor: 'rgba(15, 109, 120, 0.08)',
   },
   logoGlowSmall: {
     position: 'absolute',
     width: 156,
     height: 156,
     borderRadius: 78,
-    backgroundColor: 'rgba(255,255,255,0.13)',
+    backgroundColor: 'rgba(15, 109, 120, 0.14)',
   },
   logoFrame: {
-    width: 118,
-    height: 118,
-    borderRadius: 34,
+    width: 120,
+    height: 120,
+    borderRadius: 60,
     overflow: 'hidden',
-    backgroundColor: 'rgba(0,0,0,0.08)',
+    backgroundColor: 'rgba(255,255,255,0.8)',
     zIndex: 2,
-    shadowColor: '#000',
+    shadowColor: '#0f6d78',
     shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.2,
-    shadowRadius: 18,
+    shadowOpacity: 0.18,
+    shadowRadius: 16,
     elevation: 8,
   },
   logo: {
@@ -214,76 +257,86 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 36,
     fontWeight: 'bold',
-    color: 'white',
+    color: '#15333d',
     marginBottom: 10,
     letterSpacing: 1,
   },
   subtitle: {
     fontSize: 18,
-    color: 'rgba(255,255,255,0.95)',
+    color: '#1e4e5a',
     textAlign: 'center',
-    marginBottom: 20,
+    marginBottom: 14,
     fontWeight: '500',
   },
   description: {
     fontSize: 14,
-    color: 'rgba(255,255,255,0.8)',
+    color: '#47626a',
     textAlign: 'center',
-    lineHeight: 20,
+    lineHeight: 21,
     paddingHorizontal: 20,
   },
   buttonsContainer: {
     width: '100%',
-    paddingHorizontal: 20,
-    paddingBottom: 40,
-    gap: 15,
+    paddingHorizontal: 24,
+    paddingBottom: 44,
+    gap: 12,
   },
-  loginButton: {
-    backgroundColor: 'white',
-    paddingVertical: 16,
-    paddingHorizontal: 30,
-    borderRadius: 30,
-    alignItems: 'center',
-    elevation: 5,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 3.84,
-  },
-  loginButtonText: {
-    color: colors.primary,
-    fontSize: 18,
-    fontWeight: 'bold',
-    marginBottom: 4,
-  },
-  loginButtonSubtext: {
-    color: colors.primaryLight,
+  accessTitle: {
+    color: '#3a5962',
     fontSize: 12,
-    opacity: 0.8,
+    textTransform: 'uppercase',
+    letterSpacing: 1.5,
+    fontWeight: '700',
+    marginBottom: 8,
   },
-  registerButton: {
-    backgroundColor: 'transparent',
-    paddingVertical: 16,
-    paddingHorizontal: 30,
-    borderRadius: 30,
+  accessRow: {
+    paddingVertical: 6,
+  },
+  accessRowContent: {
+    flexDirection: 'row',
     alignItems: 'center',
-    borderWidth: 2,
-    borderColor: 'white',
+    justifyContent: 'space-between',
+    gap: 12,
   },
-  registerButtonText: {
-    color: 'white',
-    fontSize: 18,
-    fontWeight: 'bold',
-    marginBottom: 4,
+  separator: {
+    height: 1,
+    backgroundColor: 'rgba(15, 109, 120, 0.22)',
+    marginVertical: 2,
   },
-  registerButtonSubtext: {
-    color: 'rgba(255,255,255,0.8)',
-    fontSize: 12,
+  accessTextWrap: {
+    flex: 1,
+  },
+  accessTitleMain: {
+    color: '#15333d',
+    fontSize: 21,
+    fontWeight: '700',
+    marginBottom: 3,
+  },
+  accessHintText: {
+    color: '#49666f',
+    fontSize: 13,
+    fontWeight: '500',
+  },
+  accessIconWrapPrimary: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: 'rgba(87, 191, 166, 0.26)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  accessIconWrapSecondary: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: 'rgba(121, 200, 214, 0.32)',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   version: {
     position: 'absolute',
     bottom: 20,
-    color: 'rgba(255,255,255,0.5)',
+    color: 'rgba(21,51,61,0.45)',
     fontSize: 12,
     textAlign: 'center',
     width: '100%',

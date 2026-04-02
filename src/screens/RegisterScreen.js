@@ -1,5 +1,5 @@
 // src/screens/RegisterScreen.js
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   ScrollView,
   Text,
@@ -7,7 +7,10 @@ import {
   TouchableOpacity,
   Alert,
   View,
-  StyleSheet
+  StyleSheet,
+  Dimensions,
+  Animated,
+  Image,
 } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { Ionicons } from '@expo/vector-icons';
@@ -18,6 +21,9 @@ import { CustomButton } from '../components/common/CustomButton';
 import { PasswordRequirements } from '../components/auth/PasswordRequirements';
 import { LanguageSelector } from '../components/common/LanguageSelector';
 import { registerUser } from '../services/supabase/authService';
+
+const { width, height } = Dimensions.get('window');
+const icon = require('../../assets/lumex.jpeg');
 
 export default function RegisterScreen({ navigation }) {
   const { t } = useTranslation();
@@ -34,6 +40,43 @@ export default function RegisterScreen({ navigation }) {
     length: false, uppercase: false, lowercase: false, number: false
   });
 
+  // Animaciones
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const logoScaleAnim = useRef(new Animated.Value(0.94)).current;
+  const cardSlideAnim = useRef(new Animated.Value(22)).current;
+
+  useEffect(() => {
+    Animated.parallel([
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 500,
+        useNativeDriver: true,
+      }),
+      Animated.spring(logoScaleAnim, {
+        toValue: 1,
+        friction: 8,
+        tension: 65,
+        useNativeDriver: true,
+      }),
+      Animated.timing(cardSlideAnim, {
+        toValue: 0,
+        duration: 440,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  }, [fadeAnim, logoScaleAnim, cardSlideAnim]);
+
+  const theme = {
+    background: '#eaf6f5',
+    card: 'rgba(255,255,255,0.86)',
+    cardBorder: 'rgba(15,109,120,0.22)',
+    input: '#f4fbfb',
+    inputText: '#15333d',
+    mutedText: '#4f666c',
+    title: '#15333d',
+    accent: '#0f6d78',
+  };
+
   const validatePassword = (pass) => {
     const validation = validators.validatePassword(pass);
     setPasswordReqs({
@@ -47,7 +90,6 @@ export default function RegisterScreen({ navigation }) {
   const handleRegister = async () => {
     if (loading) return;
     
-    // Validaciones
     if (!nombre || !email || !usuario || !password) {
       Alert.alert(t('common.error'), t('errors.requiredFields'));
       return;
@@ -76,7 +118,6 @@ export default function RegisterScreen({ navigation }) {
       return;
     }
 
-    // Los términos se aceptarán en el login si no se aceptan aquí
     setLoading(true);
 
     try {
@@ -109,225 +150,333 @@ export default function RegisterScreen({ navigation }) {
   };
 
   return (
-    <ScrollView 
-      style={styles.container}
-      contentContainerStyle={styles.contentContainer}
-      showsVerticalScrollIndicator={false}
-    >
-      {/* Header con botón de volver y selector de idioma */}
-      <View style={styles.header}>
+    <View style={[styles.container, { backgroundColor: theme.background }]}>
+      <View style={styles.bgBlobTop} />
+      <View style={styles.bgBlobMid} />
+      <View style={styles.bgBlobBottom} />
+
+      <View style={styles.header} pointerEvents="box-none">
         <TouchableOpacity 
-          style={styles.backButton}
+          style={[styles.backButton, { backgroundColor: 'rgba(255, 255, 255, 0.8)' }]}
           onPress={() => navigation.goBack()}
           activeOpacity={0.7}
         >
-          <Text style={styles.backButtonText}>←</Text>
+          <Text style={[styles.backButtonText, { color: theme.accent }]}>←</Text>
         </TouchableOpacity>
-        
         <LanguageSelector />
       </View>
-      
-      <Text style={styles.title}>
-        {t('register.title')}
-      </Text>
 
-      <View style={styles.card}>
-        <TextInput 
-          placeholder={t('register.fullName')} 
-          placeholderTextColor="#aaa" 
-          style={styles.input} 
-          value={nombre} 
-          onChangeText={setNombre} 
-        />
-        
-        <TextInput 
-          placeholder={t('register.email')} 
-          placeholderTextColor="#aaa" 
-          style={styles.input} 
-          value={email} 
-          onChangeText={setEmail} 
-          keyboardType="email-address" 
-          autoCapitalize="none" 
-        />
-        
-        <TextInput 
-          placeholder={t('register.phone')} 
-          placeholderTextColor="#aaa" 
-          style={styles.input} 
-          value={telefono} 
-          onChangeText={setTelefono} 
-          keyboardType="phone-pad"
-        />
-
-        <TextInput 
-          placeholder={t('register.username')} 
-          placeholderTextColor="#aaa" 
-          style={styles.input} 
-          value={usuario} 
-          onChangeText={setUsuario} 
-          autoCapitalize="none" 
-        />
-        
-        <View style={styles.passwordRow}>
-          <TextInput
-            placeholder={t('register.password')}
-            placeholderTextColor="#aaa"
-            secureTextEntry={!showPassword}
-            style={styles.inputPassword}
-            value={password}
-            onChangeText={(text) => { 
-              setPassword(text); 
-              validatePassword(text); 
-            }}
-          />
-          <TouchableOpacity
-            onPress={() => setShowPassword(!showPassword)}
-            style={styles.eyeButton}
-            activeOpacity={0.8}
-          >
-            <Ionicons
-              name={showPassword ? 'eye-outline' : 'eye-off-outline'}
-              size={20}
-              color="#bcbcbc"
-            />
-          </TouchableOpacity>
-        </View>
-
-        <PasswordRequirements requirements={passwordReqs} />
-
-        <View style={styles.passwordRow}>
-          <TextInput
-            placeholder={t('register.confirmPassword')}
-            placeholderTextColor="#aaa"
-            secureTextEntry={!showConfirmPassword}
-            style={styles.inputPassword}
-            value={confirmPassword}
-            onChangeText={setConfirmPassword}
-          />
-          <TouchableOpacity
-            onPress={() => setShowConfirmPassword(!showConfirmPassword)}
-            style={styles.eyeButton}
-            activeOpacity={0.8}
-          >
-            <Ionicons
-              name={showConfirmPassword ? 'eye-outline' : 'eye-off-outline'}
-              size={20}
-              color="#bcbcbc"
-            />
-          </TouchableOpacity>
-        </View>
-
-        <CustomButton 
-          title={loading ? t('common.loading') : t('register.registerButton')}
-          onPress={handleRegister}
-          loading={loading}
-          disabled={loading}
-        />
-
-        <TouchableOpacity 
-          style={styles.loginLink} 
-          onPress={() => navigation.replace("Login")}
+      <ScrollView 
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={styles.scrollContent}
+        scrollEventThrottle={16}
+      >
+        <Animated.View
+          style={[
+            styles.logoWrap,
+            {
+              opacity: fadeAnim,
+              transform: [{ scale: logoScaleAnim }],
+            },
+          ]}
         >
-          <Text style={styles.loginText}>{t('register.haveAccount')}</Text>
-        </TouchableOpacity>
-      </View>
-    </ScrollView>
+          <View style={styles.logoGlowLarge} />
+          <View style={styles.logoGlowSmall} />
+          <View style={styles.logoFrame}>
+            <Image source={icon} style={styles.logoImage} />
+          </View>
+        </Animated.View>
+
+        <Animated.Text
+          style={[
+            styles.title,
+            { color: theme.title, opacity: fadeAnim },
+          ]}
+        >
+          {t('register.title')}
+        </Animated.Text>
+
+        <Animated.Text
+          style={[
+            styles.subtitle,
+            { color: theme.mutedText, opacity: fadeAnim },
+          ]}
+        >
+          Crea tu cuenta de usuario para acceder a tu salud
+        </Animated.Text>
+
+        <Animated.View
+          style={[
+            styles.card,
+            {
+              backgroundColor: theme.card,
+              borderColor: theme.cardBorder,
+              opacity: fadeAnim,
+              transform: [{ translateY: cardSlideAnim }],
+            },
+          ]}
+        >
+          <TextInput 
+            placeholder={t('register.fullName')} 
+            placeholderTextColor="#6b848b" 
+            style={[styles.input, { backgroundColor: theme.input, color: theme.inputText }]}
+            value={nombre} 
+            onChangeText={setNombre}
+          />
+          
+          <TextInput 
+            placeholder={t('register.email')} 
+            placeholderTextColor="#6b848b" 
+            style={[styles.input, { backgroundColor: theme.input, color: theme.inputText }]}
+            value={email} 
+            onChangeText={setEmail} 
+            keyboardType="email-address" 
+            autoCapitalize="none"
+          />
+          
+          <TextInput 
+            placeholder={t('register.phone')} 
+            placeholderTextColor="#6b848b" 
+            style={[styles.input, { backgroundColor: theme.input, color: theme.inputText }]}
+            value={telefono} 
+            onChangeText={setTelefono} 
+            keyboardType="phone-pad"
+          />
+
+          <TextInput 
+            placeholder={t('register.username')} 
+            placeholderTextColor="#6b848b" 
+            style={[styles.input, { backgroundColor: theme.input, color: theme.inputText }]}
+            value={usuario} 
+            onChangeText={setUsuario} 
+            autoCapitalize="none"
+          />
+          
+          <View style={[styles.passwordRow, { backgroundColor: theme.input }]}>
+            <TextInput
+              placeholder={t('register.password')}
+              placeholderTextColor="#6b848b"
+              secureTextEntry={!showPassword}
+              style={[styles.inputPassword, { color: theme.inputText }]}
+              value={password}
+              onChangeText={(text) => { 
+                setPassword(text); 
+                validatePassword(text); 
+              }}
+            />
+            <TouchableOpacity
+              onPress={() => setShowPassword(!showPassword)}
+              style={[styles.eyeButton, { backgroundColor: 'rgba(15,109,120,0.08)' }]}
+              activeOpacity={0.8}
+            >
+              <Ionicons
+                name={showPassword ? 'eye-outline' : 'eye-off-outline'}
+                size={20}
+                color={theme.accent}
+              />
+            </TouchableOpacity>
+          </View>
+
+          <PasswordRequirements requirements={passwordReqs} />
+
+          <View style={[styles.passwordRow, { backgroundColor: theme.input }]}>
+            <TextInput
+              placeholder={t('register.confirmPassword')}
+              placeholderTextColor="#6b848b"
+              secureTextEntry={!showConfirmPassword}
+              style={[styles.inputPassword, { color: theme.inputText }]}
+              value={confirmPassword}
+              onChangeText={setConfirmPassword}
+            />
+            <TouchableOpacity
+              onPress={() => setShowConfirmPassword(!showConfirmPassword)}
+              style={[styles.eyeButton, { backgroundColor: 'rgba(15,109,120,0.08)' }]}
+              activeOpacity={0.8}
+            >
+              <Ionicons
+                name={showConfirmPassword ? 'eye-outline' : 'eye-off-outline'}
+                size={20}
+                color={theme.accent}
+              />
+            </TouchableOpacity>
+          </View>
+
+          <CustomButton 
+            title={loading ? t('common.loading') : t('register.registerButton')}
+            onPress={handleRegister}
+            loading={loading}
+            disabled={loading}
+            backgroundColor={theme.accent}
+            backgroundColorPressed="#074f57"
+          />
+
+          <TouchableOpacity 
+            style={styles.loginLink} 
+            onPress={() => navigation.replace("Login")}
+          >
+            <Text style={[styles.loginText, { color: theme.accent }]}>
+              {t('register.haveAccount')}
+            </Text>
+          </TouchableOpacity>
+        </Animated.View>
+      </ScrollView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.primary,
   },
-  contentContainer: {
-    alignItems: "center",
-    paddingBottom: 30,
-    width: "100%",
+  scrollContent: {
+    paddingTop: 70,
+    paddingBottom: 16,
+    alignItems: 'center',
+  },
+  bgBlobTop: {
+    position: 'absolute',
+    width: width * 0.9,
+    height: width * 0.9,
+    borderRadius: width,
+    backgroundColor: 'rgba(139, 214, 197, 0.25)',
+    top: -width * 0.32,
+    right: -width * 0.15,
+  },
+  bgBlobMid: {
+    position: 'absolute',
+    width: width * 0.75,
+    height: width * 0.75,
+    borderRadius: width,
+    backgroundColor: 'rgba(121, 200, 214, 0.2)',
+    top: height * 0.25,
+    left: -width * 0.35,
+  },
+  bgBlobBottom: {
+    position: 'absolute',
+    width: width * 0.85,
+    height: width * 0.85,
+    borderRadius: width,
+    backgroundColor: 'rgba(15, 109, 120, 0.1)',
+    bottom: -width * 0.4,
+    right: -width * 0.3,
   },
   header: {
-    width: '100%',
+    position: 'absolute',
+    top: 10,
+    left: 0,
+    right: 0,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: 15,
-    paddingTop: 50,
-    marginBottom: 10,
+    paddingHorizontal: 12,
+    zIndex: 10,
   },
   backButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    width: 38,
+    height: 38,
+    borderRadius: 19,
     justifyContent: 'center',
     alignItems: 'center',
   },
   backButtonText: {
-    color: 'white',
-    fontSize: 24,
+    fontSize: 22,
     fontWeight: 'bold',
   },
+  logoWrap: {
+    width: 136,
+    height: 136,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 4,
+    position: 'relative',
+  },
+  logoGlowLarge: {
+    position: 'absolute',
+    width: 128,
+    height: 128,
+    borderRadius: 64,
+    backgroundColor: 'rgba(15, 109, 120, 0.08)',
+  },
+  logoGlowSmall: {
+    position: 'absolute',
+    width: 92,
+    height: 92,
+    borderRadius: 46,
+    backgroundColor: 'rgba(15, 109, 120, 0.14)',
+  },
+  logoFrame: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    overflow: 'hidden',
+    backgroundColor: 'rgba(255,255,255,0.9)',
+    zIndex: 2,
+    shadowColor: '#0f6d78',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.14,
+    shadowRadius: 10,
+    elevation: 5,
+  },
+  logoImage: {
+    width: '100%',
+    height: '100%',
+    resizeMode: 'cover',
+  },
   title: {
-    fontSize: 22,
-    fontWeight: "bold",
-    marginBottom: 15,
-    color: "white",
-    marginVertical: 20,
+    fontSize: 20,
+    fontWeight: '700',
+    letterSpacing: 0.2,
+    marginBottom: 3,
+  },
+  subtitle: {
+    fontSize: 12,
+    lineHeight: 16,
+    textAlign: 'center',
+    marginBottom: 8,
+    paddingHorizontal: 12,
   },
   card: {
     width: "90%",
-    backgroundColor: "#1c1c1c",
-    borderRadius: 25,
-    padding: 20,
+    borderRadius: 22,
+    padding: 12,
+    borderWidth: 1,
     elevation: 5,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 3.84,
+    shadowColor: "#0f6d78",
+    shadowOffset: { width: 0, height: 6 },
+    shadowRadius: 12,
+    shadowOpacity: 0.14,
   },
   input: {
-    backgroundColor: "#333",
-    padding: 15,
-    borderRadius: 20,
-    marginBottom: 15,
-    color: "white",
-    fontSize: 16,
+    padding: 10,
+    borderRadius: 12,
+    marginBottom: 8,
+    fontSize: 14,
   },
   passwordRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#333',
-    borderRadius: 20,
-    paddingHorizontal: 15,
-    marginBottom: 15,
+    borderRadius: 12,
+    paddingHorizontal: 10,
+    marginBottom: 7,
   },
   inputPassword: {
     flex: 1,
-    color: 'white',
-    paddingVertical: 15,
-    fontSize: 16,
+    paddingVertical: 10,
+    fontSize: 14,
   },
   eyeButton: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
+    width: 30,
+    height: 30,
+    borderRadius: 15,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(255,255,255,0.08)',
-  },
-  phoneHint: {
-    color: "#aaa",
-    fontSize: 12,
-    marginBottom: 5,
-    marginLeft: 5,
   },
   loginLink: {
-    marginVertical: 15,
+    marginVertical: 9,
   },
   loginText: {
-    color: colors.primary,
-    textAlign: "center",
-    fontSize: 16,
-    fontWeight: "bold"
+    textAlign: 'center',
+    fontSize: 13,
+    fontWeight: '700',
   },
 });

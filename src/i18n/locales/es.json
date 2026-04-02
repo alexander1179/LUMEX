@@ -175,9 +175,9 @@
   "welcome": {
     "subtitle": "Tu salud en la palma de tu mano",
     "description": "Accede a tus resultados médicos, consulta con especialistas y gestiona tu salud de manera fácil y segura.",
-    "alreadyHaveAccount": "🔐 Ya tengo cuenta",
+    "alreadyHaveAccount": "Ya tengo cuenta",
     "loginSubtext": "Inicia sesión con tus datos",
-    "newUser": "✨ Soy nuevo usuario",
+    "newUser": "Soy nuevo usuario",
     "registerSubtext": "Crea tu cuenta en pocos pasos"
   }
 }

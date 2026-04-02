@@ -173,9 +173,9 @@
   }, "welcome": {
     "subtitle": "Your health in the palm of your hand",
     "description": "Access your medical results, consult with specialists and manage your health easily and safely.",
-    "alreadyHaveAccount": "🔐 I already have an account",
+    "alreadyHaveAccount": "I already have an account",
     "loginSubtext": "Login with your credentials",
-    "newUser": "✨ I'm a new user",
+    "newUser": "I'm a new user",
     "registerSubtext": "Create your account in a few steps"
   }
 }

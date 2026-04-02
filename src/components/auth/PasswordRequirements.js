@@ -1,47 +1,84 @@
 // src/components/auth/PasswordRequirements.js
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../../styles/colors';
 
 export const PasswordRequirements = ({ requirements }) => {
+  const requirements_list = [
+    { key: 'length', text: 'Mínimo 8 caracteres', value: requirements.length },
+    { key: 'uppercase', text: 'Una mayúscula', value: requirements.uppercase },
+    { key: 'lowercase', text: 'Una minúscula', value: requirements.lowercase },
+    { key: 'number', text: 'Un número', value: requirements.number },
+  ];
+
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Requisitos de contraseña:</Text>
-      <Text style={requirements.length ? styles.met : styles.notMet}>
-        {requirements.length ? '✅' : '○'} Mínimo 8 caracteres
-      </Text>
-      <Text style={requirements.uppercase ? styles.met : styles.notMet}>
-        {requirements.uppercase ? '✅' : '○'} Una mayúscula
-      </Text>
-      <Text style={requirements.lowercase ? styles.met : styles.notMet}>
-        {requirements.lowercase ? '✅' : '○'} Una minúscula
-      </Text>
-      <Text style={requirements.number ? styles.met : styles.notMet}>
-        {requirements.number ? '✅' : '○'} Un número
-      </Text>
+      <View style={styles.titleRow}>
+        <Ionicons name="shield-checkmark-outline" size={14} color="#0f6d78" />
+        <Text style={styles.title}>Requisitos</Text>
+      </View>
+
+      <View style={styles.requirementsList}>
+        {requirements_list.map((req, index) => (
+          <View key={req.key} style={styles.requirementItem}>
+            {req.value ? (
+              <Ionicons name="checkmark-circle" size={18} color="#0f6d78" />
+            ) : (
+              <View style={styles.emptyCircle} />
+            )}
+            <Text style={[styles.requirementText, req.value && styles.requirementMet]}>
+              {req.text}
+            </Text>
+          </View>
+        ))}
+      </View>
     </View>
   );
 };
 
 const styles = StyleSheet.create({
   container: {
-    backgroundColor: "#2a2a2a",
-    padding: 12,
-    borderRadius: 10,
-    marginBottom: 15,
+    backgroundColor: '#f4fbfb',
+    padding: 9,
+    borderRadius: 12,
+    marginBottom: 9,
+    borderWidth: 1,
+    borderColor: 'rgba(15, 109, 120, 0.15)',
+  },
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 7,
   },
   title: {
-    color: colors.text.white,
-    fontSize: 14,
-    fontWeight: "bold",
-    marginBottom: 8,
+    color: '#0f6d78',
+    fontSize: 11,
+    fontWeight: '700',
+    marginLeft: 6,
   },
-  met: {
-    color: colors.text.success,
-    fontSize: 12,
+  requirementsList: {
+    gap: 5,
   },
-  notMet: {
-    color: colors.text.error,
-    fontSize: 12,
-  }
+  requirementItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  emptyCircle: {
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    borderWidth: 1.5,
+    borderColor: '#c8d8dc',
+  },
+  requirementText: {
+    fontSize: 11,
+    color: '#6b848b',
+    flex: 1,
+  },
+  requirementMet: {
+    color: '#0f6d78',
+    fontWeight: '600',
+  },
 });

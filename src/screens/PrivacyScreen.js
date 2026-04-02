@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import Checkbox from "expo-checkbox";
+import { Ionicons } from '@expo/vector-icons';
 import { storageService } from '../services/storage/storageService';
 import { loadSavedLanguage } from '../i18n';
 import { LanguageSelector } from '../components/common/LanguageSelector';
@@ -77,10 +78,17 @@ export default function PrivacyScreen({ navigation }) {
     >
       {/* Header con selector de idioma */}
       <View style={styles.header}>
+        <View style={styles.headerGlow} />
         <View style={styles.headerTop}>
           <LanguageSelector />
         </View>
-        <Image source={icon} style={styles.logo} />
+        <View style={styles.logoWrap}>
+          <View style={styles.logoGlowLarge} />
+          <View style={styles.logoGlowSmall} />
+          <View style={styles.logoFrame}>
+            <Image source={icon} style={styles.logo} />
+          </View>
+        </View>
         <Text style={styles.mainTitle}>{t('privacy.title')}</Text>
         <Text style={styles.subTitle}>{t('privacy.subtitle')}</Text>
       </View>
@@ -93,12 +101,16 @@ export default function PrivacyScreen({ navigation }) {
           activeOpacity={0.8}
         >
           <View style={styles.sectionHeaderLeft}>
-            <Text style={styles.sectionIcon}>🔒</Text>
+            <View style={styles.sectionIconWrap}>
+              <Ionicons name="shield-checkmark-outline" size={16} color="#0f6d78" />
+            </View>
             <Text style={styles.sectionTitle}>{t('privacy.privacyPolicy')}</Text>
           </View>
-          <Text style={styles.sectionChevron}>
-            {expandedSection === 'politicaPrivacidad' ? '▼' : '▶'}
-          </Text>
+          <Ionicons
+            name={expandedSection === 'politicaPrivacidad' ? 'chevron-up' : 'chevron-forward'}
+            size={16}
+            color="#0f6d78"
+          />
         </TouchableOpacity>
 
         {expandedSection === 'politicaPrivacidad' && (
@@ -209,12 +221,16 @@ export default function PrivacyScreen({ navigation }) {
           activeOpacity={0.8}
         >
           <View style={styles.sectionHeaderLeft}>
-            <Text style={styles.sectionIcon}>📋</Text>
+            <View style={styles.sectionIconWrap}>
+              <Ionicons name="document-text-outline" size={18} color="#0f6d78" />
+            </View>
             <Text style={styles.sectionTitle}>{t('privacy.termsConditions')}</Text>
           </View>
-          <Text style={styles.sectionChevron}>
-            {expandedSection === 'terminosCondiciones' ? '▼' : '▶'}
-          </Text>
+          <Ionicons
+            name={expandedSection === 'terminosCondiciones' ? 'chevron-up' : 'chevron-forward'}
+            size={16}
+            color="#0f6d78"
+          />
         </TouchableOpacity>
 
         {expandedSection === 'terminosCondiciones' && (
@@ -458,12 +474,16 @@ export default function PrivacyScreen({ navigation }) {
           activeOpacity={0.8}
         >
           <View style={styles.sectionHeaderLeft}>
-            <Text style={styles.sectionIcon}>🔗</Text>
+            <View style={styles.sectionIconWrap}>
+              <Ionicons name="library-outline" size={18} color="#0f6d78" />
+            </View>
             <Text style={styles.sectionTitle}>{t('privacy.regulations')}</Text>
           </View>
-          <Text style={styles.sectionChevron}>
-            {expandedSection === 'normatividad' ? '▼' : '▶'}
-          </Text>
+          <Ionicons
+            name={expandedSection === 'normatividad' ? 'chevron-up' : 'chevron-forward'}
+            size={16}
+            color="#0f6d78"
+          />
         </TouchableOpacity>
 
         {expandedSection === 'normatividad' && (
@@ -477,10 +497,8 @@ export default function PrivacyScreen({ navigation }) {
               activeOpacity={0.7}
             >
               <View style={styles.policyHeader}>
-                <Text style={styles.policyTitle}>📜 {t('regulations.res2238')}</Text>
-                <Text style={styles.policyChevron}>
-                  {expandedPolicy === 'res2238' ? '▼' : '▶'}
-                </Text>
+                <Text style={styles.policyTitle}>{t('regulations.res2238')}</Text>
+                <Ionicons name={expandedPolicy === 'res2238' ? 'chevron-up' : 'chevron-forward'} size={16} color="#0f6d78" />
               </View>
             </TouchableOpacity>
 
@@ -508,10 +526,8 @@ export default function PrivacyScreen({ navigation }) {
               activeOpacity={0.7}
             >
               <View style={styles.policyHeader}>
-                <Text style={styles.policyTitle}>📜 {t('regulations.res2239')}</Text>
-                <Text style={styles.policyChevron}>
-                  {expandedPolicy === 'res2239' ? '▼' : '▶'}
-                </Text>
+                <Text style={styles.policyTitle}>{t('regulations.res2239')}</Text>
+                <Ionicons name={expandedPolicy === 'res2239' ? 'chevron-up' : 'chevron-forward'} size={16} color="#0f6d78" />
               </View>
             </TouchableOpacity>
 
@@ -539,10 +555,8 @@ export default function PrivacyScreen({ navigation }) {
               activeOpacity={0.7}
             >
               <View style={styles.policyHeader}>
-                <Text style={styles.policyTitle}>📜 {t('regulations.law1581')}</Text>
-                <Text style={styles.policyChevron}>
-                  {expandedPolicy === 'ley1581' ? '▼' : '▶'}
-                </Text>
+                <Text style={styles.policyTitle}>{t('regulations.law1581')}</Text>
+                <Ionicons name={expandedPolicy === 'ley1581' ? 'chevron-up' : 'chevron-forward'} size={16} color="#0f6d78" />
               </View>
             </TouchableOpacity>
 
@@ -570,10 +584,8 @@ export default function PrivacyScreen({ navigation }) {
               activeOpacity={0.7}
             >
               <View style={styles.policyHeader}>
-                <Text style={styles.policyTitle}>📜 {t('regulations.decree1377')}</Text>
-                <Text style={styles.policyChevron}>
-                  {expandedPolicy === 'decreto1377' ? '▼' : '▶'}
-                </Text>
+                <Text style={styles.policyTitle}>{t('regulations.decree1377')}</Text>
+                <Ionicons name={expandedPolicy === 'decreto1377' ? 'chevron-up' : 'chevron-forward'} size={16} color="#0f6d78" />
               </View>
             </TouchableOpacity>
 
@@ -601,10 +613,8 @@ export default function PrivacyScreen({ navigation }) {
               activeOpacity={0.7}
             >
               <View style={styles.policyHeader}>
-                <Text style={styles.policyTitle}>🏛️ {t('regulations.sic')}</Text>
-                <Text style={styles.policyChevron}>
-                  {expandedPolicy === 'sic' ? '▼' : '▶'}
-                </Text>
+                <Text style={styles.policyTitle}>{t('regulations.sic')}</Text>
+                <Ionicons name={expandedPolicy === 'sic' ? 'chevron-up' : 'chevron-forward'} size={16} color="#0f6d78" />
               </View>
             </TouchableOpacity>
 
@@ -632,10 +642,8 @@ export default function PrivacyScreen({ navigation }) {
               activeOpacity={0.7}
             >
               <View style={styles.policyHeader}>
-                <Text style={styles.policyTitle}>💻 {i18n.language === 'es' ? "Ministerio TIC" : "MinTIC"}</Text>
-                <Text style={styles.policyChevron}>
-                  {expandedPolicy === 'mintic' ? '▼' : '▶'}
-                </Text>
+                <Text style={styles.policyTitle}>{i18n.language === 'es' ? "Ministerio TIC" : "MinTIC"}</Text>
+                <Ionicons name={expandedPolicy === 'mintic' ? 'chevron-up' : 'chevron-forward'} size={16} color="#0f6d78" />
               </View>
             </TouchableOpacity>
 
@@ -668,7 +676,7 @@ export default function PrivacyScreen({ navigation }) {
           <Checkbox 
             value={isChecked} 
             onValueChange={setChecked} 
-            color={isChecked ? colors.primary : undefined}
+            color={isChecked ? "#0f6d78" : undefined}
             style={styles.checkbox}
           />
           <Text style={styles.acceptanceText}>
@@ -686,7 +694,7 @@ export default function PrivacyScreen({ navigation }) {
         <TouchableOpacity
           style={[
             styles.acceptButton,
-            { backgroundColor: isChecked ? colors.primary : "#999" }
+            { backgroundColor: isChecked ? "#0f6d78" : "#c8d8dc" }
           ]}
           disabled={!isChecked}
           onPress={() => navigation.replace("Login")}
@@ -712,20 +720,30 @@ export default function PrivacyScreen({ navigation }) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#f5f5f5",
+    backgroundColor: "#eaf6f5",
   },
   contentContainer: {
-    paddingBottom: 30,
+    paddingBottom: 12,
   },
   header: {
-    backgroundColor: colors.primary,
-    paddingTop: 50,
-    paddingBottom: 30,
-    paddingHorizontal: 20,
+    backgroundColor: "#dff2f0",
+    paddingTop: 40,
+    paddingBottom: 18,
+    paddingHorizontal: 16,
     alignItems: "center",
-    borderBottomLeftRadius: 30,
-    borderBottomRightRadius: 30,
-    marginBottom: 15,
+    borderBottomLeftRadius: 28,
+    borderBottomRightRadius: 28,
+    marginBottom: 10,
+    overflow: 'hidden',
+  },
+  headerGlow: {
+    position: 'absolute',
+    width: 240,
+    height: 240,
+    borderRadius: 120,
+    backgroundColor: 'rgba(15,109,120,0.12)',
+    top: -100,
+    right: -70,
   },
   headerTop: {
     position: 'absolute',
@@ -733,103 +751,139 @@ const styles = StyleSheet.create({
     right: 15,
     zIndex: 10,
   },
+  logoWrap: {
+    width: 160,
+    height: 160,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 6,
+    position: 'relative',
+  },
+  logoGlowLarge: {
+    position: 'absolute',
+    width: 150,
+    height: 150,
+    borderRadius: 75,
+    backgroundColor: 'rgba(15, 109, 120, 0.08)',
+  },
+  logoGlowSmall: {
+    position: 'absolute',
+    width: 106,
+    height: 106,
+    borderRadius: 53,
+    backgroundColor: 'rgba(15, 109, 120, 0.14)',
+  },
+  logoFrame: {
+    width: 90,
+    height: 90,
+    borderRadius: 45,
+    overflow: 'hidden',
+    backgroundColor: 'rgba(255,255,255,0.8)',
+    zIndex: 2,
+    shadowColor: '#0f6d78',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    elevation: 6,
+  },
   logo: {
-    width: 350,
-    height: 100,
-    marginBottom: 10,
+    width: '100%',
+    height: '100%',
+    resizeMode: 'cover',
+    opacity: 1,
   },
   mainTitle: {
-    color: "white",
-    fontSize: 22,
+    color: "#15333d",
+    fontSize: 18,
     fontWeight: "bold",
     textAlign: "center",
   },
   subTitle: {
-    color: "white",
-    fontSize: 16,
+    color: "#3d646b",
+    fontSize: 13,
     textAlign: "center",
-    marginTop: 5,
+    marginTop: 2,
   },
   card: {
-    backgroundColor: "white",
-    marginHorizontal: 15,
-    marginBottom: 12,
-    borderRadius: 15,
+    backgroundColor: "#ffffff",
+    marginHorizontal: 12,
+    marginBottom: 9,
+    borderRadius: 16,
     overflow: "hidden",
-    elevation: 3,
-    shadowColor: "#000",
+    elevation: 2,
+    shadowColor: "#083a42",
     shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.22,
-    shadowRadius: 2.22,
+    shadowOpacity: 0.1,
+    shadowRadius: 3,
   },
   sectionHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    padding: 18,
-    backgroundColor: "white",
+    padding: 14,
+    backgroundColor: "#f7fcfd",
   },
   sectionHeaderLeft: {
     flexDirection: "row",
     alignItems: "center",
     flex: 1,
   },
-  sectionIcon: {
-    fontSize: 24,
-    marginRight: 12,
+  sectionIconWrap: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: '#e0f1f4',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 10,
   },
   sectionTitle: {
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: "bold",
-    color: "#333",
+    color: "#1e3e45",
     flex: 1,
   },
-  sectionChevron: {
-    fontSize: 16,
-    color: colors.primary,
-    fontWeight: "bold",
-  },
   sectionContent: {
-    padding: 18,
-    backgroundColor: "#fafafa",
+    padding: 14,
+    backgroundColor: "#fcfeff",
     borderTopWidth: 1,
-    borderTopColor: "#e0e0e0",
+    borderTopColor: "#d7e8ec",
   },
   subSectionTitle: {
-    fontSize: 16,
+    fontSize: 13,
     fontWeight: "bold",
-    color: colors.primary,
-    marginTop: 15,
-    marginBottom: 8,
-  },
-  subSubSectionTitle: {
-    fontSize: 15,
-    fontWeight: "bold",
-    color: "#555",
-    marginTop: 12,
+    color: "#0f6d78",
+    marginTop: 10,
     marginBottom: 6,
   },
-  text: {
+  subSubSectionTitle: {
     fontSize: 13,
-    color: "#555",
-    lineHeight: 20,
-    marginBottom: 12,
+    fontWeight: "bold",
+    color: "#355861",
+    marginTop: 8,
+    marginBottom: 4,
+  },
+  text: {
+    fontSize: 12,
+    color: "#4a6067",
+    lineHeight: 18,
+    marginBottom: 9,
     textAlign: "justify",
   },
   listContainer: {
-    marginLeft: 15,
-    marginBottom: 12,
+    marginLeft: 12,
+    marginBottom: 8,
   },
   listItem: {
-    fontSize: 13,
-    color: "#555",
-    lineHeight: 20,
-    marginBottom: 4,
+    fontSize: 11,
+    color: "#4a6067",
+    lineHeight: 18,
+    marginBottom: 3,
   },
   policyItem: {
     borderTopWidth: 1,
-    borderTopColor: "#e0e0e0",
-    paddingVertical: 12,
+    borderTopColor: "#d7e8ec",
+    paddingVertical: 9,
   },
   policyHeader: {
     flexDirection: "row",
@@ -837,107 +891,103 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   policyTitle: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: "#333",
-  },
-  policyChevron: {
-    fontSize: 14,
-    color: colors.primary,
+    fontSize: 13,
+    fontWeight: "700",
+    color: "#1e3e45",
   },
   policyContent: {
-    backgroundColor: "#f8f8f8",
-    padding: 12,
-    borderRadius: 8,
-    marginTop: 8,
-    marginBottom: 4,
+    backgroundColor: "#f2f9fb",
+    padding: 10,
+    borderRadius: 10,
+    marginTop: 6,
+    marginBottom: 3,
   },
   policyDescription: {
-    fontSize: 12,
-    color: "#666",
-    lineHeight: 16,
-    marginBottom: 10,
-    fontStyle: "italic",
+    fontSize: 11,
+    color: "#4f666c",
+    lineHeight: 15,
+    marginBottom: 8,
+    fontStyle: "normal",
   },
   viewButton: {
-    backgroundColor: colors.primary,
+    backgroundColor: "#0f6d78",
     paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderRadius: 5,
+    paddingHorizontal: 14,
+    borderRadius: 20,
     alignItems: "center",
     alignSelf: "flex-start",
   },
   viewButtonText: {
     color: "white",
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: "bold",
   },
   acceptanceCard: {
-    backgroundColor: "#fff9e6",
-    marginHorizontal: 15,
-    marginTop: 5,
-    marginBottom: 12,
-    borderRadius: 15,
-    padding: 18,
+    backgroundColor: "#eaf5f8",
+    marginHorizontal: 12,
+    marginTop: 3,
+    marginBottom: 9,
+    borderRadius: 16,
+    padding: 14,
     borderWidth: 1,
-    borderColor: "#ffd700",
+    borderColor: "#c8e3e9",
   },
   checkboxContainer: {
     flexDirection: "row",
     alignItems: "flex-start",
-    marginBottom: 12,
+    marginBottom: 9,
   },
   checkbox: {
-    marginRight: 12,
-    marginTop: 2,
+    marginRight: 10,
+    marginTop: 1,
   },
   acceptanceText: {
     flex: 1,
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: "bold",
-    color: "#333",
-    lineHeight: 20,
+    color: "#1e3e45",
+    lineHeight: 18,
   },
   acceptanceNote: {
-    fontSize: 11,
-    color: "#666",
-    lineHeight: 16,
+    fontSize: 10,
+    color: "#4f666c",
+    lineHeight: 14,
     textAlign: "justify",
     backgroundColor: "white",
-    padding: 10,
+    padding: 8,
     borderRadius: 8,
   },
   buttonsContainer: {
-    marginHorizontal: 15,
-    marginTop: 5,
-    marginBottom: 20,
+    marginHorizontal: 12,
+    marginTop: 3,
+    marginBottom: 12,
   },
   acceptButton: {
-    padding: 15,
-    borderRadius: 25,
+    padding: 12,
+    borderRadius: 20,
     alignItems: "center",
-    marginBottom: 10,
+    marginBottom: 7,
   },
   acceptButtonText: {
     color: "white",
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: "bold",
   },
   cancelButton: {
-    backgroundColor: "#666",
-    padding: 12,
-    borderRadius: 25,
+    backgroundColor: "#4f666c",
+    padding: 10,
+    borderRadius: 20,
     alignItems: "center",
   },
   cancelButtonText: {
     color: "white",
-    fontSize: 14,
+    fontSize: 12,
     fontWeight: "600",
   },
   footer: {
     textAlign: "center",
-    fontSize: 11,
-    color: "#999",
-    marginBottom: 20,
+    fontSize: 10,
+    color: "#6f8389",
+    marginBottom: 10,
   },
 });

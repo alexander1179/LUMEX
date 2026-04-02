@@ -17,6 +17,8 @@ import { LanguageSelector } from '../components/common/LanguageSelector';  // ðŸ
 
 const { width, height } = Dimensions.get('window');
 const icon = require('../../assets/lumex.jpeg');  // ðŸ”¥ Ruta corregida
+const isCompactHeight = height < 760;
+const isVeryCompactHeight = height < 690;
 
 export default function WelcomeScreen({ navigation }) {
   const { t } = useTranslation();
@@ -206,15 +208,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   content: {
-    flex: 1,
+    flex: isVeryCompactHeight ? 0.64 : isCompactHeight ? 0.68 : 0.72,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 30,
-    marginTop: 60,
+    marginTop: isVeryCompactHeight ? 18 : isCompactHeight ? 28 : 36,
   },
   logoWrap: {
-    width: 220,
-    height: 220,
+    width: isVeryCompactHeight ? 184 : isCompactHeight ? 200 : 220,
+    height: isVeryCompactHeight ? 184 : isCompactHeight ? 200 : 220,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 12,
@@ -276,7 +278,8 @@ const styles = StyleSheet.create({
   buttonsContainer: {
     width: '100%',
     paddingHorizontal: 24,
-    paddingBottom: 44,
+    marginTop: -18,
+    paddingBottom: isVeryCompactHeight ? 56 : isCompactHeight ? 64 : 72,
     gap: 12,
   },
   accessTitle: {
@@ -306,7 +309,7 @@ const styles = StyleSheet.create({
   },
   accessTitleMain: {
     color: '#15333d',
-    fontSize: 21,
+    fontSize: isCompactHeight ? 19 : 21,
     fontWeight: '700',
     marginBottom: 3,
   },

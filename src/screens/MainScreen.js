@@ -16,12 +16,16 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useCameraPermissions } from 'expo-camera';
+import * as DocumentPicker from 'expo-document-picker';
+import * as FileSystem from 'expo-file-system';
 import { BloodPressureModal } from '../components/health/BloodPressureModal';
 import { HeartRateModal } from '../components/health/HeartRateModal';
 import { LanguageSelector } from '../components/common/LanguageSelector';
 import { storageService } from '../services/storage/storageService';
 
 const icon = require('../../assets/lumex.jpeg');
+const alexPhoto = require('../../assets/Alexander.jpg');
+const lunaPhoto = require('../../assets/luna.jpeg');
 
 const ANALYSIS_TYPES = [
   { value: 'anomalias', label: 'Deteccion de anomalias', icon: 'alert-circle-outline' },
@@ -59,6 +63,8 @@ export default function MainScreen({ navigation }) {
 
   const [datasetName, setDatasetName] = useState('');
   const [datasetContent, setDatasetContent] = useState('');
+  const [selectedCsvMeta, setSelectedCsvMeta] = useState(null);
+  const [isPickingCsv, setIsPickingCsv] = useState(false);
   const [selectedAnalysis, setSelectedAnalysis] = useState('anomalias');
   const [analysisTypeOpen, setAnalysisTypeOpen] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -75,6 +81,7 @@ export default function MainScreen({ navigation }) {
   const [showBloodPressureModal, setShowBloodPressureModal] = useState(false);
   const [showUserMenuModal, setShowUserMenuModal] = useState(false);
   const [showAboutLumexModal, setShowAboutLumexModal] = useState(false);
+  const [showContactModal, setShowContactModal] = useState(false);
   const [isEditingProfile, setIsEditingProfile] = useState(false);
   const [profileAge, setProfileAge] = useState('');
   const [profileAddress, setProfileAddress] = useState('');
@@ -270,7 +277,7 @@ export default function MainScreen({ navigation }) {
     }
 
     if (!datasetContent.trim()) {
-      Alert.alert('Datos requeridos', 'Ingresa el contenido del dataset.');
+      Alert.alert('Datos requeridos', 'Carga un archivo CSV o ingresa el contenido del dataset.');
       return;
     }
 
@@ -284,7 +291,79 @@ export default function MainScreen({ navigation }) {
       );
       setDatasetName('');
       setDatasetContent('');
+      setSelectedCsvMeta(null);
     }, 1800);
+  };
+
+  const formatBytes = (bytes) => {
+    if (!bytes || Number.isNaN(Number(bytes))) return 'Tamano desconocido';
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+  };
+
+  const isCsvAsset = (asset) => {
+    const name = (asset?.name || '').toLowerCase();
+    const mime = (asset?.mimeType || '').toLowerCase();
+    return name.endsWith('.csv') || mime.includes('csv') || mime.includes('comma-separated-values');
+  };
+
+  const pickCsvFromDevice = async () => {
+    if (isPickingCsv) return;
+
+    try {
+      setIsPickingCsv(true);
+
+      const result = await DocumentPicker.getDocumentAsync({
+        type: ['text/csv', 'text/comma-separated-values', 'application/csv', 'application/vnd.ms-excel', 'text/plain'],
+        copyToCacheDirectory: true,
+        multiple: false,
+      });
+
+      if (result.canceled) {
+        return;
+      }
+
+      const asset = result.assets?.[0];
+      if (!asset?.uri) {
+        Alert.alert('Archivo invalido', 'No fue posible leer el archivo seleccionado.');
+        return;
+      }
+
+      if (!isCsvAsset(asset)) {
+        Alert.alert('Formato no valido', 'Selecciona un archivo con extension .csv para continuar.');
+        return;
+      }
+
+      const content = await FileSystem.readAsStringAsync(asset.uri, {
+        encoding: FileSystem.EncodingType.UTF8,
+      });
+
+      if (!content.trim()) {
+        Alert.alert('Archivo vacio', 'El CSV seleccionado no contiene datos.');
+        return;
+      }
+
+      const rows = content
+        .split(/\r?\n/)
+        .filter((line) => line.trim().length > 0).length;
+      const suggestedDatasetName = (asset.name || 'dataset.csv').replace(/\.csv$/i, '').trim() || 'dataset';
+
+      setDatasetName((prev) => (prev.trim() ? prev : suggestedDatasetName));
+      setDatasetContent(content);
+      setSelectedCsvMeta({
+        fileName: asset.name || 'dataset.csv',
+        fileSize: asset.size ?? content.length,
+        rows: Math.max(rows - 1, 0),
+      });
+
+      Alert.alert('Archivo cargado', `${asset.name || 'CSV'} listo para analizar.`);
+    } catch (error) {
+      console.log('Error loading CSV file:', error);
+      Alert.alert('Error', 'No se pudo cargar el archivo CSV desde tu dispositivo.');
+    } finally {
+      setIsPickingCsv(false);
+    }
   };
 
   const openProfileEditor = () => {
@@ -306,6 +385,11 @@ export default function MainScreen({ navigation }) {
   const openAboutFromMenu = () => {
     setShowUserMenuModal(false);
     setShowAboutLumexModal(true);
+  };
+
+  const openContactFromMenu = () => {
+    setShowUserMenuModal(false);
+    setShowContactModal(true);
   };
 
   const saveProfileDetails = async () => {
@@ -351,6 +435,7 @@ export default function MainScreen({ navigation }) {
   };
 
   const loadSample = () => {
+    setSelectedCsvMeta(null);
     setDatasetName('Muestra_Sensores');
     setDatasetContent(
       'timestamp,temperatura,presion,humedad,estado\n' +
@@ -481,7 +566,7 @@ export default function MainScreen({ navigation }) {
     <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <ScrollView style={styles.scroll} contentContainerStyle={styles.tabContent} showsVerticalScrollIndicator={false}>
         <Text style={styles.tabPageTitle}>Ingresar dataset</Text>
-        <Text style={styles.tabPageSub}>Pega o escribe tus datos en formato CSV, JSON o texto separado por comas.</Text>
+        <Text style={styles.tabPageSub}>Selecciona tu archivo CSV guardado en el movil o, si prefieres, pega el contenido manualmente.</Text>
 
         <Text style={styles.fieldLabel}>Nombre del dataset *</Text>
         <View style={styles.inputWrap}>
@@ -533,8 +618,38 @@ export default function MainScreen({ navigation }) {
           </View>
         )}
 
+        <Text style={styles.fieldLabel}>Archivo CSV (recomendado)</Text>
+        <View style={styles.csvPickerCard}>
+          <View style={styles.csvPickerHeader}>
+            <Ionicons name="folder-open-outline" size={18} color={T} />
+            <Text style={styles.csvPickerTitle}>Buscar archivo en mi movil</Text>
+          </View>
+          <Text style={styles.csvPickerSubtext}>Se abriran tus archivos para seleccionar un CSV almacenado en el dispositivo.</Text>
+
+          <TouchableOpacity
+            style={[styles.csvPickerBtn, isPickingCsv && styles.csvPickerBtnDisabled]}
+            onPress={pickCsvFromDevice}
+            disabled={isPickingCsv}
+            activeOpacity={0.85}
+          >
+            <Ionicons name={isPickingCsv ? 'hourglass-outline' : 'search-outline'} size={18} color="#ffffff" />
+            <Text style={styles.csvPickerBtnText}>{isPickingCsv ? 'Buscando archivo...' : 'Buscar CSV en mi movil'}</Text>
+          </TouchableOpacity>
+
+          {selectedCsvMeta && (
+            <View style={styles.csvMetaCard}>
+              <View style={styles.csvMetaRow}>
+                <Ionicons name="document-text-outline" size={16} color={T} />
+                <Text style={styles.csvMetaFileName} numberOfLines={1}>{selectedCsvMeta.fileName}</Text>
+              </View>
+              <Text style={styles.csvMetaText}>Tamano: {formatBytes(selectedCsvMeta.fileSize)}</Text>
+              <Text style={styles.csvMetaText}>Registros detectados: {selectedCsvMeta.rows}</Text>
+            </View>
+          )}
+        </View>
+
         <View style={styles.dataHeaderRow}>
-          <Text style={styles.fieldLabel}>Datos del dataset *</Text>
+          <Text style={styles.fieldLabel}>Contenido del dataset *</Text>
           <TouchableOpacity onPress={loadSample}>
             <Text style={styles.loadSampleText}>Cargar ejemplo</Text>
           </TouchableOpacity>
@@ -555,7 +670,7 @@ export default function MainScreen({ navigation }) {
           />
         </View>
 
-        <Text style={styles.dataHint}>Formatos soportados: CSV, JSON, valores separados por comas.</Text>
+        <Text style={styles.dataHint}>Tip: si seleccionas un CSV, este campo se completa automaticamente para facilitar el analisis.</Text>
 
         <TouchableOpacity
           style={[styles.analyzeBtn, isAnalyzing && styles.analyzeBtnDisabled]}
@@ -716,7 +831,7 @@ export default function MainScreen({ navigation }) {
               }}
               activeOpacity={0.85}
             >
-              <Text style={styles.modalActionBtnSecondaryText}>Cancelar</Text>
+              <Text style={styles.modalActionBtnSecondaryText}>Salir</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -823,7 +938,15 @@ export default function MainScreen({ navigation }) {
               <Ionicons name="people-outline" size={18} color={T} />
               <View style={styles.userMenuItemTextWrap}>
                 <Text style={styles.userMenuItemTitle}>Conocenos</Text>
-                <Text style={styles.userMenuItemDesc}>Sobre Lumex y creadores</Text>
+                <Text style={styles.userMenuItemDesc}>Lumex y desarrolladores</Text>
+              </View>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.userMenuItemCompact} onPress={openContactFromMenu} activeOpacity={0.85}>
+              <Ionicons name="mail-outline" size={18} color={T} />
+              <View style={styles.userMenuItemTextWrap}>
+                <Text style={styles.userMenuItemTitle}>Contactanos</Text>
+                <Text style={styles.userMenuItemDesc}>Envianos un mensaje</Text>
               </View>
             </TouchableOpacity>
 
@@ -845,19 +968,91 @@ export default function MainScreen({ navigation }) {
         </View>
       </Modal>
 
+      <Modal visible={showContactModal} animationType="fade" transparent onRequestClose={() => setShowContactModal(false)}>
+        <View style={styles.userMenuOverlay}>
+          <View style={styles.userMenuCard}>
+            <Text style={styles.userMenuTitle}>Contactanos</Text>
+            <Text style={styles.aboutModalText}>
+              Tienes alguna pregunta, sugerencia o problema? Estamos aqui para ayudarte.
+            </Text>
+            <Text style={styles.aboutModalText}>
+              Correo: soporte@lumex.app{"\n"}WhatsApp: +57 311 466 1605{"\n"}Horario: Lunes a viernes, 8am - 6pm
+            </Text>
+            <TouchableOpacity style={styles.userMenuCloseBtn} onPress={() => setShowContactModal(false)} activeOpacity={0.85}>
+              <Text style={styles.userMenuCloseText}>Cerrar</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
       <Modal visible={showAboutLumexModal} animationType="fade" transparent onRequestClose={() => setShowAboutLumexModal(false)}>
         <View style={styles.userMenuOverlay}>
           <View style={styles.userMenuCard}>
             <Text style={styles.userMenuTitle}>Conocenos</Text>
-            <Text style={styles.aboutModalText}>
-              Lumex es una aplicacion orientada al seguimiento de salud y analisis de datos, disenada para que los usuarios comprendan su estado general de forma simple.
-            </Text>
-            <Text style={styles.aboutModalText}>
-              Creadores y propietarios: Equipo Lumex. Nuestro objetivo es acercar tecnologia de analitica y bienestar a mas personas.
-            </Text>
+            <ScrollView style={styles.aboutModalScroll} showsVerticalScrollIndicator={false}>
+              <Text style={styles.aboutModalText}>
+                LUMEX - Deteccion inteligente de anomalias cardiovasculares
+              </Text>
+              <Text style={styles.aboutModalText}>
+                LUMEX es una aplicacion movil orientada a la deteccion de anomalias cardiovasculares mediante tecnicas de aprendizaje profundo, con proyeccion hacia entornos clinicos y tecnologicos. Su proposito es facilitar la identificacion temprana de alteraciones en variables fisiologicas como la frecuencia cardiaca y la presion arterial, contribuyendo a la prevencion de enfermedades y al monitoreo continuo de la salud.
+              </Text>
+              <Text style={styles.aboutModalText}>
+                El objetivo principal de LUMEX es mejorar la deteccion oportuna de anomalias en datos biomedicos, permitiendo identificar desviaciones en los signos vitales antes de que evolucionen en condiciones criticas. A traves del analisis inteligente de patrones, la aplicacion fortalece el seguimiento de pacientes, optimiza la gestion de datos sensibles y apoya la toma de decisiones medicas mediante la generacion de alertas automatizadas basadas en comportamientos anomalos.
+              </Text>
+              <Text style={styles.aboutModalText}>
+                La aplicacion permite recibir y almacenar datos provenientes de dispositivos moviles, sensores o tensiometros digitales. Posteriormente, estos datos son procesados por modelos de aprendizaje profundo previamente entrenados, los cuales calculan el grado de anomalia asociado a cada registro. Los resultados se presentan de forma clara, interpretativa y accesible, facilitando la comprension tanto para usuarios como para profesionales de la salud.
+              </Text>
+              <Text style={styles.aboutModalText}>
+                En el contexto cardiovascular, LUMEX puede identificar irregularidades como:{'\n'}
+                - Alteraciones en la frecuencia cardiaca (taquicardia o bradicardia){'\n'}
+                - Posibles episodios de hipertension o hipotension{'\n'}
+                - Patrones anomalos en el comportamiento del pulso{'\n'}
+                - Variaciones inusuales en series de datos fisiologicos
+              </Text>
+              <Text style={styles.aboutModalText}>
+                El problema que aborda LUMEX radica en la dificultad de detectar comportamientos atipicos dentro de grandes volumenes de datos biomedicos, especialmente cuando no se dispone de informacion previamente etiquetada. En el ambito clinico, una anomalia no detectada a tiempo puede representar un riesgo significativo para la salud del paciente. Estas anomalias pueden originarse por errores en la medicion, fallas en dispositivos o cambios fisiologicos relevantes que requieren atencion inmediata.
+              </Text>
+              <Text style={styles.aboutModalText}>
+                De esta manera, LUMEX se consolida como una herramienta innovadora que integra tecnologia y salud, permitiendo un monitoreo continuo, inteligente y preventivo de anomalias cardiovasculares, reduciendo riesgos y mejorando la calidad de vida de los usuarios.
+              </Text>
+              <Text style={styles.aboutModalText}>
+                Desarrolladores{"\n"}
+                Equipo desarrollador de LUMEX
+              </Text>
+              <View style={styles.aboutTeamSection}>
+                <View style={styles.aboutTeamCard}>
+                  <View style={styles.aboutTeamPhotoFrame}>
+                    <Image source={lunaPhoto} style={styles.aboutTeamPhoto} resizeMode="contain" />
+                  </View>
+                  <View style={styles.aboutTeamInfo}>
+                    <Text style={styles.aboutTeamName}>Luna Tatiana Riveros Rodriguez</Text>
+                    <Text style={styles.aboutTeamRole}>Ingeniera de Software</Text>
+                  </View>
+                </View>
+
+                <View style={styles.aboutTeamCard}>
+                  <View style={styles.aboutTeamPhotoFrame}>
+                    <Image source={alexPhoto} style={styles.aboutTeamPhoto} resizeMode="contain" />
+                  </View>
+                  <View style={styles.aboutTeamInfo}>
+                    <Text style={styles.aboutTeamName}>Alexander Higuera Paz</Text>
+                    <Text style={styles.aboutTeamRole}>Ingeniero de Software</Text>
+                  </View>
+                </View>
+              </View>
+              <Text style={styles.aboutModalText}>
+                Luna Tatiana Riveros Rodriguez y Alexander Higuera Paz son estudiantes de Ingenieria de Software enfocados en el desarrollo de soluciones tecnologicas innovadoras orientadas al area de la salud.
+              </Text>
+              <Text style={styles.aboutModalText}>
+                Ambos han trabajado en la creacion de LUMEX, una aplicacion movil que emplea aprendizaje profundo para la deteccion de anomalias cardiovasculares, con el proposito de contribuir a la prevencion y monitoreo temprano de posibles riesgos en los signos vitales.
+              </Text>
+              <Text style={styles.aboutModalText}>
+                Su trabajo se caracteriza por la integracion de conocimientos en programacion, analisis de datos y desarrollo de aplicaciones, buscando generar herramientas accesibles, eficientes y con impacto en entornos clinicos y tecnologicos.
+              </Text>
+            </ScrollView>
 
             <TouchableOpacity style={styles.userMenuCloseBtn} onPress={() => setShowAboutLumexModal(false)} activeOpacity={0.85}>
-              <Text style={styles.userMenuCloseText}>Entendido</Text>
+              <Text style={styles.userMenuCloseText}>Salir</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -1020,6 +1215,55 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     marginBottom: 10,
   },
+  aboutModalScroll: {
+    maxHeight: 420,
+  },
+  aboutTeamSection: {
+    marginBottom: 8,
+  },
+  aboutTeamCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f4fafc',
+    borderWidth: 1,
+    borderColor: '#d6e7ee',
+    borderRadius: 14,
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    marginBottom: 8,
+  },
+  aboutTeamPhotoFrame: {
+    width: 86,
+    height: 86,
+    borderRadius: 43,
+    overflow: 'hidden',
+    borderWidth: 2,
+    borderColor: '#b9d6e2',
+    backgroundColor: '#f3f8fb',
+    shadowColor: '#0f6d78',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.16,
+    shadowRadius: 7,
+    elevation: 4,
+  },
+  aboutTeamPhoto: {
+    width: '100%',
+    height: '100%',
+  },
+  aboutTeamInfo: {
+    flex: 1,
+    marginLeft: 12,
+  },
+  aboutTeamName: {
+    color: '#173746',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  aboutTeamRole: {
+    color: '#5f7e8c',
+    fontSize: 12,
+    marginTop: 2,
+  },
   contentArea: { flex: 1, overflow: 'hidden' },
   tabContent: { paddingHorizontal: 18, paddingTop: 20, paddingBottom: 30 },
   tabPageTitle: { fontSize: 20, fontWeight: '700', color: '#15333d', marginBottom: 4 },
@@ -1166,6 +1410,73 @@ const styles = StyleSheet.create({
   dropdownItemTextActive: { color: T, fontWeight: '600' },
   dataHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 14, marginBottom: 6 },
   loadSampleText: { fontSize: 13, color: T, fontWeight: '600' },
+  csvPickerCard: {
+    backgroundColor: '#ffffff',
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#d6e7ee',
+    padding: 12,
+  },
+  csvPickerHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  csvPickerTitle: {
+    color: '#173746',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  csvPickerSubtext: {
+    color: '#587886',
+    fontSize: 12,
+    lineHeight: 18,
+    marginTop: 6,
+    marginBottom: 10,
+  },
+  csvPickerBtn: {
+    backgroundColor: '#2f7a96',
+    borderRadius: 10,
+    paddingVertical: 11,
+    paddingHorizontal: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  csvPickerBtnDisabled: {
+    backgroundColor: '#7ab5bb',
+  },
+  csvPickerBtnText: {
+    color: '#ffffff',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  csvMetaCard: {
+    marginTop: 10,
+    backgroundColor: '#f3fafc',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#deedf3',
+    paddingVertical: 10,
+    paddingHorizontal: 10,
+    gap: 3,
+  },
+  csvMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  csvMetaFileName: {
+    flex: 1,
+    color: '#2d5b6d',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  csvMetaText: {
+    color: '#587886',
+    fontSize: 12,
+  },
   dataTextAreaWrap: {
     backgroundColor: '#f4fbfb',
     borderRadius: 12,

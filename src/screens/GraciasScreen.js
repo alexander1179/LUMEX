@@ -36,8 +36,7 @@ export default function GraciasScreen({ navigation }) {
         onPress={() => navigation.replace("Privacy")}
         activeOpacity={0.85}
       >
-        <Text style={styles.backButtonText}>{t('common.back')}</Text>
-        <Ionicons name="chevron-forward" size={18} color="#0f6d78" />
+        <Text style={styles.backButtonText}>Volver</Text>
       </TouchableOpacity>
 
       <StatusBar barStyle="dark-content" backgroundColor="#eaf6f5" />
@@ -144,20 +143,19 @@ const styles = StyleSheet.create({
   },
   backButton: {
     width: '100%',
-    maxWidth: 340,
+    maxWidth: 180,
     backgroundColor: 'rgba(255,255,255,0.82)',
-    borderRadius: 26,
+    borderRadius: 22,
     borderWidth: 1,
     borderColor: 'rgba(15, 109, 120, 0.22)',
-    paddingVertical: 14,
+    paddingVertical: 11,
     paddingHorizontal: 18,
-    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    justifyContent: 'center',
   },
   backButtonText: {
     color: '#0f6d78',
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '700',
   },
 });

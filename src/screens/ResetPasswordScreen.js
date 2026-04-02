@@ -14,6 +14,7 @@ import { validators } from '../utils/validators';
 import { CustomButton } from '../components/common/CustomButton';
 import { PasswordRequirements } from '../components/auth/PasswordRequirements';
 import { LanguageSelector } from '../components/common/LanguageSelector';
+import { AccessQuickNav } from '../components/common/AccessQuickNav';
 
 export default function ResetPasswordScreen({ route, navigation }) {
   const { t } = useTranslation();
@@ -120,6 +121,8 @@ export default function ResetPasswordScreen({ route, navigation }) {
           disabled={loading}
         />
       </View>
+
+      <AccessQuickNav navigation={navigation} current="usuario" />
     </View>
   );
 }
@@ -130,6 +133,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primary,
     alignItems: "center",
     paddingTop: 60,
+    paddingBottom: 100,
   },
   header: {
     position: 'absolute',

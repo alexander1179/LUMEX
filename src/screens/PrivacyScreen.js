@@ -16,6 +16,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { storageService } from '../services/storage/storageService';
 import { loadSavedLanguage } from '../i18n';
 import { LanguageSelector } from '../components/common/LanguageSelector';
+import { AccessQuickNav } from '../components/common/AccessQuickNav';
 import { colors } from '../styles/colors';
 
 const icon = require('../../assets/lumex.jpeg');
@@ -71,6 +72,7 @@ export default function PrivacyScreen({ navigation }) {
   };
 
   return (
+    <View style={styles.screen}>
     <ScrollView 
       style={styles.container}
       contentContainerStyle={styles.contentContainer}
@@ -697,7 +699,7 @@ export default function PrivacyScreen({ navigation }) {
             { backgroundColor: isChecked ? "#0f6d78" : "#c8d8dc" }
           ]}
           disabled={!isChecked}
-          onPress={() => navigation.replace("Login")}
+          onPress={() => navigation.replace("Register")}
         >
           <Text style={styles.acceptButtonText}>{t('privacy.acceptButton')}</Text>
         </TouchableOpacity>
@@ -714,16 +716,22 @@ export default function PrivacyScreen({ navigation }) {
         {t('privacy.version')}
       </Text>
     </ScrollView>
+      <AccessQuickNav navigation={navigation} current="usuario" />
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
+  screen: {
+    flex: 1,
+    backgroundColor: "#eaf6f5",
+  },
   container: {
     flex: 1,
     backgroundColor: "#eaf6f5",
   },
   contentContainer: {
-    paddingBottom: 12,
+    paddingBottom: 110,
   },
   header: {
     backgroundColor: "#dff2f0",

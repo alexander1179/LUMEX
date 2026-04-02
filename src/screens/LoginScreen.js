@@ -19,6 +19,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../styles/colors';
 import { CustomButton } from '../components/common/CustomButton';
 import { LanguageSelector } from '../components/common/LanguageSelector';
+import { AccessQuickNav } from '../components/common/AccessQuickNav';
 import { loginUser, acceptSecurityTerms } from '../services/supabase/authService';
 import { storageService } from '../services/storage/storageService';
 import { supabase } from '../services/supabase/supabaseClient';
@@ -145,23 +146,33 @@ export default function LoginScreen({ navigation, route }) {
       {!isAdminAccess && <View style={styles.bgBlobBottom} />}
 
       <View style={styles.header} pointerEvents="box-none">
-        <TouchableOpacity 
-          style={[styles.backButton, { backgroundColor: isAdminAccess ? adminTheme.backButton : userTheme.backButton }]}
-          onPress={() => navigation.replace(isAdminAccess ? "RoleSelect" : "Welcome")}
-          activeOpacity={0.7}
-        >
-          <Text style={[styles.backButtonText, { color: isAdminAccess ? adminTheme.backIcon : userTheme.backIcon }]}>←</Text>
-        </TouchableOpacity>
-        <LanguageSelector />
+        {isAdminAccess ? (
+          <TouchableOpacity 
+            style={[styles.backButton, styles.backButtonAdmin, { backgroundColor: adminTheme.backButton }]}
+            onPress={() => navigation.replace("RoleSelect")}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="chevron-back-outline" size={22} color={adminTheme.backIcon} />
+          </TouchableOpacity>
+        ) : (
+          <View style={styles.headerSpacer} />
+        )}
+        <View style={[styles.languageWrap, isAdminAccess ? styles.languageWrapAdmin : styles.languageWrapUser]}>
+          <LanguageSelector style={styles.languageSelectorButton} />
+        </View>
       </View>
 
       <ScrollView 
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={[
+          styles.scrollContent,
+          styles.scrollContentWithNav,
+          isAdminAccess && styles.scrollContentAdmin,
+        ]}
         scrollEventThrottle={16}
       >
         {isAdminAccess ? (
-          <View style={[styles.logoShell, styles.logoShellAdmin]}>
+          <View style={[styles.logoShell, styles.logoShellAdmin, styles.logoShellAdminPosition]}>
             <View style={[styles.logoContour, styles.logoContourAdmin]}>
               <Image source={icon} style={[styles.logo, styles.adminLogo]} />
             </View>
@@ -206,6 +217,7 @@ export default function LoginScreen({ navigation, route }) {
               shadowOpacity: isAdminAccess ? 0.08 : 0.16,
               elevation: isAdminAccess ? 4 : 6,
             },
+            isAdminAccess && styles.adminCard,
             !isAdminAccess && styles.userCard,
             !isAdminAccess && {
               opacity: userFadeAnim,
@@ -282,12 +294,6 @@ export default function LoginScreen({ navigation, route }) {
 
           {!isAdminAccess && (
             <>
-              <Text style={styles.divider}>──────── o ────────</Text>
-
-              <TouchableOpacity onPress={() => navigation.navigate("Register") }>
-                <Text style={styles.register}>{t('login.noAccount')}</Text>
-              </TouchableOpacity>
-
               <TouchableOpacity 
                 style={styles.testBtn}
                 onPress={() => navigation.navigate("TestRegistro")}
@@ -300,6 +306,8 @@ export default function LoginScreen({ navigation, route }) {
         </Animated.View>
       </ScrollView>
 
+      <AccessQuickNav navigation={navigation} current={isAdminAccess ? 'admin' : 'usuario'} />
+
       <StatusBar style="dark" />
     </View>
   );
@@ -311,9 +319,18 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   scrollContent: {
+    flexGrow: 1,
     paddingTop: 100,
     paddingBottom: 30,
     alignItems: 'center',
+  },
+  scrollContentWithNav: {
+    paddingBottom: 126,
+  },
+  scrollContentAdmin: {
+    justifyContent: 'center',
+    paddingTop: 118,
+    paddingBottom: 150,
   },
   bgBlobTop: {
     position: 'absolute',
@@ -344,7 +361,7 @@ const styles = StyleSheet.create({
   },
   header: {
     position: 'absolute',
-    top: 10,
+    top: 12,
     left: 0,
     right: 0,
     flexDirection: 'row',
@@ -361,10 +378,43 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
+  backButtonAdmin: {
+    marginTop: 34,
+  },
   backButtonText: {
     color: 'white',
     fontSize: 24,
     fontWeight: 'bold',
+  },
+  headerSpacer: {
+    width: 40,
+    height: 40,
+  },
+  languageWrap: {
+    minHeight: 40,
+    justifyContent: 'center',
+  },
+  languageWrapAdmin: {
+    marginTop: 34,
+  },
+  languageWrapUser: {
+    backgroundColor: 'transparent',
+    borderRadius: 0,
+    paddingHorizontal: 0,
+    paddingVertical: 0,
+    marginTop: 34,
+    marginRight: 4,
+    borderWidth: 0,
+    shadowOpacity: 0,
+    shadowRadius: 0,
+    elevation: 0,
+  },
+  languageSelectorButton: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    marginRight: 0,
+    backgroundColor: 'rgba(15,109,120,0.12)',
   },
   logo: {
     width: 330,
@@ -377,6 +427,10 @@ const styles = StyleSheet.create({
     borderRadius: 40,
     padding: 3,
     backgroundColor: '#cde9e5',
+  },
+  logoShellAdminPosition: {
+    marginTop: 0,
+    marginBottom: 18,
   },
   logoShellUser: {
     backgroundColor: 'rgba(15,109,120,0.14)',
@@ -399,32 +453,32 @@ const styles = StyleSheet.create({
     opacity: 0.9,
   },
   userLogoWrap: {
-    width: 160,
-    height: 160,
+    width: 194,
+    height: 194,
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: 20,
-    marginBottom: 8,
+    marginTop: 18,
+    marginBottom: 10,
     position: 'relative',
   },
   userLogoGlowLarge: {
     position: 'absolute',
-    width: 150,
-    height: 150,
-    borderRadius: 75,
+    width: 184,
+    height: 184,
+    borderRadius: 92,
     backgroundColor: 'rgba(15, 109, 120, 0.08)',
   },
   userLogoGlowSmall: {
     position: 'absolute',
-    width: 106,
-    height: 106,
-    borderRadius: 53,
+    width: 136,
+    height: 136,
+    borderRadius: 68,
     backgroundColor: 'rgba(15, 109, 120, 0.15)',
   },
   userLogoFrame: {
-    width: 90,
-    height: 90,
-    borderRadius: 45,
+    width: 112,
+    height: 112,
+    borderRadius: 56,
     overflow: 'hidden',
     backgroundColor: 'rgba(255,255,255,0.92)',
     shadowColor: '#0f6d78',
@@ -443,6 +497,7 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '700',
     letterSpacing: 0.2,
+    textAlign: 'center',
   },
   userIntroText: {
     color: '#4d6970',
@@ -470,10 +525,15 @@ const styles = StyleSheet.create({
     paddingTop: 18,
     paddingBottom: 14,
   },
+  adminCard: {
+    marginTop: 10,
+    width: '88%',
+  },
   adminCaption: {
     fontSize: 13,
     lineHeight: 18,
     marginBottom: 12,
+    textAlign: 'center',
   },
   input: {
     padding: 12,

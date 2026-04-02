@@ -12,6 +12,7 @@ import { forgotPassword } from '../services/supabase/authService';
 import { colors } from '../styles/colors';
 import { CustomButton } from '../components/common/CustomButton';
 import { LanguageSelector } from '../components/common/LanguageSelector';
+import { AccessQuickNav } from '../components/common/AccessQuickNav';
 
 export default function ForgotPasswordScreen({ navigation }) {
   const { t } = useTranslation();
@@ -124,6 +125,8 @@ export default function ForgotPasswordScreen({ navigation }) {
           </Text>
         </TouchableOpacity>
       </View>
+
+      <AccessQuickNav navigation={navigation} current="usuario" />
     </View>
   );
 }
@@ -134,6 +137,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primary,
     alignItems: "center",
     paddingTop: 60,
+    paddingBottom: 100,
   },
   header: {
     position: 'absolute',

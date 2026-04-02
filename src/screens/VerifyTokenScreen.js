@@ -13,6 +13,7 @@ import { colors } from '../styles/colors';
 import { useCountdown } from '../hooks/useCountdown';
 import { CustomButton } from '../components/common/CustomButton';
 import { LanguageSelector } from '../components/common/LanguageSelector';
+import { AccessQuickNav } from '../components/common/AccessQuickNav';
 import { AUTH_CONFIG } from '../config/authConfig';
 
 const MAX_ATTEMPTS = 5;
@@ -152,6 +153,8 @@ export default function VerifyTokenScreen({ route, navigation }) {
           disabled={loading || resendLoading || timeLeft === 0 || attempts >= MAX_ATTEMPTS}
         />
       </View>
+
+      <AccessQuickNav navigation={navigation} current="usuario" />
     </View>
   );
 }
@@ -162,6 +165,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primary,
     alignItems: "center",
     paddingTop: 60,
+    paddingBottom: 100,
   },
   header: {
     position: 'absolute',

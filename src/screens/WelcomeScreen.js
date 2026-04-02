@@ -14,7 +14,6 @@ import { useTranslation } from 'react-i18next';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../styles/colors';
 import { LanguageSelector } from '../components/common/LanguageSelector';  // 🔥 Ruta corregida
-import { ThemeToggle } from '../components/common/ThemeToggle';  // 🔥 Ruta corregida
 
 const { width, height } = Dimensions.get('window');
 const icon = require('../../assets/lumex.jpeg');  // 🔥 Ruta corregida
@@ -58,7 +57,6 @@ export default function WelcomeScreen({ navigation }) {
       {/* Header con selectores */}
       <View style={styles.header}>
         <View style={styles.headerRight}>
-          <ThemeToggle />
           <LanguageSelector />
         </View>
       </View>

@@ -1,7 +1,6 @@
 // src/screens/RegisterScreen.js
 import React, { useState, useRef, useEffect } from 'react';
 import {
-  ScrollView,
   Text,
   TextInput,
   TouchableOpacity,
@@ -20,6 +19,7 @@ import { validators } from '../utils/validators';
 import { CustomButton } from '../components/common/CustomButton';
 import { PasswordRequirements } from '../components/auth/PasswordRequirements';
 import { LanguageSelector } from '../components/common/LanguageSelector';
+import { AccessQuickNav } from '../components/common/AccessQuickNav';
 import { registerUser } from '../services/supabase/authService';
 
 const { width, height } = Dimensions.get('window');
@@ -135,7 +135,7 @@ export default function RegisterScreen({ navigation }) {
         Alert.alert(
           "✅ Registro exitoso",
           result.message || "Usuario registrado correctamente. Ahora puedes iniciar sesión.",
-          [{ text: "OK", onPress: () => navigation.replace("Login") }]
+          [{ text: "OK", onPress: () => navigation.replace("Login", { role: 'usuario' }) }]
         );
       } else {
         Alert.alert('Error', result.message);
@@ -157,20 +157,18 @@ export default function RegisterScreen({ navigation }) {
 
       <View style={styles.header} pointerEvents="box-none">
         <TouchableOpacity 
-          style={[styles.backButton, { backgroundColor: 'rgba(255, 255, 255, 0.8)' }]}
+          style={[styles.backButton, styles.backButtonTop, { backgroundColor: 'rgba(255, 255, 255, 0.8)' }]}
           onPress={() => navigation.goBack()}
           activeOpacity={0.7}
         >
-          <Text style={[styles.backButtonText, { color: theme.accent }]}>←</Text>
+          <Ionicons name="chevron-back-outline" size={22} color={theme.accent} />
         </TouchableOpacity>
-        <LanguageSelector />
+        <View style={styles.languageWrapTop}>
+          <LanguageSelector style={styles.languageSelectorButton} />
+        </View>
       </View>
 
-      <ScrollView 
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={styles.scrollContent}
-        scrollEventThrottle={16}
-      >
+      <View style={styles.scrollContent}>
         <Animated.View
           style={[
             styles.logoWrap,
@@ -312,14 +310,15 @@ export default function RegisterScreen({ navigation }) {
 
           <TouchableOpacity 
             style={styles.loginLink} 
-            onPress={() => navigation.replace("Login")}
+            onPress={() => navigation.replace("Login", { role: 'usuario' })}
           >
             <Text style={[styles.loginText, { color: theme.accent }]}>
               {t('register.haveAccount')}
             </Text>
           </TouchableOpacity>
         </Animated.View>
-      </ScrollView>
+      </View>
+      <AccessQuickNav navigation={navigation} current="usuario" />
     </View>
   );
 }
@@ -329,9 +328,11 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
-    paddingTop: 70,
-    paddingBottom: 16,
+    flex: 1,
+    paddingTop: 82,
+    paddingBottom: 142,
     alignItems: 'center',
+    justifyContent: 'center',
   },
   bgBlobTop: {
     position: 'absolute',
@@ -378,9 +379,24 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
+  backButtonTop: {
+    marginTop: 34,
+  },
   backButtonText: {
     fontSize: 22,
     fontWeight: 'bold',
+  },
+  languageWrapTop: {
+    marginTop: 34,
+    minHeight: 40,
+    justifyContent: 'center',
+  },
+  languageSelectorButton: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    marginRight: 0,
+    backgroundColor: 'rgba(15,109,120,0.12)',
   },
   logoWrap: {
     width: 136,

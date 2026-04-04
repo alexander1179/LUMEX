@@ -207,6 +207,15 @@ export default function LoginScreen({ navigation, route }) {
         {!isAdminAccess && (
           <Animated.Text style={[styles.userIntroText, { opacity: userFadeAnim }]}>Ingresa con tus credenciales para continuar en un entorno seguro de salud.</Animated.Text>
         )}
+        {isAdminAccess && (
+          <View style={styles.adminOnlyBanner}>
+            <Ionicons name="shield-checkmark-outline" size={16} color="#b45309" style={{ marginRight: 6 }} />
+            <Text style={styles.adminOnlyBannerText}>
+              Acceso exclusivo para administradores. Si eres usuario regular, regresa y selecciona{' '}
+              <Text style={styles.adminOnlyBannerBold}>Acceso de usuario</Text>.
+            </Text>
+          </View>
+        )}
 
         <Animated.View
           style={[
@@ -528,6 +537,28 @@ const styles = StyleSheet.create({
   adminCard: {
     marginTop: 10,
     width: '88%',
+  },
+  adminOnlyBanner: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    backgroundColor: '#fef3c7',
+    borderWidth: 1,
+    borderColor: '#fbbf24',
+    borderRadius: 10,
+    paddingVertical: 9,
+    paddingHorizontal: 13,
+    marginBottom: 14,
+    width: '88%',
+  },
+  adminOnlyBannerText: {
+    flex: 1,
+    fontSize: 12.5,
+    lineHeight: 18,
+    color: '#92400e',
+  },
+  adminOnlyBannerBold: {
+    fontWeight: '700',
+    color: '#78350f',
   },
   adminCaption: {
     fontSize: 13,

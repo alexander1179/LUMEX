@@ -142,16 +142,17 @@ export const loginUser = async (identifier, password, acceptTermsIfNeeded = fals
     if (searchError) throw searchError;
     if (!userData) return { success: false, message: 'Usuario no encontrado' };
 
-    if (isUserBlocked(userData)) {
-      return { success: false, message: BLOCKED_LOGIN_MESSAGE };
-    }
-
+    // Verificar rol ANTES de verificar bloqueo para no revelar estado de la cuenta
     if (requiredRole === 'admin' && !isAdminRole(userData.rol)) {
-      return { success: false, message: 'Este acceso es solo para administradores.' };
+      return { success: false, message: 'Este login es exclusivo para administradores. Por favor ingresa desde Acceso de usuario.' };
     }
 
     if (requiredRole === 'usuario' && isAdminRole(userData.rol)) {
       return { success: false, message: 'Este acceso es solo para usuarios.' };
+    }
+
+    if (isUserBlocked(userData)) {
+      return { success: false, message: BLOCKED_LOGIN_MESSAGE };
     }
 
     // Migración: usuarios registrados previamente con Supabase Auth

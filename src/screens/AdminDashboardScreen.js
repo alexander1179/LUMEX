@@ -9,6 +9,7 @@ import {
   Modal,
   TextInput,
   Alert,
+  Keyboard,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
@@ -98,6 +99,10 @@ export default function AdminDashboardScreen({ navigation }) {
   const [savingEdit, setSavingEdit] = useState(false);
   const [activityRows, setActivityRows] = useState([]);
   const [loadingActivity, setLoadingActivity] = useState(false);
+  const [activityUserFilter, setActivityUserFilter] = useState('');
+  const [selectedActivityUser, setSelectedActivityUser] = useState('');
+  const [selectedActivityReportId, setSelectedActivityReportId] = useState(null);
+  const [showActivityReportDetailModal, setShowActivityReportDetailModal] = useState(false);
   const [showReportesModal, setShowReportesModal] = useState(false);
   const [reporteTipo, setReporteTipo] = useState(null);
   const [reporteFormato, setReporteFormato] = useState(null);
@@ -127,6 +132,53 @@ export default function AdminDashboardScreen({ navigation }) {
     const m = String(date.getMonth() + 1).padStart(2, '0');
     const y = date.getFullYear();
     return `${d}/${m}/${y}`;
+  };
+
+  const formatDateTime = (value) => {
+    if (!value) return 'Sin datos';
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) return String(value);
+    return parsed.toLocaleString('es-ES', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  };
+
+  const normalizeUserKey = (value) => {
+    if (value === null || value === undefined) return '';
+    const raw = String(value).trim();
+    if (!raw) return '';
+    const asNumber = Number(raw);
+    if (Number.isFinite(asNumber)) return String(asNumber);
+    return raw.toLowerCase();
+  };
+
+  const formatUserDisplayLabel = (value, fallback = 'Usuario') => {
+    const raw = String(value || '').trim();
+    if (!raw) return fallback;
+    if (raw.includes('@')) return raw.toLowerCase();
+    return raw
+      .toLowerCase()
+      .split(/\s+/)
+      .filter(Boolean)
+      .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+      .join(' ');
+  };
+
+  const resolveAnalysisTypeLabel = (modelRow) => {
+    const tipoModelo = String(modelRow?.tipo_modelo || '').toLowerCase();
+    const descripcion = String(modelRow?.descripcion || '').toLowerCase();
+    const nombreModelo = String(modelRow?.nombre_modelo || '').toLowerCase();
+    const combined = `${tipoModelo} ${descripcion} ${nombreModelo}`;
+
+    if (combined.includes('anomalia') || combined.includes('anomaly')) return 'Detección de anomalías';
+    if (combined.includes('clustering') || combined.includes('kmeans')) return 'Clustering';
+    if (combined.includes('regresion') || combined.includes('regression')) return 'Regresión';
+    if (combined.includes('clasificacion') || combined.includes('classification')) return 'Clasificación';
+    return 'Análisis de dataset';
   };
 
   const resetCreateForm = () => {
@@ -456,25 +508,79 @@ export default function AdminDashboardScreen({ navigation }) {
   const loadUserActivity = async () => {
     setLoadingActivity(true);
     try {
-      // Si existe tabla de actividad, mostramos registros reales.
-      const { data, error } = await supabase
-        .from('actividad_usuarios')
-        .select('*')
-        .order('created_at', { ascending: false })
-        .limit(30);
+      const { data: usersData } = await supabase
+        .from('usuarios')
+        .select('id_usuario, id, uuid, user_id, nombre, usuario, email')
+        .limit(500);
+
+      const userById = new Map();
+      for (const user of usersData || []) {
+        const label = formatUserDisplayLabel(user?.nombre || user?.usuario || user?.email, 'Usuario');
+        const ids = [user?.id_usuario, user?.id, user?.uuid, user?.user_id];
+        for (const id of ids) {
+          const key = normalizeUserKey(id);
+          if (key) {
+            userById.set(key, label);
+          }
+        }
+      }
+
+      // Fallback con usuarios ya cargados en el panel para evitar casos "Usuario ID X" cuando sí existe nombre.
+      for (const user of usuarios || []) {
+        const label = formatUserDisplayLabel(user?.nombre || user?.usuario || user?.email, 'Usuario');
+        const key = normalizeUserKey(getUserId(user));
+        if (key && !userById.has(key)) {
+          userById.set(key, label);
+        }
+      }
+
+      let analysisResult = await supabase
+        .from('analisis')
+        .select('id_analisis, id_usuario, id_dataset, fecha_analisis, total_registros, total_anomalias, datasets(nombre_archivo), modelos(tipo_modelo,descripcion,nombre_modelo)')
+        .order('fecha_analisis', { ascending: false })
+        .limit(40);
+
+      if (analysisResult.error) {
+        analysisResult = await supabase
+          .from('analisis')
+          .select('id_analisis, id_usuario, id_dataset, fecha_analisis, total_registros, total_anomalias')
+          .order('fecha_analisis', { ascending: false })
+          .limit(40);
+      }
+
+      const { data, error } = analysisResult;
 
       if (error || !Array.isArray(data)) {
         setActivityRows([]);
         return;
       }
 
-      const mapped = data.map((row, idx) => ({
-        id: row.id || row.id_actividad || idx,
-        quien: row.quien_ingreso || row.usuario || row.email || row.user_name || 'Sin datos',
-        consultas: row.consultas_realizadas || row.consulta || row.accion || row.activity || 'Sin datos',
-        datosSubio: row.datos_subio || row.datos_subidos || row.data_uploaded || 'Sin datos',
-        fechaHora: row.fecha_hora || row.created_at || row.timestamp || 'Sin datos',
-      }));
+      const mapped = data.map((row, idx) => {
+        const totalRegistros = Number(row?.total_registros || 0);
+        const totalAnomalias = Number(row?.total_anomalias || 0);
+        const tasa = totalRegistros > 0 ? `${((totalAnomalias / totalRegistros) * 100).toFixed(1)}%` : '0.0%';
+        const datasetName = row?.datasets?.nombre_archivo || `dataset_${row?.id_dataset || row?.id_analisis || idx}`;
+        const analysisLabel = resolveAnalysisTypeLabel(row?.modelos);
+        const userKey = normalizeUserKey(row?.id_usuario);
+        const userLabel = userById.get(userKey) || `Usuario ID ${row?.id_usuario || 'N/D'}`;
+
+        return {
+          id: row?.id_analisis || idx,
+          idAnalisis: row?.id_analisis || idx,
+          idDataset: row?.id_dataset || null,
+          quienKey: userKey || `unknown-${idx}`,
+          quien: formatUserDisplayLabel(userLabel, 'Usuario'),
+          analysisType: analysisLabel,
+          consultas: `${analysisLabel} | ID análisis #${row?.id_analisis || 'N/D'}`,
+          datasetName,
+          datosSubio: `${datasetName} · Registros: ${totalRegistros} · Anomalías: ${totalAnomalias} · Tasa: ${tasa}`,
+          totalRegistros,
+          totalAnomalias,
+          tasa,
+          fechaRaw: row?.fecha_analisis || null,
+          fechaHora: formatDateTime(row?.fecha_analisis),
+        };
+      });
 
       setActivityRows(mapped);
     } catch {
@@ -483,6 +589,61 @@ export default function AdminDashboardScreen({ navigation }) {
       setLoadingActivity(false);
     }
   };
+
+  const normalizedActivityUserFilter = activityUserFilter.trim().toLowerCase();
+  const activityUsersByKey = new Map();
+
+  for (const user of usuarios || []) {
+    const key = normalizeUserKey(getUserId(user));
+    if (!key) continue;
+    const label = formatUserDisplayLabel(user?.nombre || user?.usuario || user?.email, `Usuario ID ${key}`);
+    activityUsersByKey.set(key, { key, label });
+  }
+
+  for (const row of activityRows || []) {
+    const key = normalizeUserKey(row?.quienKey);
+    if (!key) continue;
+    const label = formatUserDisplayLabel(row?.quien, `Usuario ID ${key}`);
+    const prev = activityUsersByKey.get(key);
+    if (!prev || String(prev.label).startsWith('Usuario ID')) {
+      activityUsersByKey.set(key, { key, label });
+    }
+  }
+
+  const activityReportCountByUserKey = new Map();
+  for (const row of activityRows || []) {
+    const key = normalizeUserKey(row?.quienKey);
+    if (!key) continue;
+    activityReportCountByUserKey.set(key, (activityReportCountByUserKey.get(key) || 0) + 1);
+  }
+
+  const activityUserOptions = Array.from(activityUsersByKey.values())
+    .map((u) => ({ ...u, reportCount: activityReportCountByUserKey.get(u.key) || 0 }))
+    .sort((a, b) =>
+    String(a.label).localeCompare(String(b.label), 'es', { sensitivity: 'base' })
+  );
+
+  const filteredActivityUsers = normalizedActivityUserFilter
+    ? activityUserOptions.filter((user) =>
+        String(user.label).toLowerCase().includes(normalizedActivityUserFilter) || String(user.key).includes(normalizedActivityUserFilter)
+      )
+    : activityUserOptions;
+
+  const selectedActivityRows = selectedActivityUser
+    ? activityRows
+        .filter((row) => normalizeUserKey(row?.quienKey) === selectedActivityUser)
+        .sort((a, b) => {
+          const timeA = a?.fechaRaw ? new Date(a.fechaRaw).getTime() : 0;
+          const timeB = b?.fechaRaw ? new Date(b.fechaRaw).getTime() : 0;
+          return timeA - timeB;
+        })
+    : [];
+
+  const selectedActivityReport = selectedActivityRows.find((row) => String(row?.id) === String(selectedActivityReportId)) || null;
+
+  const selectedActivityUserLabel = filteredActivityUsers.find((u) => u.key === selectedActivityUser)?.label
+    || activityUserOptions.find((u) => u.key === selectedActivityUser)?.label
+    || '';
 
   const loadSystemAlerts = async () => {
     setLoadingAlerts(true);
@@ -898,6 +1059,10 @@ export default function AdminDashboardScreen({ navigation }) {
             style={styles.quickItem}
             activeOpacity={0.85}
             onPress={async () => {
+              setActivityUserFilter('');
+              setSelectedActivityUser('');
+              setSelectedActivityReportId(null);
+              setShowActivityReportDetailModal(false);
               setShowActivityModal(true);
               await loadUserActivity();
             }}
@@ -1239,62 +1404,213 @@ export default function AdminDashboardScreen({ navigation }) {
 
             <Text style={styles.modalSubTitle}>Registro de actividad operativa del sistema.</Text>
 
-            <ScrollView style={styles.modalListArea} showsVerticalScrollIndicator={false}>
+            <View style={styles.activitySearchWrap}>
+              <Ionicons name="search-outline" size={16} color="#5d7f8d" />
+              <TextInput
+                style={styles.activitySearchInput}
+                placeholder="Buscar por usuario"
+                placeholderTextColor="#7f98a2"
+                value={activityUserFilter}
+                onChangeText={setActivityUserFilter}
+                autoCapitalize="none"
+                returnKeyType="search"
+                onSubmitEditing={() => Keyboard.dismiss()}
+              />
+              {activityUserFilter.trim().length > 0 && (
+                <TouchableOpacity onPress={() => setActivityUserFilter('')} activeOpacity={0.8}>
+                  <Ionicons name="close-circle" size={18} color="#6b8791" />
+                </TouchableOpacity>
+              )}
+            </View>
+            <Text style={styles.activityResultCount}>
+              {selectedActivityUser
+                ? `Reportes de ${selectedActivityUserLabel || 'Usuario'} (ID ${selectedActivityUser}): ${selectedActivityRows.length}`
+                : `Usuarios encontrados: ${filteredActivityUsers.length}`}
+            </Text>
+
+            <ScrollView
+              style={styles.activityUsersList}
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={styles.activityUsersListContent}
+              keyboardShouldPersistTaps="handled"
+              keyboardDismissMode="on-drag"
+            >
+              {filteredActivityUsers.length === 0 ? (
+                <Text style={styles.activityHint}>No hay usuarios que coincidan con el filtro.</Text>
+              ) : (
+                filteredActivityUsers.map((userItem) => {
+                  const isActive = selectedActivityUser === userItem.key;
+                  return (
+                    <TouchableOpacity
+                      key={`activity-user-${String(userItem.key)}`}
+                      style={[styles.activityUserChip, isActive && styles.activityUserChipActive]}
+                      activeOpacity={0.85}
+                      onPress={() => {
+                        Keyboard.dismiss();
+                        setSelectedActivityUser(String(userItem.key));
+                        setSelectedActivityReportId(null);
+                        setShowActivityReportDetailModal(false);
+                      }}
+                    >
+                      <Ionicons
+                        name={isActive ? 'checkmark-circle-outline' : 'person-outline'}
+                        size={13}
+                        color={isActive ? '#ffffff' : '#2f7a96'}
+                      />
+                      <Text style={[styles.activityUserChipText, isActive && styles.activityUserChipTextActive]}>
+                        {String(userItem.label)}
+                      </Text>
+                      <View style={[styles.activityUserCountChip, isActive && styles.activityUserCountChipActive]}>
+                        <Text style={[styles.activityUserCountText, isActive && styles.activityUserCountTextActive]}>{userItem.reportCount}</Text>
+                      </View>
+                    </TouchableOpacity>
+                  );
+                })
+              )}
+            </ScrollView>
+
+            <ScrollView
+              style={styles.modalListArea}
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+              keyboardDismissMode="on-drag"
+            >
               {loadingActivity ? (
                 <Text style={styles.emptyText}>Cargando actividad...</Text>
               ) : (
                 <View style={styles.activityRowsWrap}>
-                  {activityRows.length === 0 && (
-                    <Text style={styles.activityHint}>Mostrando estructura base. Aun no hay actividad registrada.</Text>
+                  {!selectedActivityUser && (
+                    <Text style={styles.activityHint}>
+                      Selecciona un usuario en la lista para ver sus reportes de análisis.
+                    </Text>
                   )}
-                  {(activityRows.length > 0 ? activityRows : [{
-                    id: 'empty-activity-row',
-                    quien: 'Sin datos',
-                    consultas: 'Sin datos',
-                    datosSubio: 'Sin datos',
-                    fechaHora: 'Sin datos',
-                  }]).map((item, idx) => (
-                    <View key={`activity-${item.id}`} style={styles.activityRowCard}>
-                      <View style={styles.activityCardHeader}>
-                        <View style={styles.activityBadge}>
-                          <Text style={styles.activityBadgeText}>Registro {idx + 1}</Text>
-                        </View>
-                        <Text style={styles.activityDateChip}>{String(item.fechaHora)}</Text>
+                  {selectedActivityUser && selectedActivityRows.length === 0 && (
+                    <Text style={styles.activityHint}>Este usuario no tiene reportes de análisis registrados.</Text>
+                  )}
+                  {selectedActivityUser && selectedActivityRows.length > 0 && (
+                    <View style={styles.activityModuleCard}>
+                      <View style={styles.activityModuleHeader}>
+                        <Ionicons name="calendar-outline" size={16} color="#2f7a96" />
+                        <Text style={styles.activityModuleTitle}>Reportes del usuario</Text>
                       </View>
-
-                      <View style={styles.activityField}>
-                        <View style={styles.activityLabelWrap}>
-                          <Ionicons name="person-outline" size={13} color="#5d7f8d" />
-                          <Text style={styles.activityLabel}>Quién ingresó</Text>
-                        </View>
-                        <Text style={styles.activityValue}>{item.quien}</Text>
-                      </View>
-                      <View style={styles.activityField}>
-                        <View style={styles.activityLabelWrap}>
-                          <Ionicons name="search-outline" size={13} color="#5d7f8d" />
-                          <Text style={styles.activityLabel}>Qué consultas realizó</Text>
-                        </View>
-                        <Text style={styles.activityValue}>{item.consultas}</Text>
-                      </View>
-                      <View style={styles.activityField}>
-                        <View style={styles.activityLabelWrap}>
-                          <Ionicons name="cloud-upload-outline" size={13} color="#5d7f8d" />
-                          <Text style={styles.activityLabel}>Qué datos subió</Text>
-                        </View>
-                        <Text style={styles.activityValue}>{item.datosSubio}</Text>
-                      </View>
-                      <View style={[styles.activityField, styles.activityFieldLast]}>
-                        <View style={styles.activityLabelWrap}>
-                          <Ionicons name="time-outline" size={13} color="#5d7f8d" />
-                          <Text style={styles.activityLabel}>Hora y fecha</Text>
-                        </View>
-                        <Text style={styles.activityValue}>{String(item.fechaHora)}</Text>
+                      <Text style={styles.activityModuleSubTitle}>Total de reportes: {selectedActivityRows.length}. Selecciona uno por fecha.</Text>
+                      <View style={styles.activityReportsListWrap}>
+                        {selectedActivityRows.map((report, idx) => {
+                          const isSelected = String(selectedActivityReportId) === String(report.id);
+                          return (
+                            <TouchableOpacity
+                              key={`activity-report-option-${report.id}`}
+                              style={[styles.activityReportOption, isSelected && styles.activityReportOptionActive]}
+                              activeOpacity={0.86}
+                              onPress={() => {
+                                setSelectedActivityReportId(report.id);
+                                setShowActivityReportDetailModal(true);
+                              }}
+                            >
+                              <View>
+                                <Text style={[styles.activityReportOptionTitle, isSelected && styles.activityReportOptionTitleActive]}>
+                                  Reporte {idx + 1}
+                                </Text>
+                                <Text style={[styles.activityReportOptionMeta, isSelected && styles.activityReportOptionMetaActive]}>
+                                  {report.analysisType}
+                                </Text>
+                              </View>
+                              <Text style={[styles.activityReportOptionDate, isSelected && styles.activityReportOptionDateActive]}>
+                                {report.fechaHora}
+                              </Text>
+                            </TouchableOpacity>
+                          );
+                        })}
                       </View>
                     </View>
-                  ))}
+                  )}
+
+                  {selectedActivityUser && selectedActivityRows.length > 0 && !selectedActivityReport && (
+                    <Text style={styles.activityHint}>Selecciona un reporte para abrir su detalle.</Text>
+                  )}
                 </View>
               )}
             </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
+        visible={showActivityReportDetailModal && !!selectedActivityReport}
+        animationType="fade"
+        transparent
+        onRequestClose={() => setShowActivityReportDetailModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalLargeCard}>
+            <View style={styles.modalHeaderRow}>
+              <Text style={styles.modalTitle}>Detalle del Reporte</Text>
+              <TouchableOpacity onPress={() => setShowActivityReportDetailModal(false)} activeOpacity={0.85}>
+                <Ionicons name="close-outline" size={24} color="#2f7a96" />
+              </TouchableOpacity>
+            </View>
+
+            {selectedActivityReport && (
+              <ScrollView style={styles.modalListArea} showsVerticalScrollIndicator={false}>
+                <View style={styles.activityRowCard}>
+                  <View style={styles.activityCardHeader}>
+                    <View style={styles.activityBadge}>
+                      <Text style={styles.activityBadgeText}>Reporte seleccionado</Text>
+                    </View>
+                    <Text style={styles.activityDateChip}>{String(selectedActivityReport.fechaHora)}</Text>
+                  </View>
+
+                  <View style={styles.activityField}>
+                    <View style={styles.activityLabelWrap}>
+                      <Ionicons name="person-outline" size={13} color="#5d7f8d" />
+                      <Text style={styles.activityLabel}>Quién ingresó</Text>
+                    </View>
+                    <Text style={styles.activityValue}>{selectedActivityReport.quien}</Text>
+                  </View>
+
+                  <View style={styles.activityField}>
+                    <View style={styles.activityLabelWrap}>
+                      <Ionicons name="analytics-outline" size={13} color="#5d7f8d" />
+                      <Text style={styles.activityLabel}>Análisis seleccionado</Text>
+                    </View>
+                    <Text style={styles.activityValue}>{selectedActivityReport.analysisType} (ID análisis #{selectedActivityReport.idAnalisis})</Text>
+                  </View>
+
+                  <View style={styles.activityField}>
+                    <View style={styles.activityLabelWrap}>
+                      <Ionicons name="document-outline" size={13} color="#5d7f8d" />
+                      <Text style={styles.activityLabel}>Dataset cargado</Text>
+                    </View>
+                    <Text style={styles.activityValue}>{selectedActivityReport.datasetName} (ID dataset: {selectedActivityReport.idDataset || 'N/D'})</Text>
+                  </View>
+
+                  <View style={styles.activityField}>
+                    <View style={styles.activityLabelWrap}>
+                      <Ionicons name="bar-chart-outline" size={13} color="#5d7f8d" />
+                      <Text style={styles.activityLabel}>Resultado del análisis</Text>
+                    </View>
+                    <Text style={styles.activityValue}>Registros: {selectedActivityReport.totalRegistros} · Anomalías: {selectedActivityReport.totalAnomalias} · Tasa: {selectedActivityReport.tasa}</Text>
+                  </View>
+
+                  <View style={[styles.activityField, styles.activityFieldLast]}>
+                    <View style={styles.activityLabelWrap}>
+                      <Ionicons name="time-outline" size={13} color="#5d7f8d" />
+                      <Text style={styles.activityLabel}>Hora y fecha</Text>
+                    </View>
+                    <Text style={styles.activityValue}>{String(selectedActivityReport.fechaHora)}</Text>
+                  </View>
+                </View>
+
+                <TouchableOpacity
+                  style={styles.activityCloseDetailButton}
+                  activeOpacity={0.88}
+                  onPress={() => setShowActivityReportDetailModal(false)}
+                >
+                  <Ionicons name="arrow-back-outline" size={16} color="#ffffff" />
+                  <Text style={styles.activityCloseDetailButtonText}>Salir y volver a reportes del usuario</Text>
+                </TouchableOpacity>
+              </ScrollView>
+            )}
           </View>
         </View>
       </Modal>
@@ -2409,6 +2725,83 @@ const styles = StyleSheet.create({
   activityRowsWrap: {
     gap: 10,
   },
+  activitySearchWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f2f8fa',
+    borderWidth: 1,
+    borderColor: '#d9eaf1',
+    borderRadius: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    marginTop: 6,
+    marginBottom: 6,
+    gap: 7,
+  },
+  activitySearchInput: {
+    flex: 1,
+    color: '#214b5d',
+    fontSize: 13,
+    paddingVertical: 0,
+  },
+  activityResultCount: {
+    color: '#5d7f8d',
+    fontSize: 12,
+    marginBottom: 8,
+  },
+  activityUsersList: {
+    marginBottom: 10,
+    maxHeight: 132,
+  },
+  activityUsersListContent: {
+    gap: 7,
+    paddingRight: 2,
+  },
+  activityUserChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    width: '100%',
+    borderWidth: 1,
+    borderColor: '#cfe4ec',
+    backgroundColor: '#eff7fa',
+    borderRadius: 12,
+    paddingVertical: 9,
+    paddingHorizontal: 10,
+  },
+  activityUserChipActive: {
+    borderColor: '#2f7a96',
+    backgroundColor: '#2f7a96',
+  },
+  activityUserChipText: {
+    flex: 1,
+    color: '#2f7a96',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  activityUserChipTextActive: {
+    color: '#ffffff',
+  },
+  activityUserCountChip: {
+    backgroundColor: '#d9ebf2',
+    minWidth: 20,
+    height: 20,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 5,
+  },
+  activityUserCountChipActive: {
+    backgroundColor: '#1d5f77',
+  },
+  activityUserCountText: {
+    color: '#2f7a96',
+    fontSize: 11,
+    fontWeight: '800',
+  },
+  activityUserCountTextActive: {
+    color: '#ffffff',
+  },
   activityRowCard: {
     borderWidth: 1,
     borderColor: '#d9eaf1',
@@ -2422,6 +2815,87 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.06,
     shadowRadius: 8,
     elevation: 2,
+  },
+  activityModuleCard: {
+    borderWidth: 1,
+    borderColor: '#d9eaf1',
+    backgroundColor: '#f8fcfd',
+    borderRadius: 12,
+    padding: 10,
+  },
+  activityModuleHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 4,
+  },
+  activityModuleTitle: {
+    color: '#1d4d5f',
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  activityModuleSubTitle: {
+    color: '#5d7f8d',
+    fontSize: 12,
+    marginBottom: 8,
+  },
+  activityReportsListWrap: {
+    gap: 7,
+  },
+  activityReportOption: {
+    borderWidth: 1,
+    borderColor: '#d3e5ec',
+    backgroundColor: '#ffffff',
+    borderRadius: 10,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  activityReportOptionActive: {
+    borderColor: '#2f7a96',
+    backgroundColor: '#e8f4f9',
+  },
+  activityReportOptionTitle: {
+    color: '#1f4f62',
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  activityReportOptionTitleActive: {
+    color: '#14546b',
+  },
+  activityReportOptionMeta: {
+    color: '#5f7f8d',
+    fontSize: 11,
+  },
+  activityReportOptionMetaActive: {
+    color: '#2f7a96',
+  },
+  activityReportOptionDate: {
+    color: '#5f7f8d',
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  activityReportOptionDateActive: {
+    color: '#2f7a96',
+  },
+  activityCloseDetailButton: {
+    marginTop: 12,
+    backgroundColor: '#2f7a96',
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 7,
+  },
+  activityCloseDetailButtonText: {
+    color: '#ffffff',
+    fontSize: 13,
+    fontWeight: '700',
   },
   colQuien: {
     flex: 1,

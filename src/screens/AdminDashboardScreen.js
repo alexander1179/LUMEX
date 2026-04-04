@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -16,6 +16,7 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
 import * as FileSystem from 'expo-file-system/legacy';
+import ViewShot from 'react-native-view-shot';
 import { supabase } from '../services/supabase/supabaseClient';
 import { registerUser } from '../services/supabase/authService';
 import { getApiUrl } from '../services/services/api/apiConfig';
@@ -107,7 +108,6 @@ export default function AdminDashboardScreen({ navigation }) {
   const [selectedActivityUser, setSelectedActivityUser] = useState('');
   const [selectedActivityReportId, setSelectedActivityReportId] = useState(null);
   const [showActivityReportDetailModal, setShowActivityReportDetailModal] = useState(false);
-  const [reportFormatFilter, setReportFormatFilter] = useState('');
   const [selectedReportExportFormat, setSelectedReportExportFormat] = useState(null);
   const [reportUserFilter, setReportUserFilter] = useState('');
   const [selectedReportUser, setSelectedReportUser] = useState('');
@@ -116,6 +116,7 @@ export default function AdminDashboardScreen({ navigation }) {
   const [showReportDetailModal, setShowReportDetailModal] = useState(false);
   const [generatingUserReport, setGeneratingUserReport] = useState(false);
   const [reportSigner, setReportSigner] = useState({ name: 'Juan', role: 'Administrador' });
+  const reportImageShotRef = useRef(null);
   const [showReportesModal, setShowReportesModal] = useState(false);
   const [reporteTipo, setReporteTipo] = useState(null);
   const [reporteFormato, setReporteFormato] = useState(null);
@@ -269,51 +270,28 @@ export default function AdminDashboardScreen({ navigation }) {
     `;
   };
 
-  const buildActivityReportSvg = (report) => {
-    const data = buildActivityReportExportData(report);
-    const rows = [
-      `Usuario: ${data.usuario}`,
-      `ID usuario: ${data.usuarioId}`,
-      `Análisis: ${data.analisis} (#${data.idAnalisis})`,
-      `Dataset: ${data.dataset} (ID ${data.idDataset})`,
-      `Registros: ${data.totalRegistros} | Anomalías: ${data.totalAnomalias} | Tasa: ${data.tasa}`,
-      `Fecha del análisis: ${data.fechaHora}`,
-      `Conclusión: ${data.conclusion}`,
-      data.issuanceText,
-      `Firma: ${data.signatureName} - ${data.signatureRole}`,
-    ];
-
-    const escapedRows = rows.map((line) =>
-      String(line)
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-    );
-
-    const textNodes = escapedRows
-      .map((line, idx) => `<text x="36" y="${110 + idx * 40}" font-size="24" fill="#173746">${line}</text>`)
-      .join('');
-
-    return `
-      <svg xmlns="http://www.w3.org/2000/svg" width="1400" height="900" viewBox="0 0 1400 900">
-        <rect width="1400" height="900" fill="#f5fbfd" />
-        <rect x="28" y="28" width="1344" height="844" rx="18" fill="#ffffff" stroke="#d9eaf1" stroke-width="3" />
-        <text x="36" y="70" font-size="38" font-weight="700" fill="#1b5f79">Reporte de Actividad</text>
-        ${textNodes}
-      </svg>
-    `;
-  };
-
   const reportExportFormatOptions = [
     { key: 'pdf', label: 'PDF', icon: 'document-text-outline' },
     { key: 'imagen', label: 'Imagen', icon: 'image-outline' },
-    { key: 'json', label: 'JSON', icon: 'code-slash-outline' },
   ];
+
+  const FS_ENCODING_UTF8 = FileSystem?.EncodingType?.UTF8 || 'utf8';
+
+  const getShareOptionsByUri = (uri) => {
+    const lower = String(uri || '').toLowerCase();
+    if (lower.endsWith('.svg')) {
+      return { mimeType: 'image/svg+xml', UTI: 'public.svg-image', dialogTitle: 'Compartir imagen del reporte' };
+    }
+    if (lower.endsWith('.pdf')) {
+      return { mimeType: 'application/pdf', UTI: 'com.adobe.pdf', dialogTitle: 'Compartir reporte PDF' };
+    }
+    return { dialogTitle: 'Compartir reporte' };
+  };
 
   const shareOrNotifyFile = async (uri, okMessage) => {
     const canShare = await Sharing.isAvailableAsync();
     if (canShare) {
-      await Sharing.shareAsync(uri);
+      await Sharing.shareAsync(uri, getShareOptionsByUri(uri));
       return;
     }
     Alert.alert('Archivo generado', `${okMessage}\n\nRuta: ${uri}`);
@@ -321,7 +299,7 @@ export default function AdminDashboardScreen({ navigation }) {
 
   const handleGenerateUserReport = async () => {
     if (!selectedReportExportFormat) {
-      Alert.alert('Formato requerido', 'Selecciona el formato de reporte (PDF, Imagen o JSON).');
+      Alert.alert('Formato requerido', 'Selecciona el formato de reporte (PDF o Imagen).');
       return;
     }
 
@@ -345,17 +323,18 @@ export default function AdminDashboardScreen({ navigation }) {
       }
 
       if (selectedReportExportFormat === 'imagen') {
-        const svgContent = buildActivityReportSvg(loadedReport);
-        const svgUri = `${basePath}${fileBaseName}.svg`;
-        await FileSystem.writeAsStringAsync(svgUri, svgContent, { encoding: 'utf8' });
-        await shareOrNotifyFile(svgUri, 'Imagen SVG generada correctamente.');
+        const shotUri = await reportImageShotRef.current?.capture?.();
+        if (!shotUri) {
+          throw new Error('No se pudo capturar la imagen del reporte.');
+        }
+
+        const jpgUri = `${basePath}${fileBaseName}.jpg`;
+        await FileSystem.copyAsync({ from: shotUri, to: jpgUri });
+        await shareOrNotifyFile(jpgUri, 'Imagen JPG generada correctamente.');
         return;
       }
 
-      const jsonUri = `${basePath}${fileBaseName}.json`;
-      const jsonContent = JSON.stringify(buildActivityReportExportData(loadedReport), null, 2);
-      await FileSystem.writeAsStringAsync(jsonUri, jsonContent, { encoding: 'utf8' });
-      await shareOrNotifyFile(jsonUri, 'Reporte JSON generado correctamente.');
+      Alert.alert('Formato no disponible', 'Selecciona PDF o Imagen para generar el reporte.');
     } catch (error) {
       Alert.alert('Error', error?.message || 'No se pudo exportar el reporte.');
     } finally {
@@ -859,11 +838,6 @@ export default function AdminDashboardScreen({ navigation }) {
     || activityUserOptions.find((u) => u.key === selectedReportUser)?.label
     || '';
 
-  const normalizedReportFormatFilter = reportFormatFilter.trim().toLowerCase();
-  const filteredReportFormatOptions = normalizedReportFormatFilter
-    ? reportExportFormatOptions.filter((f) => String(f.label).toLowerCase().includes(normalizedReportFormatFilter) || String(f.key).toLowerCase().includes(normalizedReportFormatFilter))
-    : reportExportFormatOptions;
-
   const selectedActivityUserLabel = filteredActivityUsers.find((u) => u.key === selectedActivityUser)?.label
     || activityUserOptions.find((u) => u.key === selectedActivityUser)?.label
     || '';
@@ -1288,7 +1262,6 @@ export default function AdminDashboardScreen({ navigation }) {
               setBuscarDataset('');
               setShowDatasetDatePicker(false);
               setDatasetFecha(new Date());
-              setReportFormatFilter('');
               setSelectedReportExportFormat(null);
               setReportUserFilter('');
               setSelectedReportUser('');
@@ -2005,32 +1978,13 @@ export default function AdminDashboardScreen({ navigation }) {
 
             <ScrollView showsVerticalScrollIndicator={false}>
 
-              <View style={styles.activitySearchWrap}>
-                <Ionicons name="funnel-outline" size={16} color="#5d7f8d" />
-                <TextInput
-                  style={styles.activitySearchInput}
-                  placeholder="Buscar formato (pdf, imagen, json)"
-                  placeholderTextColor="#7f98a2"
-                  value={reportFormatFilter}
-                  onChangeText={setReportFormatFilter}
-                  autoCapitalize="none"
-                  returnKeyType="search"
-                  onSubmitEditing={() => Keyboard.dismiss()}
-                />
-                {reportFormatFilter.trim().length > 0 && (
-                  <TouchableOpacity onPress={() => setReportFormatFilter('')} activeOpacity={0.8}>
-                    <Ionicons name="close-circle" size={18} color="#6b8791" />
-                  </TouchableOpacity>
-                )}
-              </View>
-
               <ScrollView
                 style={styles.activityFormatList}
                 horizontal
                 showsHorizontalScrollIndicator={false}
                 contentContainerStyle={styles.activityFormatListContent}
               >
-                {filteredReportFormatOptions.map((formatItem) => {
+                {reportExportFormatOptions.map((formatItem) => {
                   const isActive = selectedReportExportFormat === formatItem.key;
                   return (
                     <TouchableOpacity
@@ -2178,6 +2132,34 @@ export default function AdminDashboardScreen({ navigation }) {
                 <Ionicons name="download-outline" size={16} color="#ffffff" />
                 <Text style={styles.activityGenerateButtonText}>{generatingUserReport ? 'Generando reporte...' : 'Generar reporte'}</Text>
               </TouchableOpacity>
+
+              {loadedReport && (
+                <View style={styles.hiddenCaptureContainer} pointerEvents="none">
+                  <ViewShot
+                    ref={reportImageShotRef}
+                    options={{ format: 'jpg', quality: 1, result: 'tmpfile' }}
+                    style={styles.hiddenCaptureShot}
+                  >
+                    <View style={styles.captureCard}>
+                      <Text style={styles.captureTitle}>Reporte de Actividad</Text>
+                      <Text style={styles.captureSubTitle}>Generado por Administrador</Text>
+                      <Text style={styles.captureLine}>Usuario: {loadedReport.quien}</Text>
+                      <Text style={styles.captureLine}>ID usuario: {selectedReportUser || 'N/D'}</Text>
+                      <Text style={styles.captureLine}>Analisis: {loadedReport.analysisType} (ID #{loadedReport.idAnalisis})</Text>
+                      <Text style={styles.captureLine}>Dataset: {loadedReport.datasetName} (ID {loadedReport.idDataset || 'N/D'})</Text>
+                      <Text style={styles.captureLine}>Registros: {loadedReport.totalRegistros} | Anomalias: {loadedReport.totalAnomalias} | Tasa: {loadedReport.tasa}</Text>
+                      <Text style={styles.captureLine}>Fecha del analisis: {loadedReport.fechaHora}</Text>
+                      <Text style={styles.captureConclusion}>{getReportInterpretation(loadedReport)}</Text>
+                      <Text style={styles.captureIssued}>Este reporte se expide a solicitud del usuario.</Text>
+                      <Text style={styles.captureIssued}>Fecha y hora de emision: {formatDateTime(new Date().toISOString())}</Text>
+                      <View style={styles.captureSignatureWrap}>
+                        <Text style={styles.captureSignatureName}>{reportSigner.name}</Text>
+                        <Text style={styles.captureSignatureRole}>Cargo: {reportSigner.role}</Text>
+                      </View>
+                    </View>
+                  </ViewShot>
+                </View>
+              )}
 
             </ScrollView>
           </View>
@@ -3250,6 +3232,73 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     fontSize: 13,
     fontWeight: '700',
+  },
+  hiddenCaptureContainer: {
+    position: 'absolute',
+    left: -10000,
+    top: 0,
+    width: 1080,
+    height: 1400,
+    opacity: 0,
+  },
+  hiddenCaptureShot: {
+    width: 1080,
+    height: 1400,
+    backgroundColor: '#f5fbfd',
+    padding: 36,
+  },
+  captureCard: {
+    flex: 1,
+    backgroundColor: '#ffffff',
+    borderRadius: 18,
+    borderWidth: 2,
+    borderColor: '#d9eaf1',
+    padding: 28,
+  },
+  captureTitle: {
+    color: '#1b5f79',
+    fontSize: 38,
+    fontWeight: '800',
+    marginBottom: 6,
+  },
+  captureSubTitle: {
+    color: '#5d7f8d',
+    fontSize: 22,
+    marginBottom: 18,
+  },
+  captureLine: {
+    color: '#173746',
+    fontSize: 24,
+    marginBottom: 10,
+    lineHeight: 34,
+  },
+  captureConclusion: {
+    marginTop: 10,
+    color: '#173746',
+    fontSize: 22,
+    lineHeight: 32,
+  },
+  captureIssued: {
+    marginTop: 8,
+    color: '#315b6c',
+    fontSize: 20,
+    lineHeight: 30,
+  },
+  captureSignatureWrap: {
+    marginTop: 28,
+    borderTopWidth: 1,
+    borderTopColor: '#c8dde6',
+    paddingTop: 12,
+  },
+  captureSignatureName: {
+    color: '#1b4f61',
+    fontSize: 24,
+    fontWeight: '700',
+  },
+  captureSignatureRole: {
+    color: '#315b6c',
+    fontSize: 20,
+    marginTop: 4,
   },
   colQuien: {
     flex: 1,

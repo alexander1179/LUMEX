@@ -13,9 +13,13 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
+import * as Print from 'expo-print';
+import * as Sharing from 'expo-sharing';
+import * as FileSystem from 'expo-file-system/legacy';
 import { supabase } from '../services/supabase/supabaseClient';
 import { registerUser } from '../services/supabase/authService';
 import { getApiUrl } from '../services/services/api/apiConfig';
+import { storageService } from '../services/storage/storageService';
 
 const TABS = [
   { key: 'inicio', label: 'Inicio', icon: 'home-outline' },
@@ -103,6 +107,15 @@ export default function AdminDashboardScreen({ navigation }) {
   const [selectedActivityUser, setSelectedActivityUser] = useState('');
   const [selectedActivityReportId, setSelectedActivityReportId] = useState(null);
   const [showActivityReportDetailModal, setShowActivityReportDetailModal] = useState(false);
+  const [reportFormatFilter, setReportFormatFilter] = useState('');
+  const [selectedReportExportFormat, setSelectedReportExportFormat] = useState(null);
+  const [reportUserFilter, setReportUserFilter] = useState('');
+  const [selectedReportUser, setSelectedReportUser] = useState('');
+  const [selectedReportId, setSelectedReportId] = useState(null);
+  const [loadedReportId, setLoadedReportId] = useState(null);
+  const [showReportDetailModal, setShowReportDetailModal] = useState(false);
+  const [generatingUserReport, setGeneratingUserReport] = useState(false);
+  const [reportSigner, setReportSigner] = useState({ name: 'Juan', role: 'Administrador' });
   const [showReportesModal, setShowReportesModal] = useState(false);
   const [reporteTipo, setReporteTipo] = useState(null);
   const [reporteFormato, setReporteFormato] = useState(null);
@@ -166,6 +179,188 @@ export default function AdminDashboardScreen({ navigation }) {
       .filter(Boolean)
       .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
       .join(' ');
+  };
+
+  const sanitizeFileSegment = (value, fallback = 'reporte') => {
+    const normalized = String(value || '').trim().toLowerCase();
+    if (!normalized) return fallback;
+    return normalized.replace(/[^a-z0-9]+/gi, '_').replace(/^_+|_+$/g, '') || fallback;
+  };
+
+  const formatRoleLabel = (value, fallback = 'Administrador') => {
+    const raw = String(value || '').trim();
+    if (!raw) return fallback;
+    return raw.charAt(0).toUpperCase() + raw.slice(1).toLowerCase();
+  };
+
+  const getReportInterpretation = (report) => {
+    const totalRegistros = Number(report?.totalRegistros || 0);
+    const totalAnomalias = Number(report?.totalAnomalias || 0);
+    const rate = totalRegistros > 0 ? (totalAnomalias / totalRegistros) * 100 : 0;
+
+    if (rate >= 30) {
+      return 'Resultado del analisis: Se observa una concentracion alta de anomalias. Se recomienda revisar el dataset y validar los registros atipicos antes de tomar decisiones clinicas.';
+    }
+    if (rate >= 10) {
+      return 'Resultado del analisis: Se identifica un nivel moderado de anomalias. Se sugiere una verificacion focalizada de los casos marcados por el modelo.';
+    }
+    return 'Resultado del analisis: El comportamiento general es estable con baja tasa de anomalias. Se recomienda mantener monitoreo periodico para seguimiento.';
+  };
+
+  const buildActivityReportExportData = (report) => {
+    const issuedAt = formatDateTime(new Date().toISOString());
+    const interpretation = getReportInterpretation(report);
+    return {
+      usuario: report?.quien || 'Sin datos',
+      usuarioId: selectedReportUser || 'N/D',
+      fechaHora: report?.fechaHora || 'Sin datos',
+      analisis: report?.analysisType || 'Sin datos',
+      idAnalisis: report?.idAnalisis || 'N/D',
+      dataset: report?.datasetName || 'Sin datos',
+      idDataset: report?.idDataset || 'N/D',
+      totalRegistros: report?.totalRegistros ?? 0,
+      totalAnomalias: report?.totalAnomalias ?? 0,
+      tasa: report?.tasa || '0.0%',
+      conclusion: interpretation,
+      issuedAt,
+      issuanceText: `Este reporte se expide a solicitud del usuario en fecha y hora ${issuedAt}.`,
+      signatureName: reportSigner.name,
+      signatureRole: reportSigner.role,
+    };
+  };
+
+  const buildActivityReportHtml = (report) => {
+    const data = buildActivityReportExportData(report);
+    return `
+      <html>
+        <head>
+          <meta charset="utf-8" />
+          <style>
+            body { font-family: Arial, sans-serif; padding: 24px; color: #173746; }
+            h1 { margin: 0 0 12px 0; color: #1b5f79; }
+            .subtitle { color: #5d7f8d; margin-bottom: 18px; }
+            .card { border: 1px solid #d9eaf1; border-radius: 10px; padding: 14px; margin-bottom: 12px; }
+            .label { font-weight: 700; color: #2f7a96; margin-bottom: 4px; }
+            .value { font-size: 14px; color: #173746; }
+            .final { margin-top: 18px; background: #f5fbfd; border: 1px solid #d9eaf1; border-radius: 10px; padding: 14px; }
+            .firma { margin-top: 20px; border-top: 1px solid #c8dde6; padding-top: 10px; }
+          </style>
+        </head>
+        <body>
+          <h1>Reporte de Actividad</h1>
+          <div class="subtitle">Generado por Administrador</div>
+          <div class="card"><div class="label">Usuario</div><div class="value">${String(data.usuario)}</div></div>
+          <div class="card"><div class="label">Análisis seleccionado</div><div class="value">${String(data.analisis)} (ID #${String(data.idAnalisis)})</div></div>
+          <div class="card"><div class="label">Dataset cargado</div><div class="value">${String(data.dataset)} (ID ${String(data.idDataset)})</div></div>
+          <div class="card"><div class="label">Resultado</div><div class="value">Registros: ${String(data.totalRegistros)} · Anomalías: ${String(data.totalAnomalias)} · Tasa: ${String(data.tasa)}</div></div>
+          <div class="card"><div class="label">Hora y fecha del analisis</div><div class="value">${String(data.fechaHora)}</div></div>
+          <div class="final">
+            <div class="label">Conclusion profesional</div>
+            <div class="value">${String(data.conclusion)}</div>
+            <div class="value" style="margin-top:10px;">${String(data.issuanceText)}</div>
+            <div class="firma">
+              <div class="label">Firma</div>
+              <div class="value">${String(data.signatureName)}</div>
+              <div class="value">Cargo: ${String(data.signatureRole)}</div>
+            </div>
+          </div>
+        </body>
+      </html>
+    `;
+  };
+
+  const buildActivityReportSvg = (report) => {
+    const data = buildActivityReportExportData(report);
+    const rows = [
+      `Usuario: ${data.usuario}`,
+      `ID usuario: ${data.usuarioId}`,
+      `Análisis: ${data.analisis} (#${data.idAnalisis})`,
+      `Dataset: ${data.dataset} (ID ${data.idDataset})`,
+      `Registros: ${data.totalRegistros} | Anomalías: ${data.totalAnomalias} | Tasa: ${data.tasa}`,
+      `Fecha del análisis: ${data.fechaHora}`,
+      `Conclusión: ${data.conclusion}`,
+      data.issuanceText,
+      `Firma: ${data.signatureName} - ${data.signatureRole}`,
+    ];
+
+    const escapedRows = rows.map((line) =>
+      String(line)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+    );
+
+    const textNodes = escapedRows
+      .map((line, idx) => `<text x="36" y="${110 + idx * 40}" font-size="24" fill="#173746">${line}</text>`)
+      .join('');
+
+    return `
+      <svg xmlns="http://www.w3.org/2000/svg" width="1400" height="900" viewBox="0 0 1400 900">
+        <rect width="1400" height="900" fill="#f5fbfd" />
+        <rect x="28" y="28" width="1344" height="844" rx="18" fill="#ffffff" stroke="#d9eaf1" stroke-width="3" />
+        <text x="36" y="70" font-size="38" font-weight="700" fill="#1b5f79">Reporte de Actividad</text>
+        ${textNodes}
+      </svg>
+    `;
+  };
+
+  const reportExportFormatOptions = [
+    { key: 'pdf', label: 'PDF', icon: 'document-text-outline' },
+    { key: 'imagen', label: 'Imagen', icon: 'image-outline' },
+    { key: 'json', label: 'JSON', icon: 'code-slash-outline' },
+  ];
+
+  const shareOrNotifyFile = async (uri, okMessage) => {
+    const canShare = await Sharing.isAvailableAsync();
+    if (canShare) {
+      await Sharing.shareAsync(uri);
+      return;
+    }
+    Alert.alert('Archivo generado', `${okMessage}\n\nRuta: ${uri}`);
+  };
+
+  const handleGenerateUserReport = async () => {
+    if (!selectedReportExportFormat) {
+      Alert.alert('Formato requerido', 'Selecciona el formato de reporte (PDF, Imagen o JSON).');
+      return;
+    }
+
+    if (!loadedReport) {
+      Alert.alert('Reporte no cargado', 'Selecciona un reporte, abre su detalle y pulsa Cargar reporte.');
+      return;
+    }
+
+    setGeneratingUserReport(true);
+    try {
+      const slug = sanitizeFileSegment(loadedReport?.quien || 'usuario');
+      const reportId = sanitizeFileSegment(String(loadedReport?.idAnalisis || loadedReport?.id || '0'), '0');
+      const basePath = FileSystem.documentDirectory || FileSystem.cacheDirectory;
+      const fileBaseName = `reporte_${slug}_${reportId}_${Date.now()}`;
+
+      if (selectedReportExportFormat === 'pdf') {
+        const html = buildActivityReportHtml(loadedReport);
+        const pdf = await Print.printToFileAsync({ html });
+        await shareOrNotifyFile(pdf.uri, 'PDF generado correctamente.');
+        return;
+      }
+
+      if (selectedReportExportFormat === 'imagen') {
+        const svgContent = buildActivityReportSvg(loadedReport);
+        const svgUri = `${basePath}${fileBaseName}.svg`;
+        await FileSystem.writeAsStringAsync(svgUri, svgContent, { encoding: 'utf8' });
+        await shareOrNotifyFile(svgUri, 'Imagen SVG generada correctamente.');
+        return;
+      }
+
+      const jsonUri = `${basePath}${fileBaseName}.json`;
+      const jsonContent = JSON.stringify(buildActivityReportExportData(loadedReport), null, 2);
+      await FileSystem.writeAsStringAsync(jsonUri, jsonContent, { encoding: 'utf8' });
+      await shareOrNotifyFile(jsonUri, 'Reporte JSON generado correctamente.');
+    } catch (error) {
+      Alert.alert('Error', error?.message || 'No se pudo exportar el reporte.');
+    } finally {
+      setGeneratingUserReport(false);
+    }
   };
 
   const resolveAnalysisTypeLabel = (modelRow) => {
@@ -641,6 +836,34 @@ export default function AdminDashboardScreen({ navigation }) {
 
   const selectedActivityReport = selectedActivityRows.find((row) => String(row?.id) === String(selectedActivityReportId)) || null;
 
+  const normalizedReportUserFilter = reportUserFilter.trim().toLowerCase();
+  const filteredReportUsers = normalizedReportUserFilter
+    ? activityUserOptions.filter((user) =>
+        String(user.label).toLowerCase().includes(normalizedReportUserFilter) || String(user.key).includes(normalizedReportUserFilter)
+      )
+    : activityUserOptions;
+
+  const selectedReportRows = selectedReportUser
+    ? activityRows
+        .filter((row) => normalizeUserKey(row?.quienKey) === selectedReportUser)
+        .sort((a, b) => {
+          const timeA = a?.fechaRaw ? new Date(a.fechaRaw).getTime() : 0;
+          const timeB = b?.fechaRaw ? new Date(b.fechaRaw).getTime() : 0;
+          return timeA - timeB;
+        })
+    : [];
+
+  const selectedReport = selectedReportRows.find((row) => String(row?.id) === String(selectedReportId)) || null;
+  const loadedReport = selectedReportRows.find((row) => String(row?.id) === String(loadedReportId)) || null;
+  const selectedReportUserLabel = filteredReportUsers.find((u) => u.key === selectedReportUser)?.label
+    || activityUserOptions.find((u) => u.key === selectedReportUser)?.label
+    || '';
+
+  const normalizedReportFormatFilter = reportFormatFilter.trim().toLowerCase();
+  const filteredReportFormatOptions = normalizedReportFormatFilter
+    ? reportExportFormatOptions.filter((f) => String(f.label).toLowerCase().includes(normalizedReportFormatFilter) || String(f.key).toLowerCase().includes(normalizedReportFormatFilter))
+    : reportExportFormatOptions;
+
   const selectedActivityUserLabel = filteredActivityUsers.find((u) => u.key === selectedActivityUser)?.label
     || activityUserOptions.find((u) => u.key === selectedActivityUser)?.label
     || '';
@@ -964,6 +1187,22 @@ export default function AdminDashboardScreen({ navigation }) {
 
   useEffect(() => {
     loadDashboardData();
+
+    const loadSigner = async () => {
+      const currentUser = await storageService.getUser();
+      const signerName =
+        currentUser?.nombre ||
+        currentUser?.name ||
+        currentUser?.usuario ||
+        currentUser?.username ||
+        currentUser?.email ||
+        'Juan';
+
+      const signerRole = formatRoleLabel(currentUser?.rol || currentUser?.role, 'Administrador');
+      setReportSigner({ name: formatUserDisplayLabel(signerName, 'Juan'), role: signerRole });
+    };
+
+    loadSigner();
   }, []);
 
   const handleCreateUser = async () => {
@@ -1039,7 +1278,7 @@ export default function AdminDashboardScreen({ navigation }) {
           <TouchableOpacity
             style={styles.quickItem}
             activeOpacity={0.85}
-            onPress={() => {
+            onPress={async () => {
               setReporteTipo(null);
               setReporteFormato(null);
               setReporteUsuario(null);
@@ -1049,7 +1288,15 @@ export default function AdminDashboardScreen({ navigation }) {
               setBuscarDataset('');
               setShowDatasetDatePicker(false);
               setDatasetFecha(new Date());
+              setReportFormatFilter('');
+              setSelectedReportExportFormat(null);
+              setReportUserFilter('');
+              setSelectedReportUser('');
+              setSelectedReportId(null);
+              setLoadedReportId(null);
+              setShowReportDetailModal(false);
               setShowReportesModal(true);
+              await loadUserActivity();
             }}
           >
             <Ionicons name="document-text-outline" size={20} color="#2f7a96" />
@@ -1758,238 +2005,273 @@ export default function AdminDashboardScreen({ navigation }) {
 
             <ScrollView showsVerticalScrollIndicator={false}>
 
-              {/* --- Exportar análisis en --- */}
-              <View style={styles.reportSection}>
-                <View style={styles.reportSectionHeader}>
-                  <Ionicons name="share-outline" size={16} color="#2f7a96" />
-                  <Text style={styles.reportSectionTitle}>Exportar análisis en</Text>
-                </View>
-                <View style={styles.reportFormatoRow}>
-                  {[
-                    { key: 'pdf',   label: 'PDF',   icon: 'document-outline',       color: '#c0392b', bg: '#fdf2f1' },
-                    { key: 'excel', label: 'Excel', icon: 'grid-outline',           color: '#1e7e45', bg: '#f0faf4' },
-                  ].map((f) => {
-                    const active = reporteFormato === f.key;
-                    return (
-                      <TouchableOpacity
-                        key={f.key}
-                        style={[styles.formatoCard, { backgroundColor: active ? f.color : f.bg, borderColor: active ? f.color : '#deedf3' }]}
-                        activeOpacity={0.85}
-                        onPress={() => setReporteFormato(active ? null : f.key)}
-                      >
-                        <Ionicons name={f.icon} size={28} color={active ? '#ffffff' : f.color} />
-                        <Text style={[styles.formatoLabel, { color: active ? '#ffffff' : f.color }]}>{f.label}</Text>
-                        {active && <Ionicons name="checkmark-circle" size={16} color="#ffffff" style={styles.formatoCheck} />}
-                      </TouchableOpacity>
-                    );
-                  })}
-                </View>
+              <View style={styles.activitySearchWrap}>
+                <Ionicons name="funnel-outline" size={16} color="#5d7f8d" />
+                <TextInput
+                  style={styles.activitySearchInput}
+                  placeholder="Buscar formato (pdf, imagen, json)"
+                  placeholderTextColor="#7f98a2"
+                  value={reportFormatFilter}
+                  onChangeText={setReportFormatFilter}
+                  autoCapitalize="none"
+                  returnKeyType="search"
+                  onSubmitEditing={() => Keyboard.dismiss()}
+                />
+                {reportFormatFilter.trim().length > 0 && (
+                  <TouchableOpacity onPress={() => setReportFormatFilter('')} activeOpacity={0.8}>
+                    <Ionicons name="close-circle" size={18} color="#6b8791" />
+                  </TouchableOpacity>
+                )}
               </View>
 
-              {/* --- Reportes por --- */}
-              <View style={styles.reportSection}>
-                <View style={styles.reportSectionHeader}>
-                  <Ionicons name="filter-outline" size={16} color="#2f7a96" />
-                  <Text style={styles.reportSectionTitle}>Reportes por</Text>
-                </View>
-                <View style={styles.reportTipoList}>
-                  {[
-                    { key: 'usuario',           label: 'Usuario',           desc: 'Actividad y datos por usuario registrado.',        icon: 'person-outline' },
-                    { key: 'dataset',           label: 'Dataset',           desc: 'Conjuntos de datos cargados al sistema.',           icon: 'server-outline' },
-                    { key: 'resultados_medicos', label: 'Resultados médicos', desc: 'Diagnósticos, exámenes y resultados clínicos.',    icon: 'pulse-outline' },
-                  ].map((t) => {
-                    const active = reporteTipo === t.key;
+              <ScrollView
+                style={styles.activityFormatList}
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.activityFormatListContent}
+              >
+                {filteredReportFormatOptions.map((formatItem) => {
+                  const isActive = selectedReportExportFormat === formatItem.key;
+                  return (
+                    <TouchableOpacity
+                      key={`report-format-${formatItem.key}`}
+                      style={[styles.activityFormatChip, isActive && styles.activityFormatChipActive]}
+                      activeOpacity={0.85}
+                      onPress={() => setSelectedReportExportFormat(formatItem.key)}
+                    >
+                      <Ionicons name={isActive ? 'checkmark-circle-outline' : formatItem.icon} size={14} color={isActive ? '#ffffff' : '#2f7a96'} />
+                      <Text style={[styles.activityFormatChipText, isActive && styles.activityFormatChipTextActive]}>{formatItem.label}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
+
+              <View style={styles.activitySearchWrap}>
+                <Ionicons name="search-outline" size={16} color="#5d7f8d" />
+                <TextInput
+                  style={styles.activitySearchInput}
+                  placeholder="Buscar usuario"
+                  placeholderTextColor="#7f98a2"
+                  value={reportUserFilter}
+                  onChangeText={setReportUserFilter}
+                  autoCapitalize="none"
+                  returnKeyType="search"
+                  onSubmitEditing={() => Keyboard.dismiss()}
+                />
+                {reportUserFilter.trim().length > 0 && (
+                  <TouchableOpacity onPress={() => setReportUserFilter('')} activeOpacity={0.8}>
+                    <Ionicons name="close-circle" size={18} color="#6b8791" />
+                  </TouchableOpacity>
+                )}
+              </View>
+
+              <Text style={styles.activityResultCount}>
+                {selectedReportUser
+                  ? `Reportes de ${selectedReportUserLabel || 'Usuario'} (ID ${selectedReportUser}): ${selectedReportRows.length}`
+                  : `Usuarios encontrados: ${filteredReportUsers.length}`}
+              </Text>
+
+              <ScrollView style={styles.activityUsersList} showsVerticalScrollIndicator={false} contentContainerStyle={styles.activityUsersListContent}>
+                {filteredReportUsers.length === 0 ? (
+                  <Text style={styles.activityHint}>No hay usuarios que coincidan con el filtro.</Text>
+                ) : (
+                  filteredReportUsers.map((userItem) => {
+                    const isActive = selectedReportUser === userItem.key;
                     return (
                       <TouchableOpacity
-                        key={t.key}
-                        style={[styles.tipoCard, active && styles.tipoCardActive]}
+                        key={`report-user-${String(userItem.key)}`}
+                        style={[styles.activityUserChip, isActive && styles.activityUserChipActive]}
                         activeOpacity={0.85}
                         onPress={() => {
-                          const next = active ? null : t.key;
-                          setReporteTipo(next);
-                          setReporteUsuario(null);
-                          setReporteDataset(null);
-                          setReporteResultado(null);
-                          setDatasetMetodo(null);
-                          setBuscarDataset('');
-                          setShowDatasetDatePicker(false);
+                          Keyboard.dismiss();
+                          setSelectedReportUser(String(userItem.key));
+                          setSelectedReportId(null);
+                          setLoadedReportId(null);
+                          setShowReportDetailModal(false);
                         }}
                       >
-                        <View style={[styles.tipoIconWrap, active && styles.tipoIconWrapActive]}>
-                          <Ionicons name={t.icon} size={20} color={active ? '#ffffff' : '#2f7a96'} />
+                        <Ionicons name={isActive ? 'checkmark-circle-outline' : 'person-outline'} size={13} color={isActive ? '#ffffff' : '#2f7a96'} />
+                        <Text style={[styles.activityUserChipText, isActive && styles.activityUserChipTextActive]}>{String(userItem.label)}</Text>
+                        <View style={[styles.activityUserCountChip, isActive && styles.activityUserCountChipActive]}>
+                          <Text style={[styles.activityUserCountText, isActive && styles.activityUserCountTextActive]}>{userItem.reportCount}</Text>
                         </View>
-                        <View style={styles.tipoInfo}>
-                          <Text style={[styles.tipoLabel, active && styles.tipoLabelActive]}>{t.label}</Text>
-                          <Text style={[styles.tipoDesc, active && styles.tipoDescActive]}>{t.desc}</Text>
-                        </View>
-                        {active && <Ionicons name="checkmark-circle" size={20} color="#2f7a96" />}
                       </TouchableOpacity>
                     );
-                  })}
-                </View>
-              </View>
-
-              {/* --- Selector de usuario (visible sólo cuando tipo = usuario) --- */}
-              {reporteTipo === 'usuario' && (
-                <View style={styles.reportSection}>
-                  <View style={styles.reportSectionHeader}>
-                    <Ionicons name="people-outline" size={16} color="#2f7a96" />
-                    <Text style={styles.reportSectionTitle}>Usuario seleccionado</Text>
-                  </View>
-                  <TouchableOpacity
-                    style={styles.pickUserBtn}
-                    activeOpacity={0.85}
-                    onPress={() => { setBuscarUsuario(''); setShowPickUserModal(true); }}
-                  >
-                    {reporteUsuario ? (
-                      <View style={styles.pickUserSelected}>
-                        <View style={styles.reportUsuarioAvatar}>
-                          <Ionicons name="person-outline" size={16} color="#2f7a96" />
-                        </View>
-                        <View style={styles.reportUsuarioInfo}>
-                          <Text style={styles.reportUsuarioNombre}>
-                            {reporteUsuario.nombre || reporteUsuario.usuario || 'Usuario'}
-                          </Text>
-                          <Text style={styles.reportUsuarioEmail}>{reporteUsuario.email || 'Sin email'}</Text>
-                        </View>
-                        <Ionicons name="checkmark-circle" size={20} color="#2f9b6f" />
-                      </View>
-                    ) : (
-                      <View style={styles.pickUserPlaceholder}>
-                        <Ionicons name="person-add-outline" size={18} color="#7da6b7" />
-                        <Text style={styles.pickUserPlaceholderText}>Toca para seleccionar un usuario</Text>
-                        <Ionicons name="chevron-forward-outline" size={16} color="#b0cdd8" />
-                      </View>
-                    )}
-                  </TouchableOpacity>
-                </View>
-              )}
-
-              {reporteTipo === 'dataset' && (
-                <View style={styles.reportSection}>
-                  <View style={styles.reportSectionHeader}>
-                    <Ionicons name="server-outline" size={16} color="#2f7a96" />
-                    <Text style={styles.reportSectionTitle}>Dataset seleccionado</Text>
-                  </View>
-                  <TouchableOpacity
-                    style={styles.pickUserBtn}
-                    activeOpacity={0.85}
-                    onPress={() => { setBuscarDataset(''); setShowPickDatasetModal(true); }}
-                  >
-                    {reporteDataset ? (
-                      <View style={styles.pickUserSelected}>
-                        <View style={styles.reportUsuarioAvatar}>
-                          <Ionicons name="server-outline" size={16} color="#2f7a96" />
-                        </View>
-                        <View style={styles.reportUsuarioInfo}>
-                          <Text style={styles.reportUsuarioNombre}>{reporteDataset.nombre}</Text>
-                          <Text style={styles.reportUsuarioEmail}>{reporteDataset.detalle}</Text>
-                        </View>
-                        <Ionicons name="checkmark-circle" size={20} color="#2f9b6f" />
-                      </View>
-                    ) : (
-                      <View style={styles.pickUserPlaceholder}>
-                        <Ionicons name="add-circle-outline" size={18} color="#7da6b7" />
-                        <Text style={styles.pickUserPlaceholderText}>Toca para seleccionar un dataset</Text>
-                        <Ionicons name="chevron-forward-outline" size={16} color="#b0cdd8" />
-                      </View>
-                    )}
-                  </TouchableOpacity>
-                </View>
-              )}
-
-              {reporteTipo === 'resultados_medicos' && (
-                <View style={styles.reportSection}>
-                  <View style={styles.reportSectionHeader}>
-                    <Ionicons name="medkit-outline" size={16} color="#2f7a96" />
-                    <Text style={styles.reportSectionTitle}>Resultado médico seleccionado</Text>
-                  </View>
-                  <TouchableOpacity
-                    style={styles.pickUserBtn}
-                    activeOpacity={0.85}
-                    onPress={() => { setBuscarResultado(''); setShowPickResultadoModal(true); }}
-                  >
-                    {reporteResultado ? (
-                      <View style={styles.pickUserSelected}>
-                        <View style={styles.reportUsuarioAvatar}>
-                          <Ionicons name="medkit-outline" size={16} color="#2f7a96" />
-                        </View>
-                        <View style={styles.reportUsuarioInfo}>
-                          <Text style={styles.reportUsuarioNombre}>{reporteResultado.nombre}</Text>
-                          <Text style={styles.reportUsuarioEmail}>{reporteResultado.detalle}</Text>
-                        </View>
-                        <Ionicons name="checkmark-circle" size={20} color="#2f9b6f" />
-                      </View>
-                    ) : (
-                      <View style={styles.pickUserPlaceholder}>
-                        <Ionicons name="add-circle-outline" size={18} color="#7da6b7" />
-                        <Text style={styles.pickUserPlaceholderText}>Toca para seleccionar resultados médicos</Text>
-                        <Ionicons name="chevron-forward-outline" size={16} color="#b0cdd8" />
-                      </View>
-                    )}
-                  </TouchableOpacity>
-                </View>
-              )}
-
-              {/* --- Resumen selección --- */}
-              {(reporteTipo || reporteFormato) && (
-                <View style={styles.reportResumen}>
-                  <Ionicons name="information-circle-outline" size={15} color="#2f7a96" />
-                  <Text style={styles.reportResumenText}>
-                    {(() => {
-                      if (!reporteTipo) return 'Selecciona el tipo de reporte.';
-                      if (!reporteFormato) return 'Selecciona el formato de exportación.';
-                      if (reporteTipo === 'usuario' && !reporteUsuario) return 'Selecciona el usuario para el reporte.';
-                      if (reporteTipo === 'dataset' && !reporteDataset) return 'Selecciona el dataset para el reporte.';
-                      if (reporteTipo === 'resultados_medicos' && !reporteResultado) return 'Selecciona el tipo de resultado médico.';
-                      const tipoLabel = reporteTipo === 'resultados_medicos' ? 'resultados médicos' : reporteTipo;
-                      const target =
-                        reporteTipo === 'usuario'
-                          ? (reporteUsuario?.nombre || reporteUsuario?.usuario || '')
-                          : reporteTipo === 'dataset'
-                          ? (reporteDataset?.nombre || '')
-                          : reporteTipo === 'resultados_medicos'
-                          ? (reporteResultado?.nombre || '')
-                          : '';
-                      const quien = target ? ` — ${target}` : '';
-                      return `Listo para generar reporte de ${tipoLabel}${quien} en formato ${reporteFormato.toUpperCase()}.`;
-                    })()}
-                  </Text>
-                </View>
-              )}
-
-              {/* --- Botón generar --- */}
-              <ReporteGenBtn
-                listo={!!(
-                  reporteTipo &&
-                  reporteFormato &&
-                  ((reporteTipo === 'usuario' && reporteUsuario) ||
-                    (reporteTipo === 'dataset' && reporteDataset) ||
-                    (reporteTipo === 'resultados_medicos' && reporteResultado))
+                  })
                 )}
-                generando={generandoReporte}
-                onPress={async () => {
-                  setGenerandoReporte(true);
-                  await new Promise((r) => setTimeout(r, 1400));
-                  setGenerandoReporte(false);
-                  const tipoLabel = reporteTipo === 'resultados_medicos' ? 'resultados médicos' : reporteTipo;
-                  const target =
-                    reporteTipo === 'usuario'
-                      ? (reporteUsuario?.nombre || reporteUsuario?.usuario || '')
-                      : reporteTipo === 'dataset'
-                      ? (reporteDataset?.nombre || '')
-                      : reporteTipo === 'resultados_medicos'
-                      ? (reporteResultado?.nombre || '')
-                      : '';
-                  const quien = target ? ` de ${target}` : '';
-                  Alert.alert(
-                    'Reporte generado',
-                    `El reporte de ${tipoLabel}${quien} en ${reporteFormato.toUpperCase()} está listo.`,
-                  );
-                }}
-              />
+              </ScrollView>
+
+              {selectedReportUser && selectedReportRows.length > 0 && !loadedReport && (
+                <View style={styles.activityModuleCard}>
+                  <View style={styles.activityModuleHeader}>
+                    <Ionicons name="calendar-outline" size={16} color="#2f7a96" />
+                    <Text style={styles.activityModuleTitle}>Reportes del usuario</Text>
+                  </View>
+                  <Text style={styles.activityModuleSubTitle}>Total de reportes: {selectedReportRows.length}. Selecciona uno por fecha.</Text>
+                  <View style={styles.activityReportsListWrap}>
+                    {selectedReportRows.map((report, idx) => {
+                      const isSelected = String(selectedReportId) === String(report.id);
+                      return (
+                        <TouchableOpacity
+                          key={`report-option-${report.id}`}
+                          style={[styles.activityReportOption, isSelected && styles.activityReportOptionActive]}
+                          activeOpacity={0.86}
+                          onPress={() => {
+                            setSelectedReportId(report.id);
+                            setShowReportDetailModal(true);
+                          }}
+                        >
+                          <View>
+                            <Text style={[styles.activityReportOptionTitle, isSelected && styles.activityReportOptionTitleActive]}>Reporte {idx + 1}</Text>
+                            <Text style={[styles.activityReportOptionMeta, isSelected && styles.activityReportOptionMetaActive]}>{report.analysisType}</Text>
+                          </View>
+                          <Text style={[styles.activityReportOptionDate, isSelected && styles.activityReportOptionDateActive]}>{report.fechaHora}</Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                </View>
+              )}
+
+              {selectedReportUser && selectedReportRows.length > 0 && loadedReport && (
+                <View style={styles.activityModuleCard}>
+                  <View style={styles.activityModuleHeader}>
+                    <Ionicons name="checkmark-done-outline" size={16} color="#1f8b6e" />
+                    <Text style={styles.activityModuleTitle}>Reporte cargado</Text>
+                  </View>
+                  <Text style={styles.activityModuleSubTitle}>La lista de reportes se ocultó para continuar con la generación final.</Text>
+                  <TouchableOpacity
+                    style={[styles.activityReportOption, { borderColor: '#bfe5da', backgroundColor: '#ecf9f4' }]}
+                    activeOpacity={0.86}
+                    onPress={() => {
+                      setLoadedReportId(null);
+                      setSelectedReportId(null);
+                    }}
+                  >
+                    <View>
+                      <Text style={[styles.activityReportOptionTitle, { color: '#1f8b6e' }]}>Cambiar reporte</Text>
+                      <Text style={[styles.activityReportOptionMeta, { color: '#2f7a96' }]}>Mostrar nuevamente reportes del usuario</Text>
+                    </View>
+                    <Ionicons name="refresh-outline" size={18} color="#1f8b6e" />
+                  </TouchableOpacity>
+                </View>
+              )}
+
+              {loadedReport && (
+                <View style={styles.activityLoadedReportCard}>
+                  <Text style={styles.activityLoadedReportTitle}>Reporte cargado para generar</Text>
+                  <Text style={styles.activityLoadedReportText}>Reporte: #{loadedReport.idAnalisis} · {loadedReport.fechaHora}</Text>
+                  <Text style={styles.activityLoadedReportText}>Análisis: {loadedReport.analysisType}</Text>
+                  <Text style={styles.activityLoadedReportText}>Dataset: {loadedReport.datasetName}</Text>
+                </View>
+              )}
+
+              <TouchableOpacity
+                style={[
+                  styles.activityGenerateButton,
+                  (!selectedReportExportFormat || !loadedReport || generatingUserReport) && styles.activityGenerateButtonDisabled,
+                ]}
+                activeOpacity={0.88}
+                disabled={!selectedReportExportFormat || !loadedReport || generatingUserReport}
+                onPress={handleGenerateUserReport}
+              >
+                <Ionicons name="download-outline" size={16} color="#ffffff" />
+                <Text style={styles.activityGenerateButtonText}>{generatingUserReport ? 'Generando reporte...' : 'Generar reporte'}</Text>
+              </TouchableOpacity>
 
             </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
+        visible={showReportDetailModal && !!selectedReport}
+        animationType="fade"
+        transparent
+        onRequestClose={() => setShowReportDetailModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalLargeCard}>
+            <View style={styles.modalHeaderRow}>
+              <Text style={styles.modalTitle}>Detalle del Reporte</Text>
+              <TouchableOpacity onPress={() => setShowReportDetailModal(false)} activeOpacity={0.85}>
+                <Ionicons name="close-outline" size={24} color="#2f7a96" />
+              </TouchableOpacity>
+            </View>
+
+            {selectedReport && (
+              <ScrollView style={styles.modalListArea} showsVerticalScrollIndicator={false}>
+                <View style={styles.activityRowCard}>
+                  <View style={styles.activityCardHeader}>
+                    <View style={styles.activityBadge}>
+                      <Text style={styles.activityBadgeText}>Reporte seleccionado</Text>
+                    </View>
+                    <Text style={styles.activityDateChip}>{String(selectedReport.fechaHora)}</Text>
+                  </View>
+
+                  <View style={styles.activityField}>
+                    <View style={styles.activityLabelWrap}>
+                      <Ionicons name="person-outline" size={13} color="#5d7f8d" />
+                      <Text style={styles.activityLabel}>Quién ingresó</Text>
+                    </View>
+                    <Text style={styles.activityValue}>{selectedReport.quien}</Text>
+                  </View>
+
+                  <View style={styles.activityField}>
+                    <View style={styles.activityLabelWrap}>
+                      <Ionicons name="analytics-outline" size={13} color="#5d7f8d" />
+                      <Text style={styles.activityLabel}>Análisis seleccionado</Text>
+                    </View>
+                    <Text style={styles.activityValue}>{selectedReport.analysisType} (ID análisis #{selectedReport.idAnalisis})</Text>
+                  </View>
+
+                  <View style={styles.activityField}>
+                    <View style={styles.activityLabelWrap}>
+                      <Ionicons name="document-outline" size={13} color="#5d7f8d" />
+                      <Text style={styles.activityLabel}>Dataset cargado</Text>
+                    </View>
+                    <Text style={styles.activityValue}>{selectedReport.datasetName} (ID dataset: {selectedReport.idDataset || 'N/D'})</Text>
+                  </View>
+
+                  <View style={styles.activityField}>
+                    <View style={styles.activityLabelWrap}>
+                      <Ionicons name="bar-chart-outline" size={13} color="#5d7f8d" />
+                      <Text style={styles.activityLabel}>Resultado del análisis</Text>
+                    </View>
+                    <Text style={styles.activityValue}>Registros: {selectedReport.totalRegistros} · Anomalías: {selectedReport.totalAnomalias} · Tasa: {selectedReport.tasa}</Text>
+                  </View>
+
+                  <View style={[styles.activityField, styles.activityFieldLast]}>
+                    <View style={styles.activityLabelWrap}>
+                      <Ionicons name="time-outline" size={13} color="#5d7f8d" />
+                      <Text style={styles.activityLabel}>Hora y fecha</Text>
+                    </View>
+                    <Text style={styles.activityValue}>{String(selectedReport.fechaHora)}</Text>
+                  </View>
+                </View>
+
+                <TouchableOpacity
+                  style={[styles.activityCloseDetailButton, styles.activityLoadDetailButton]}
+                  activeOpacity={0.88}
+                  onPress={() => {
+                    setLoadedReportId(selectedReport.id);
+                    setShowReportDetailModal(false);
+                  }}
+                >
+                  <Ionicons name="cloud-download-outline" size={16} color="#ffffff" />
+                  <Text style={styles.activityCloseDetailButtonText}>Cargar reporte</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={styles.activityCloseDetailButton}
+                  activeOpacity={0.88}
+                  onPress={() => setShowReportDetailModal(false)}
+                >
+                  <Ionicons name="arrow-back-outline" size={16} color="#ffffff" />
+                  <Text style={styles.activityCloseDetailButtonText}>Salir y volver a reportes</Text>
+                </TouchableOpacity>
+              </ScrollView>
+            )}
           </View>
         </View>
       </Modal>
@@ -2753,6 +3035,37 @@ const styles = StyleSheet.create({
     marginBottom: 10,
     maxHeight: 132,
   },
+  activityFormatList: {
+    marginBottom: 8,
+    maxHeight: 44,
+  },
+  activityFormatListContent: {
+    gap: 8,
+    paddingRight: 4,
+  },
+  activityFormatChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    borderWidth: 1,
+    borderColor: '#cfe4ec',
+    backgroundColor: '#eff7fa',
+    borderRadius: 999,
+    paddingVertical: 7,
+    paddingHorizontal: 11,
+  },
+  activityFormatChipActive: {
+    borderColor: '#2f7a96',
+    backgroundColor: '#2f7a96',
+  },
+  activityFormatChipText: {
+    color: '#2f7a96',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  activityFormatChipTextActive: {
+    color: '#ffffff',
+  },
   activityUsersListContent: {
     gap: 7,
     paddingRight: 2,
@@ -2892,7 +3205,48 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 7,
   },
+  activityLoadDetailButton: {
+    backgroundColor: '#1f8b6e',
+  },
   activityCloseDetailButtonText: {
+    color: '#ffffff',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  activityLoadedReportCard: {
+    marginTop: 12,
+    borderWidth: 1,
+    borderColor: '#d9eaf1',
+    borderRadius: 12,
+    backgroundColor: '#f8fcfd',
+    padding: 10,
+  },
+  activityLoadedReportTitle: {
+    color: '#1b4f61',
+    fontSize: 12,
+    fontWeight: '700',
+    marginBottom: 6,
+  },
+  activityLoadedReportText: {
+    color: '#315b6c',
+    fontSize: 12,
+    marginBottom: 2,
+  },
+  activityGenerateButton: {
+    marginTop: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 5,
+    backgroundColor: '#2f7a96',
+    borderRadius: 10,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+  },
+  activityGenerateButtonDisabled: {
+    opacity: 0.5,
+  },
+  activityGenerateButtonText: {
     color: '#ffffff',
     fontSize: 13,
     fontWeight: '700',

@@ -27,6 +27,8 @@
     "expo-document-picker": "~55.0.11",
     "expo-file-system": "~55.0.14",
     "expo-linking": "~55.0.11",
+    "expo-print": "^55.0.11",
+    "expo-sharing": "^55.0.16",
     "expo-status-bar": "~55.0.5",
     "express": "^5.2.1",
     "i18next": "^25.10.5",

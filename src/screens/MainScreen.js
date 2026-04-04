@@ -40,6 +40,37 @@ const ANALYSIS_TYPES = [
   { value: 'clustering', label: 'Clustering', icon: 'radio-button-on-outline' },
 ];
 
+const ANALYSIS_VISUALS = {
+  anomalias: {
+    title: 'Deteccion de anomalias',
+    subtitle: 'Encuentra comportamientos fuera de patron y prioriza alertas clinicas.',
+    focus: 'Enfoque: variaciones atipicas frente al comportamiento esperado.',
+    tip: 'Ideal cuando no tienes etiquetas claras y necesitas detectar riesgo temprano.',
+    imageUri: 'https://images.unsplash.com/photo-1576671081837-49000212a370?auto=format&fit=crop&w=1200&q=80',
+  },
+  clasificacion: {
+    title: 'Clasificacion',
+    subtitle: 'Asigna cada registro a una clase clinica definida.',
+    focus: 'Enfoque: decision por categoria (normal, sospechoso, critico).',
+    tip: 'Util cuando ya conoces categorias objetivo para cada muestra.',
+    imageUri: 'https://images.unsplash.com/photo-1584982751601-97dcc096659c?auto=format&fit=crop&w=1200&q=80',
+  },
+  regresion: {
+    title: 'Regresion',
+    subtitle: 'Estima valores continuos para apoyar pronostico y seguimiento.',
+    focus: 'Enfoque: prediccion numerica (ej: valor esperado de una medicion).',
+    tip: 'Recomendado para proyecciones de tendencia y evolucion temporal.',
+    imageUri: 'https://images.unsplash.com/photo-1551288049-bebda4e38f71?auto=format&fit=crop&w=1200&q=80',
+  },
+  clustering: {
+    title: 'Clustering',
+    subtitle: 'Agrupa registros similares para descubrir perfiles ocultos.',
+    focus: 'Enfoque: segmentacion automatica por similitud de comportamiento.',
+    tip: 'Util para explorar subgrupos de pacientes sin etiquetas previas.',
+    imageUri: 'https://images.unsplash.com/photo-1579684385127-1ef15d508118?auto=format&fit=crop&w=1200&q=80',
+  },
+};
+
 const HEALTH = {
   frecuenciaCardiaca: { valor: 78, unidad: 'bpm', estado: 'normal' },
   presionArterial: { sistolica: 122, diastolica: 80, estado: 'normal' },
@@ -74,6 +105,60 @@ const formatAnalysisLabel = (analysisType) => {
   return normalized.charAt(0).toUpperCase() + normalized.slice(1);
 };
 
+const getAnalysisVisual = (analysisType) => {
+  return ANALYSIS_VISUALS[analysisType] || ANALYSIS_VISUALS.anomalias;
+};
+
+const FINDINGS_VISUALS = {
+  bajo: {
+    label: 'Hallazgos bajos',
+    imageUri: 'https://images.unsplash.com/photo-1505751172876-fa1923c5c528?auto=format&fit=crop&w=1200&q=80',
+    summary: 'Se detectaron pocas anomalias frente al total de registros.',
+    guidance: 'Mantener monitoreo periodico y validar tendencias en el tiempo.',
+    color: '#2e9e54',
+    bg: '#eaf7ed',
+  },
+  medio: {
+    label: 'Hallazgos moderados',
+    imageUri: 'https://images.unsplash.com/photo-1519494026892-80bbd2d6fd0d?auto=format&fit=crop&w=1200&q=80',
+    summary: 'Existe una proporcion relevante de anomalias en el dataset.',
+    guidance: 'Revisar subgrupos y variables con mayor variacion para descartar riesgo.',
+    color: '#e07b21',
+    bg: '#fef3e7',
+  },
+  alto: {
+    label: 'Hallazgos altos',
+    imageUri: 'https://images.unsplash.com/photo-1538108149393-fbbd81895907?auto=format&fit=crop&w=1200&q=80',
+    summary: 'Se detecto alta concentracion de anomalias sobre los registros analizados.',
+    guidance: 'Se recomienda revision prioritaria y correlacion con signos clinicos.',
+    color: '#e05a21',
+    bg: '#fceee7',
+  },
+};
+
+const getFindingsVisual = (summary) => {
+  const total = Number(summary?.totalRegistros || 0);
+  const anomalies = Number(summary?.totalAnomalias || 0);
+
+  if (!total || total <= 0) return FINDINGS_VISUALS.bajo;
+
+  const ratio = anomalies / total;
+  if (ratio >= 0.3) return FINDINGS_VISUALS.alto;
+  if (ratio >= 0.1) return FINDINGS_VISUALS.medio;
+  return FINDINGS_VISUALS.bajo;
+};
+
+const getFindingsVisualFromCounts = (totalRegistros, totalAnomalias) => {
+  return getFindingsVisual({ totalRegistros, totalAnomalias });
+};
+
+const getFindingsRateText = (totalRegistros, totalAnomalias) => {
+  const total = Number(totalRegistros || 0);
+  const anomalies = Number(totalAnomalias || 0);
+  if (!total || total <= 0) return '-';
+  return `${((anomalies / total) * 100).toFixed(1)}%`;
+};
+
 export default function MainScreen({ navigation }) {
   const [user, setUser] = useState(null);
   const [activeTab, setActiveTab] = useState('inicio');
@@ -86,6 +171,8 @@ export default function MainScreen({ navigation }) {
   const [selectedAnalysis, setSelectedAnalysis] = useState('anomalias');
   const [analysisTypeOpen, setAnalysisTypeOpen] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [showAnalysisResultModal, setShowAnalysisResultModal] = useState(false);
+  const [analysisResultSummary, setAnalysisResultSummary] = useState(null);
   const [analysisHistory, setAnalysisHistory] = useState([]);
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
   const [heartRate, setHeartRate] = useState(HEALTH.frecuenciaCardiaca.valor);
@@ -331,6 +418,7 @@ export default function MainScreen({ navigation }) {
 
     try {
       setIsAnalyzing(true);
+      const selectedAnalysisLabel = formatAnalysisLabel(selectedAnalysis);
 
       const parsed = parsedDataset || parseDatasetContent(datasetContent);
 
@@ -345,11 +433,16 @@ export default function MainScreen({ navigation }) {
       await loadHistory(currentUserId);
 
       setIsAnalyzing(false);
-      Alert.alert(
-        'Analisis completado',
-        `Dataset "${datasetName}" procesado y guardado en Supabase.\n\nID Dataset: ${saveResult.idDataset}\nID Analisis: ${saveResult.idAnalisis}\nRegistros: ${saveResult.totalRegistros}\nAnomalias: ${saveResult.totalAnomalias}`,
-        [{ text: 'Ver historial', onPress: () => setActiveTab('historial') }]
-      );
+      setAnalysisResultSummary({
+        selectedAnalysis,
+        selectedAnalysisLabel,
+        datasetName: datasetName.trim(),
+        idDataset: saveResult.idDataset,
+        idAnalisis: saveResult.idAnalisis,
+        totalRegistros: saveResult.totalRegistros,
+        totalAnomalias: saveResult.totalAnomalias,
+      });
+      setShowAnalysisResultModal(true);
       setDatasetName('');
       setDatasetContent('');
       setSelectedDatasetMeta(null);
@@ -692,6 +785,16 @@ export default function MainScreen({ navigation }) {
           </View>
         )}
 
+        <View style={styles.analysisVisualCard}>
+          <Image source={{ uri: getAnalysisVisual(selectedAnalysis).imageUri }} style={styles.analysisVisualImage} resizeMode="cover" />
+          <View style={styles.analysisVisualOverlay}>
+            <Text style={styles.analysisVisualTitle}>{getAnalysisVisual(selectedAnalysis).title}</Text>
+            <Text style={styles.analysisVisualSubtitle}>{getAnalysisVisual(selectedAnalysis).subtitle}</Text>
+            <Text style={styles.analysisVisualMeta}>{getAnalysisVisual(selectedAnalysis).focus}</Text>
+            <Text style={styles.analysisVisualTip}>{getAnalysisVisual(selectedAnalysis).tip}</Text>
+          </View>
+        </View>
+
         <Text style={styles.fieldLabel}>Archivo CSV/Excel (recomendado)</Text>
         <View style={styles.csvPickerCard}>
           <View style={styles.csvPickerHeader}>
@@ -779,7 +882,7 @@ export default function MainScreen({ navigation }) {
           onPress={() =>
             Alert.alert(
               item.name,
-              `Tipo: ${formatAnalysisLabel(item.type)}\nFecha: ${formatDate(item.date)}\nEstado: ${item.status}\nRegistros: ${item.totalRecords}\nAnomalias: ${item.anomalies}`
+              `Tipo: ${formatAnalysisLabel(item.type)}\nFecha: ${formatDate(item.date)}\nEstado: ${item.status}\nRegistros: ${item.totalRecords}\nAnomalias: ${item.anomalies}\nTasa de anomalias: ${getFindingsRateText(item.totalRecords, item.anomalies)}\nNivel de hallazgo: ${getFindingsVisualFromCounts(item.totalRecords, item.anomalies).label}`
             )
           }
         >
@@ -793,6 +896,30 @@ export default function MainScreen({ navigation }) {
               <Text style={styles.historyMetaText}>{formatAnalysisLabel(item.type)}</Text>
               <Text style={styles.historyMetaText}>{formatDate(item.date)}</Text>
               <Text style={[styles.historyMetaText, { color: '#e07b21' }]}>{item.anomalies} anomalias</Text>
+              <Text style={styles.historyMetaText}>Tasa: {getFindingsRateText(item.totalRecords, item.anomalies)}</Text>
+            </View>
+            <View
+              style={[
+                styles.historyFindingsBadge,
+                {
+                  backgroundColor: getFindingsVisualFromCounts(item.totalRecords, item.anomalies).bg,
+                  borderColor: getFindingsVisualFromCounts(item.totalRecords, item.anomalies).color + '55',
+                },
+              ]}
+            >
+              <Ionicons
+                name="pulse-outline"
+                size={12}
+                color={getFindingsVisualFromCounts(item.totalRecords, item.anomalies).color}
+              />
+              <Text
+                style={[
+                  styles.historyFindingsBadgeText,
+                  { color: getFindingsVisualFromCounts(item.totalRecords, item.anomalies).color },
+                ]}
+              >
+                {getFindingsVisualFromCounts(item.totalRecords, item.anomalies).label}
+              </Text>
             </View>
           </View>
           <Ionicons name="chevron-forward-outline" size={16} color="#9ab4b8" />
@@ -1139,6 +1266,99 @@ export default function MainScreen({ navigation }) {
             <TouchableOpacity style={styles.userMenuCloseBtn} onPress={() => setShowAboutLumexModal(false)} activeOpacity={0.85}>
               <Text style={styles.userMenuCloseText}>Salir</Text>
             </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
+        visible={showAnalysisResultModal}
+        animationType="fade"
+        transparent
+        onRequestClose={() => setShowAnalysisResultModal(false)}
+      >
+        <View style={styles.userMenuOverlay}>
+          <View style={styles.analysisResultCard}>
+            <Text style={styles.analysisResultTitle}>Analisis completado</Text>
+
+            <View
+              style={[
+                styles.analysisFindingsPill,
+                {
+                  backgroundColor: getFindingsVisual(analysisResultSummary).bg,
+                  borderColor: getFindingsVisual(analysisResultSummary).color + '55',
+                },
+              ]}
+            >
+              <Ionicons
+                name="pulse-outline"
+                size={14}
+                color={getFindingsVisual(analysisResultSummary).color}
+              />
+              <Text
+                style={[
+                  styles.analysisFindingsPillText,
+                  { color: getFindingsVisual(analysisResultSummary).color },
+                ]}
+              >
+                {getFindingsVisual(analysisResultSummary).label}
+              </Text>
+            </View>
+
+            <Image
+              source={{ uri: getFindingsVisual(analysisResultSummary).imageUri }}
+              style={styles.analysisResultImage}
+              resizeMode="cover"
+            />
+
+            <Text style={styles.analysisResultType}>{analysisResultSummary?.selectedAnalysisLabel || 'Analisis'}</Text>
+            <Text style={styles.analysisResultDataset}>Dataset: {analysisResultSummary?.datasetName || '-'}</Text>
+            <Text style={styles.analysisResultDescription}>
+              {getFindingsVisual(analysisResultSummary).summary}
+            </Text>
+            <Text style={styles.analysisResultGuidance}>{getFindingsVisual(analysisResultSummary).guidance}</Text>
+
+            <View style={styles.analysisResultMetrics}>
+              <View style={styles.analysisMetricItem}>
+                <Text style={styles.analysisMetricLabel}>Registros</Text>
+                <Text style={styles.analysisMetricValue}>{analysisResultSummary?.totalRegistros ?? '-'}</Text>
+              </View>
+              <View style={styles.analysisMetricItem}>
+                <Text style={styles.analysisMetricLabel}>Anomalias</Text>
+                <Text style={styles.analysisMetricValue}>{analysisResultSummary?.totalAnomalias ?? '-'}</Text>
+              </View>
+              <View style={styles.analysisMetricItem}>
+                <Text style={styles.analysisMetricLabel}>ID Analisis</Text>
+                <Text style={styles.analysisMetricValue}>{analysisResultSummary?.idAnalisis ?? '-'}</Text>
+              </View>
+              <View style={styles.analysisMetricItem}>
+                <Text style={styles.analysisMetricLabel}>Tasa anomalias</Text>
+                <Text style={styles.analysisMetricValue}>
+                  {analysisResultSummary?.totalRegistros
+                    ? `${((Number(analysisResultSummary.totalAnomalias || 0) / Number(analysisResultSummary.totalRegistros || 1)) * 100).toFixed(1)}%`
+                    : '-'}
+                </Text>
+              </View>
+            </View>
+
+            <View style={styles.analysisResultActions}>
+              <TouchableOpacity
+                style={[styles.modalActionBtn, styles.modalActionBtnSecondary]}
+                onPress={() => setShowAnalysisResultModal(false)}
+                activeOpacity={0.85}
+              >
+                <Text style={styles.modalActionBtnSecondaryText}>Cerrar</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalActionBtn, styles.modalActionBtnPrimary]}
+                onPress={() => {
+                  setShowAnalysisResultModal(false);
+                  setActiveTab('historial');
+                }}
+                activeOpacity={0.85}
+              >
+                <Text style={styles.modalActionBtnPrimaryText}>Ver historial</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
       </Modal>
@@ -1604,6 +1824,153 @@ const styles = StyleSheet.create({
   historyName: { flex: 1, fontSize: 13, fontWeight: '700', color: '#15333d' },
   historyMeta: { flexDirection: 'row', gap: 12, flexWrap: 'wrap' },
   historyMetaText: { fontSize: 11, color: '#4f666c' },
+  historyFindingsBadge: {
+    alignSelf: 'flex-start',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    borderRadius: 999,
+    borderWidth: 1,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    marginTop: 6,
+  },
+  historyFindingsBadgeText: {
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  analysisVisualCard: {
+    backgroundColor: '#ffffff',
+    borderRadius: 16,
+    overflow: 'hidden',
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: '#d4e7ee',
+    shadowColor: '#0b3a4a',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.08,
+    shadowRadius: 16,
+    elevation: 4,
+  },
+  analysisVisualImage: {
+    width: '100%',
+    height: 140,
+  },
+  analysisVisualOverlay: {
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    gap: 6,
+    backgroundColor: '#ffffff',
+  },
+  analysisVisualTitle: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: '#123f4a',
+  },
+  analysisVisualSubtitle: {
+    fontSize: 13,
+    color: '#345b64',
+    lineHeight: 18,
+  },
+  analysisVisualMeta: {
+    fontSize: 12,
+    color: '#0f6d78',
+    fontWeight: '700',
+  },
+  analysisVisualTip: {
+    fontSize: 12,
+    color: '#4f666c',
+    lineHeight: 17,
+  },
+  analysisResultCard: {
+    width: '88%',
+    backgroundColor: '#ffffff',
+    borderRadius: 16,
+    padding: 16,
+    maxHeight: '85%',
+    borderWidth: 1,
+    borderColor: '#d4e7ee',
+  },
+  analysisResultTitle: {
+    fontSize: 19,
+    fontWeight: '800',
+    color: '#123f4a',
+    marginBottom: 10,
+  },
+  analysisResultImage: {
+    width: '100%',
+    height: 150,
+    borderRadius: 12,
+    marginBottom: 10,
+  },
+  analysisResultType: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: '#0f6d78',
+    marginBottom: 4,
+  },
+  analysisResultDataset: {
+    fontSize: 13,
+    color: '#345b64',
+    marginBottom: 6,
+  },
+  analysisResultDescription: {
+    fontSize: 12,
+    color: '#4f666c',
+    lineHeight: 17,
+    marginBottom: 6,
+  },
+  analysisResultGuidance: {
+    fontSize: 12,
+    color: '#345b64',
+    lineHeight: 17,
+    marginBottom: 10,
+  },
+  analysisResultMetrics: {
+    flexDirection: 'row',
+    gap: 8,
+    flexWrap: 'wrap',
+    marginBottom: 14,
+  },
+  analysisMetricItem: {
+    flex: 1,
+    backgroundColor: '#f3faf9',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#d7ecea',
+    paddingVertical: 8,
+    paddingHorizontal: 6,
+  },
+  analysisMetricLabel: {
+    fontSize: 11,
+    color: '#4f666c',
+    marginBottom: 4,
+  },
+  analysisMetricValue: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: '#0f6d78',
+  },
+  analysisFindingsPill: {
+    alignSelf: 'flex-start',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    borderRadius: 999,
+    borderWidth: 1,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    marginBottom: 10,
+  },
+  analysisFindingsPillText: {
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  analysisResultActions: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: 10,
+  },
   historyEmptyCard: {
     backgroundColor: '#ffffff',
     borderRadius: 12,

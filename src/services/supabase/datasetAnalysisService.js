@@ -556,9 +556,26 @@ export const fetchAnalysisHistoryByUser = async (userId) => {
     return [];
   }
 
+  const resolveAnalysisTypeFromModel = (modelRow) => {
+    const tipoModelo = String(modelRow?.tipo_modelo || '').toLowerCase();
+    const descripcion = String(modelRow?.descripcion || '').toLowerCase();
+    const nombreModelo = String(modelRow?.nombre_modelo || '').toLowerCase();
+    const combined = `${tipoModelo} ${descripcion} ${nombreModelo}`;
+
+    if (combined.includes('anomalia') || combined.includes('anomaly')) return 'anomalias';
+    if (combined.includes('clustering') || combined.includes('kmeans')) return 'clustering';
+    if (combined.includes('regresion') || combined.includes('regression') || combined.includes('regressor')) return 'regresion';
+    if (combined.includes('clasificacion') || combined.includes('classification') || combined.includes('classifier')) return 'clasificacion';
+
+    if (tipoModelo === 'clustering') return 'clustering';
+    if (tipoModelo === 'regresion') return 'regresion';
+    if (tipoModelo === 'clasificacion') return 'clasificacion';
+    return 'analisis';
+  };
+
   const { data, error } = await supabase
     .from('analisis')
-    .select('id_analisis, fecha_analisis, total_registros, total_anomalias, datasets(nombre_archivo), modelos(tipo_modelo)')
+    .select('id_analisis, fecha_analisis, total_registros, total_anomalias, datasets(nombre_archivo), modelos(tipo_modelo,descripcion,nombre_modelo)')
     .eq('id_usuario', numericUserId)
     .order('fecha_analisis', { ascending: false })
     .limit(50);
@@ -571,7 +588,7 @@ export const fetchAnalysisHistoryByUser = async (userId) => {
     id: String(item.id_analisis),
     idAnalisis: Number(item.id_analisis),
     name: item.datasets?.nombre_archivo || `dataset_${item.id_analisis}.csv`,
-    type: item.modelos?.tipo_modelo || 'analisis',
+    type: resolveAnalysisTypeFromModel(item.modelos),
     date: item.fecha_analisis,
     status: 'completado',
     anomalies: Number(item.total_anomalias || 0),

@@ -1,3 +1,5 @@
+require('dotenv').config();
+
 const express = require('express');
 const cors = require('cors');
 const nodemailer = require('nodemailer');
@@ -6,16 +8,10 @@ const { createClient } = require('@supabase/supabase-js');
 const app = express();
 const PORT = Number(process.env.PORT || 3000);
 const OTP_EXPIRY_MINUTES = Number(process.env.OTP_EXPIRY_MINUTES || 15);
+const RESULTS_BATCH_SIZE = 1000;
+const RESULTS_BATCH_CONCURRENCY = 3;
 
-const requiredEnvVars = [
-  'SUPABASE_URL',
-  'SUPABASE_SERVICE_ROLE_KEY',
-  'SMTP_HOST',
-  'SMTP_PORT',
-  'SMTP_USER',
-  'SMTP_PASS',
-  'SMTP_FROM',
-];
+const requiredEnvVars = ['SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY'];
 
 const missingEnvVars = requiredEnvVars.filter((envVar) => !process.env[envVar]);
 
@@ -35,18 +31,32 @@ const supabaseAdmin = createClient(
   }
 );
 
-const transporter = nodemailer.createTransport({
-  host: process.env.SMTP_HOST,
-  port: Number(process.env.SMTP_PORT),
-  secure: Number(process.env.SMTP_PORT) === 465,
-  auth: {
-    user: process.env.SMTP_USER,
-    pass: process.env.SMTP_PASS,
-  },
-});
+const smtpConfigured = [
+  process.env.SMTP_HOST,
+  process.env.SMTP_PORT,
+  process.env.SMTP_USER,
+  process.env.SMTP_PASS,
+  process.env.SMTP_FROM,
+].every((value) => !!value);
+
+const transporter = smtpConfigured
+  ? nodemailer.createTransport({
+      host: process.env.SMTP_HOST,
+      port: Number(process.env.SMTP_PORT),
+      secure: Number(process.env.SMTP_PORT) === 465,
+      auth: {
+        user: process.env.SMTP_USER,
+        pass: process.env.SMTP_PASS,
+      },
+    })
+  : null;
+
+if (!smtpConfigured) {
+  console.warn('SMTP no configurado. El endpoint /forgot-password quedará deshabilitado.');
+}
 
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: '10mb' }));
 
 const normalizeEmail = (email = '') => email.trim().toLowerCase();
 
@@ -78,14 +88,20 @@ const buildOtpEmailText = (otp) => [
 
 app.get('/health', async (_req, res) => {
   try {
-    await transporter.verify();
-    res.json({ success: true, message: 'Servidor de recuperacion activo' });
+    if (transporter) {
+      await transporter.verify();
+    }
+    res.json({ success: true, message: 'Servidor activo', smtpConfigured: !!transporter });
   } catch (error) {
     res.status(500).json({ success: false, message: 'SMTP no disponible', details: error.message });
   }
 });
 
 app.post('/forgot-password', async (req, res) => {
+  if (!transporter) {
+    return res.status(503).json({ success: false, message: 'SMTP no configurado en el servidor.' });
+  }
+
   const email = normalizeEmail(req.body?.email);
 
   if (!email) {
@@ -130,6 +146,222 @@ app.post('/forgot-password', async (req, res) => {
   } catch (error) {
     console.error('Error en /forgot-password:', error.message);
     return res.status(500).json({ success: false, message: 'No se pudo enviar el código de recuperación' });
+  }
+});
+
+const toNumberOrNull = (value) => {
+  if (value === null || value === undefined) return null;
+  const normalized = String(value).replace(',', '.').trim();
+  if (!normalized) return null;
+  const number = Number(normalized);
+  return Number.isFinite(number) ? number : null;
+};
+
+const buildResultsWithNsp = (rows, nspKey) => {
+  return rows.map((row, index) => {
+    const nspValue = toNumberOrNull(row?.[nspKey]);
+    const normalizedNsp = nspValue === null ? 1 : Math.round(nspValue);
+    const isAnomaly = normalizedNsp !== 1;
+    const reconstructionError = nspValue === null ? 0 : Math.min(1, Math.max(0, Math.abs(nspValue - 1) / 2));
+
+    return {
+      id_analisis: null,
+      indice_registro: index,
+      error_reconstruccion: Number(reconstructionError.toFixed(6)),
+      es_anomalia: isAnomaly,
+    };
+  });
+};
+
+const buildResultsWithZScore = (rows, headers) => {
+  const numericHeaders = headers.filter((header) => rows.some((row) => toNumberOrNull(row?.[header]) !== null));
+
+  if (numericHeaders.length === 0) {
+    return rows.map((_, index) => ({
+      id_analisis: null,
+      indice_registro: index,
+      error_reconstruccion: 0,
+      es_anomalia: false,
+    }));
+  }
+
+  const stats = numericHeaders.map((header) => {
+    const values = rows.map((row) => toNumberOrNull(row?.[header])).filter((value) => value !== null);
+    const mean = values.reduce((sum, value) => sum + value, 0) / values.length;
+    const variance = values.reduce((sum, value) => sum + ((value - mean) ** 2), 0) / values.length;
+    const std = Math.sqrt(variance) || 1;
+    return { header, mean, std };
+  });
+
+  return rows.map((row, index) => {
+    const scores = stats.map(({ header, mean, std }) => {
+      const value = toNumberOrNull(row?.[header]);
+      if (value === null) return 0;
+      return Math.abs((value - mean) / std);
+    });
+
+    const avgZScore = scores.reduce((sum, value) => sum + value, 0) / scores.length;
+    const reconstructionError = Math.min(1, avgZScore / 4);
+    const isAnomaly = avgZScore >= 2;
+
+    return {
+      id_analisis: null,
+      indice_registro: index,
+      error_reconstruccion: Number(reconstructionError.toFixed(6)),
+      es_anomalia: isAnomaly,
+    };
+  });
+};
+
+const buildResults = ({ rows, headers }) => {
+  const nspKey = headers.find((header) => String(header || '').trim().toLowerCase() === 'nsp');
+  return nspKey ? buildResultsWithNsp(rows, nspKey) : buildResultsWithZScore(rows, headers);
+};
+
+const insertResultadosInBatches = async (resultados, analisisId) => {
+  const batches = [];
+
+  for (let i = 0; i < resultados.length; i += RESULTS_BATCH_SIZE) {
+    batches.push(
+      resultados.slice(i, i + RESULTS_BATCH_SIZE).map((row) => ({
+        ...row,
+        id_analisis: analisisId,
+      }))
+    );
+  }
+
+  for (let i = 0; i < batches.length; i += RESULTS_BATCH_CONCURRENCY) {
+    const concurrentBatches = batches.slice(i, i + RESULTS_BATCH_CONCURRENCY);
+    const responses = await Promise.all(
+      concurrentBatches.map((batch) => supabaseAdmin.from('resultados').insert(batch))
+    );
+
+    const failedInsert = responses.find((response) => response.error);
+    if (failedInsert?.error) {
+      throw new Error(failedInsert.error.message || 'No se pudo registrar resultados.');
+    }
+  }
+};
+
+const MODEL_BY_ANALYSIS = {
+  anomalias: { nombre: 'RandomForestClassifier', descripcion: 'Modelo de deteccion de anomalias desde backend', tipo: 'clasificacion' },
+  clasificacion: { nombre: 'RandomForestClassifier', descripcion: 'Modelo de clasificacion desde backend', tipo: 'clasificacion' },
+  regresion: { nombre: 'RandomForestRegressor', descripcion: 'Modelo de regresion desde backend', tipo: 'regresion' },
+  clustering: { nombre: 'KMeans', descripcion: 'Modelo de clustering desde backend', tipo: 'clustering' },
+};
+
+app.post('/analysis/save', async (req, res) => {
+  try {
+    const startedAt = Date.now();
+    const {
+      userId,
+      analysisType,
+      datasetName,
+      datasetPath,
+      parsedDataset,
+      analysisSummary,
+    } = req.body || {};
+
+    const numericUserId = Number(userId);
+    if (!Number.isInteger(numericUserId)) {
+      return res.status(400).json({ success: false, message: 'userId inválido.' });
+    }
+
+    const headers = Array.isArray(parsedDataset?.headers) ? parsedDataset.headers : [];
+    const rows = Array.isArray(parsedDataset?.rows) ? parsedDataset.rows : [];
+    const summaryTotalRegistros = Number(analysisSummary?.totalRegistros);
+    const summaryTotalAnomalias = Number(analysisSummary?.totalAnomalias);
+    const hasSummary = Number.isFinite(summaryTotalRegistros) && summaryTotalRegistros > 0 && Number.isFinite(summaryTotalAnomalias);
+
+    if (!hasSummary && (headers.length === 0 || rows.length === 0)) {
+      return res.status(400).json({ success: false, message: 'Dataset sin encabezados o filas para análisis.' });
+    }
+
+    const modelConfig = MODEL_BY_ANALYSIS[analysisType] || MODEL_BY_ANALYSIS.anomalias;
+    const modelInsert = await supabaseAdmin
+      .from('modelos')
+      .insert([
+        {
+          nombre_modelo: modelConfig.nombre,
+          descripcion: modelConfig.descripcion,
+          tipo_modelo: modelConfig.tipo,
+          fecha_creacion: new Date().toISOString(),
+        },
+      ])
+      .select('id_modelo')
+      .single();
+
+    if (modelInsert.error || !modelInsert.data?.id_modelo) {
+      return res.status(500).json({ success: false, message: modelInsert.error?.message || 'No se pudo registrar modelo.' });
+    }
+
+    const datasetInsert = await supabaseAdmin
+      .from('datasets')
+      .insert([
+        {
+          id_usuario: numericUserId,
+          nombre_archivo: String(datasetName || 'dataset.csv'),
+          ruta_archivo: String(datasetPath || 'movil://dataset'),
+          fecha_subida: new Date().toISOString(),
+        },
+      ])
+      .select('id_dataset')
+      .single();
+
+    if (datasetInsert.error || !datasetInsert.data?.id_dataset) {
+      return res.status(500).json({ success: false, message: datasetInsert.error?.message || 'No se pudo registrar dataset.' });
+    }
+
+    const resultados = hasSummary ? [] : buildResults({ rows, headers });
+    const totalRegistros = hasSummary ? Math.max(0, Math.floor(summaryTotalRegistros)) : rows.length;
+    const totalAnomalias = hasSummary
+      ? Math.max(0, Math.min(totalRegistros, Math.floor(summaryTotalAnomalias)))
+      : resultados.reduce((sum, row) => sum + (row.es_anomalia ? 1 : 0), 0);
+
+    const analisisInsert = await supabaseAdmin
+      .from('analisis')
+      .insert([
+        {
+          id_usuario: numericUserId,
+          id_dataset: Number(datasetInsert.data.id_dataset),
+          id_modelo: Number(modelInsert.data.id_modelo),
+          fecha_analisis: new Date().toISOString(),
+          total_registros: totalRegistros,
+          total_anomalias: totalAnomalias,
+        },
+      ])
+      .select('id_analisis')
+      .single();
+
+    if (analisisInsert.error || !analisisInsert.data?.id_analisis) {
+      return res.status(500).json({ success: false, message: analisisInsert.error?.message || 'No se pudo registrar análisis.' });
+    }
+
+    const analisisId = Number(analisisInsert.data.id_analisis);
+    let insertMs = 0;
+    if (!hasSummary) {
+      const beforeBatchInsert = Date.now();
+      await insertResultadosInBatches(resultados, analisisId);
+      insertMs = Date.now() - beforeBatchInsert;
+    }
+
+    console.log(
+      `[analysis/save] rows=${totalRegistros} summary=${hasSummary} batch=${RESULTS_BATCH_SIZE} concurrency=${RESULTS_BATCH_CONCURRENCY} insertMs=${insertMs} totalMs=${Date.now() - startedAt}`
+    );
+
+    return res.json({
+      success: true,
+      idModelo: Number(modelInsert.data.id_modelo),
+      idDataset: Number(datasetInsert.data.id_dataset),
+      idAnalisis: analisisId,
+      totalRegistros,
+      totalAnomalias,
+      savedBy: 'server',
+      savedResultadosDetalle: !hasSummary,
+    });
+  } catch (error) {
+    console.error('Error en /analysis/save:', error.message);
+    return res.status(500).json({ success: false, message: error.message || 'Error inesperado guardando análisis.' });
   }
 });
 

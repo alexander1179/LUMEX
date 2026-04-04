@@ -6,7 +6,8 @@
     "start": "expo start",
     "android": "expo start --android",
     "ios": "expo start --ios",
-    "web": "expo start --web"
+    "web": "expo start --web",
+    "server": "node server.js"
   },
   "dependencies": {
     "@expo/metro-runtime": "~55.0.9",
@@ -19,6 +20,7 @@
     "body-parser": "^2.2.2",
     "cors": "^2.8.6",
     "crypto": "^1.0.1",
+    "dotenv": "^17.4.0",
     "expo": "~55.0.9",
     "expo-camera": "~55.0.13",
     "expo-checkbox": "~55.0.4",
@@ -38,7 +40,8 @@
     "react-native-safe-area-context": "~5.6.2",
     "react-native-screens": "~4.23.0",
     "react-native-web": "^0.21.0",
-    "twilio": "^5.13.0"
+    "twilio": "^5.13.0",
+    "xlsx": "^0.18.5"
   },
   "private": true,
   "description": "",

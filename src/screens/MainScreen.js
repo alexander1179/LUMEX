@@ -17,11 +17,17 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { useCameraPermissions } from 'expo-camera';
 import * as DocumentPicker from 'expo-document-picker';
-import * as FileSystem from 'expo-file-system';
 import { BloodPressureModal } from '../components/health/BloodPressureModal';
 import { HeartRateModal } from '../components/health/HeartRateModal';
 import { LanguageSelector } from '../components/common/LanguageSelector';
 import { storageService } from '../services/storage/storageService';
+import {
+  fetchAnalysisHistoryByUser,
+  isDatasetFileSupported,
+  parseDatasetContent,
+  readDatasetAsset,
+  saveAnalysisInSupabase,
+} from '../services/supabase/datasetAnalysisService';
 
 const icon = require('../../assets/lumex.jpeg');
 const alexPhoto = require('../../assets/Alexander.jpg');
@@ -34,15 +40,7 @@ const ANALYSIS_TYPES = [
   { value: 'clustering', label: 'Clustering', icon: 'radio-button-on-outline' },
 ];
 
-const MOCK_HISTORY = [
-  { id: '1', name: 'Dataset_Ventas_Q1.csv', type: 'Anomalias', date: '01/04/2026', status: 'completado', anomalies: 4 },
-  { id: '2', name: 'Sensor_Temp_Marzo.csv', type: 'Clasificacion', date: '28/03/2026', status: 'completado', anomalies: 0 },
-  { id: '3', name: 'Logs_Acceso.txt', type: 'Anomalias', date: '25/03/2026', status: 'error', anomalies: 0 },
-];
-
 const HEALTH = {
-  riesgo: 'medio',
-  ultimoAnalisis: { fecha: '01/04/2026', tipo: 'Deteccion de anomalias', anomalias: 4 },
   frecuenciaCardiaca: { valor: 78, unidad: 'bpm', estado: 'normal' },
   presionArterial: { sistolica: 122, diastolica: 80, estado: 'normal' },
 };
@@ -57,17 +55,39 @@ const ESTADO_COLOR = { normal: '#2e9e54', alto: '#e05a21', bajo: '#e07b21' };
 const T = '#0f6d78';
 const BG = '#eaf6f5';
 
+const formatDate = (isoDate) => {
+  if (!isoDate) return '-';
+  const date = new Date(isoDate);
+  if (Number.isNaN(date.getTime())) return '-';
+  const day = String(date.getDate()).padStart(2, '0');
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const year = date.getFullYear();
+  return `${day}/${month}/${year}`;
+};
+
+const formatAnalysisLabel = (analysisType) => {
+  const match = ANALYSIS_TYPES.find((item) => item.value === analysisType);
+  if (match) return match.label;
+
+  const normalized = String(analysisType || '').trim();
+  if (!normalized) return 'Analisis';
+  return normalized.charAt(0).toUpperCase() + normalized.slice(1);
+};
+
 export default function MainScreen({ navigation }) {
   const [user, setUser] = useState(null);
   const [activeTab, setActiveTab] = useState('inicio');
 
   const [datasetName, setDatasetName] = useState('');
   const [datasetContent, setDatasetContent] = useState('');
-  const [selectedCsvMeta, setSelectedCsvMeta] = useState(null);
+  const [selectedDatasetMeta, setSelectedDatasetMeta] = useState(null);
+  const [parsedDataset, setParsedDataset] = useState(null);
   const [isPickingCsv, setIsPickingCsv] = useState(false);
   const [selectedAnalysis, setSelectedAnalysis] = useState('anomalias');
   const [analysisTypeOpen, setAnalysisTypeOpen] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [analysisHistory, setAnalysisHistory] = useState([]);
+  const [isLoadingHistory, setIsLoadingHistory] = useState(false);
   const [heartRate, setHeartRate] = useState(HEALTH.frecuenciaCardiaca.valor);
   const [heartRateStatus, setHeartRateStatus] = useState(HEALTH.frecuenciaCardiaca.estado);
   const [bloodPressureSystolic, setBloodPressureSystolic] = useState(HEALTH.presionArterial.sistolica);
@@ -93,6 +113,8 @@ export default function MainScreen({ navigation }) {
 
   const fadeAnim = useRef(new Animated.Value(0)).current;
 
+  const currentUserId = Number(user?.id_usuario ?? user?.id ?? null);
+
   useEffect(() => {
     Animated.timing(fadeAnim, {
       toValue: 1,
@@ -108,6 +130,11 @@ export default function MainScreen({ navigation }) {
           setProfileAge(userData?.edad ? String(userData.edad) : '');
           setProfileAddress(userData?.direccion || '');
           setProfilePhone(userData?.telefono || '');
+
+          const userId = Number(userData?.id_usuario ?? userData?.id ?? null);
+          if (Number.isInteger(userId)) {
+            await loadHistory(userId);
+          }
         } else {
           navigation.replace('Login');
         }
@@ -118,6 +145,22 @@ export default function MainScreen({ navigation }) {
 
     getUser();
   }, [fadeAnim, navigation]);
+
+  const loadHistory = async (userIdParam) => {
+    const safeUserId = Number(userIdParam);
+    if (!Number.isInteger(safeUserId)) return;
+
+    try {
+      setIsLoadingHistory(true);
+      const history = await fetchAnalysisHistoryByUser(safeUserId);
+      setAnalysisHistory(history);
+    } catch (error) {
+      console.log('Error loading analysis history:', error);
+      Alert.alert('Aviso', 'No se pudo actualizar el historial de analisis desde Supabase.');
+    } finally {
+      setIsLoadingHistory(false);
+    }
+  };
 
   useEffect(() => {
     if (!isCameraMeasuring) return;
@@ -270,29 +313,52 @@ export default function MainScreen({ navigation }) {
     ]);
   };
 
-  const handleAnalyze = () => {
+  const handleAnalyze = async () => {
     if (!datasetName.trim()) {
       Alert.alert('Campo requerido', 'Ingresa un nombre para el dataset.');
       return;
     }
 
     if (!datasetContent.trim()) {
-      Alert.alert('Datos requeridos', 'Carga un archivo CSV o ingresa el contenido del dataset.');
+      Alert.alert('Datos requeridos', 'Carga un archivo CSV/Excel o ingresa el contenido del dataset.');
       return;
     }
 
-    setIsAnalyzing(true);
-    setTimeout(() => {
+    if (!Number.isInteger(currentUserId)) {
+      Alert.alert('Usuario invalido', 'No se encontro un id de usuario valido para guardar el analisis.');
+      return;
+    }
+
+    try {
+      setIsAnalyzing(true);
+
+      const parsed = parsedDataset || parseDatasetContent(datasetContent);
+
+      const saveResult = await saveAnalysisInSupabase({
+        userId: currentUserId,
+        analysisType: selectedAnalysis,
+        datasetName: datasetName.trim(),
+        datasetPath: selectedDatasetMeta?.fileUri || 'movil://dataset/manual',
+        parsedDataset: parsed,
+      });
+
+      await loadHistory(currentUserId);
+
       setIsAnalyzing(false);
       Alert.alert(
         'Analisis completado',
-        `Dataset "${datasetName}" procesado correctamente. Tipo: ${ANALYSIS_TYPES.find((a) => a.value === selectedAnalysis)?.label}`,
+        `Dataset "${datasetName}" procesado y guardado en Supabase.\n\nID Dataset: ${saveResult.idDataset}\nID Analisis: ${saveResult.idAnalisis}\nRegistros: ${saveResult.totalRegistros}\nAnomalias: ${saveResult.totalAnomalias}`,
         [{ text: 'Ver historial', onPress: () => setActiveTab('historial') }]
       );
       setDatasetName('');
       setDatasetContent('');
-      setSelectedCsvMeta(null);
-    }, 1800);
+      setSelectedDatasetMeta(null);
+      setParsedDataset(null);
+    } catch (error) {
+      console.log('Error saving analysis:', error);
+      setIsAnalyzing(false);
+      Alert.alert('Error', error?.message || 'No se pudo completar el analisis y guardarlo en Supabase.');
+    }
   };
 
   const formatBytes = (bytes) => {
@@ -302,20 +368,21 @@ export default function MainScreen({ navigation }) {
     return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
   };
 
-  const isCsvAsset = (asset) => {
-    const name = (asset?.name || '').toLowerCase();
-    const mime = (asset?.mimeType || '').toLowerCase();
-    return name.endsWith('.csv') || mime.includes('csv') || mime.includes('comma-separated-values');
-  };
-
-  const pickCsvFromDevice = async () => {
+  const pickDatasetFromDevice = async () => {
     if (isPickingCsv) return;
 
     try {
       setIsPickingCsv(true);
 
       const result = await DocumentPicker.getDocumentAsync({
-        type: ['text/csv', 'text/comma-separated-values', 'application/csv', 'application/vnd.ms-excel', 'text/plain'],
+        type: [
+          'text/csv',
+          'text/comma-separated-values',
+          'application/csv',
+          'application/vnd.ms-excel',
+          'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+          'text/plain',
+        ],
         copyToCacheDirectory: true,
         multiple: false,
       });
@@ -330,37 +397,33 @@ export default function MainScreen({ navigation }) {
         return;
       }
 
-      if (!isCsvAsset(asset)) {
-        Alert.alert('Formato no valido', 'Selecciona un archivo con extension .csv para continuar.');
+      if (!isDatasetFileSupported(asset)) {
+        Alert.alert('Formato no valido', 'Selecciona un archivo con extension .csv, .xlsx o .xls.');
         return;
       }
 
-      const content = await FileSystem.readAsStringAsync(asset.uri, {
-        encoding: FileSystem.EncodingType.UTF8,
-      });
-
-      if (!content.trim()) {
-        Alert.alert('Archivo vacio', 'El CSV seleccionado no contiene datos.');
-        return;
-      }
-
-      const rows = content
-        .split(/\r?\n/)
-        .filter((line) => line.trim().length > 0).length;
-      const suggestedDatasetName = (asset.name || 'dataset.csv').replace(/\.csv$/i, '').trim() || 'dataset';
+      const datasetFile = await readDatasetAsset(asset);
+      const suggestedDatasetName = (datasetFile.fileName || 'dataset.csv').replace(/\.(csv|xlsx|xls)$/i, '').trim() || 'dataset';
 
       setDatasetName((prev) => (prev.trim() ? prev : suggestedDatasetName));
-      setDatasetContent(content);
-      setSelectedCsvMeta({
-        fileName: asset.name || 'dataset.csv',
-        fileSize: asset.size ?? content.length,
-        rows: Math.max(rows - 1, 0),
+      setDatasetContent(datasetFile.content);
+      setParsedDataset({
+        headers: datasetFile.headers,
+        rows: datasetFile.rows,
+        rowCount: datasetFile.rowCount,
+      });
+      setSelectedDatasetMeta({
+        fileName: datasetFile.fileName,
+        fileSize: datasetFile.fileSize,
+        rows: datasetFile.rowCount,
+        format: datasetFile.format,
+        fileUri: datasetFile.fileUri,
       });
 
-      Alert.alert('Archivo cargado', `${asset.name || 'CSV'} listo para analizar.`);
+      Alert.alert('Archivo cargado', `${datasetFile.fileName} listo para analizar.`);
     } catch (error) {
-      console.log('Error loading CSV file:', error);
-      Alert.alert('Error', 'No se pudo cargar el archivo CSV desde tu dispositivo.');
+      console.log('Error loading dataset file:', error);
+      Alert.alert('Error', error?.message || 'No se pudo cargar el archivo seleccionado desde tu dispositivo.');
     } finally {
       setIsPickingCsv(false);
     }
@@ -435,7 +498,8 @@ export default function MainScreen({ navigation }) {
   };
 
   const loadSample = () => {
-    setSelectedCsvMeta(null);
+    setSelectedDatasetMeta(null);
+    setParsedDataset(null);
     setDatasetName('Muestra_Sensores');
     setDatasetContent(
       'timestamp,temperatura,presion,humedad,estado\n' +
@@ -444,6 +508,11 @@ export default function MainScreen({ navigation }) {
         '2026-01-01 08:10,45.9,980.1,90.0,anomalia\n' +
         '2026-01-01 08:15,22.8,1012.8,55.5,normal'
     );
+  };
+
+  const handleDatasetContentChange = (text) => {
+    setDatasetContent(text);
+    setParsedDataset(null);
   };
 
   const getGeneralStatus = () => {
@@ -484,6 +553,7 @@ export default function MainScreen({ navigation }) {
   const renderInicio = () => {
     const generalStatus = getGeneralStatus();
     const riesgoMeta = RIESGO_META[generalStatus.riesgo];
+    const latestAnalysis = analysisHistory[0];
 
     return (
       <ScrollView style={styles.scroll} contentContainerStyle={styles.tabContent} showsVerticalScrollIndicator={false}>
@@ -506,27 +576,31 @@ export default function MainScreen({ navigation }) {
         <View style={styles.actionsCard}>
           <Text style={styles.sectionTitle}>Ultimo analisis realizado</Text>
           <Text style={styles.moduleDescription}>Resumen del ultimo procesamiento del usuario.</Text>
-          <View style={styles.moduleList}>
-            <TouchableOpacity style={styles.moduleItem} activeOpacity={0.85} onPress={() => setActiveTab('historial')}>
-              <Ionicons name="calendar-outline" size={18} color="#2f7a96" />
-              <Text style={styles.moduleItemText}>Fecha: {HEALTH.ultimoAnalisis.fecha}</Text>
-              <Ionicons name="chevron-forward-outline" size={18} color="#7da6b7" />
-            </TouchableOpacity>
+          {latestAnalysis ? (
+            <View style={styles.moduleList}>
+              <TouchableOpacity style={styles.moduleItem} activeOpacity={0.85} onPress={() => setActiveTab('historial')}>
+                <Ionicons name="calendar-outline" size={18} color="#2f7a96" />
+                <Text style={styles.moduleItemText}>Fecha: {formatDate(latestAnalysis.date)}</Text>
+                <Ionicons name="chevron-forward-outline" size={18} color="#7da6b7" />
+              </TouchableOpacity>
 
-            <TouchableOpacity style={styles.moduleItem} activeOpacity={0.85} onPress={() => setActiveTab('historial')}>
-              <Ionicons name="git-branch-outline" size={18} color="#2f7a96" />
-              <Text style={styles.moduleItemText}>Tipo: {HEALTH.ultimoAnalisis.tipo}</Text>
-              <Ionicons name="chevron-forward-outline" size={18} color="#7da6b7" />
-            </TouchableOpacity>
+              <TouchableOpacity style={styles.moduleItem} activeOpacity={0.85} onPress={() => setActiveTab('historial')}>
+                <Ionicons name="git-branch-outline" size={18} color="#2f7a96" />
+                <Text style={styles.moduleItemText}>Tipo: {formatAnalysisLabel(latestAnalysis.type)}</Text>
+                <Ionicons name="chevron-forward-outline" size={18} color="#7da6b7" />
+              </TouchableOpacity>
 
-            <TouchableOpacity style={styles.moduleItem} activeOpacity={0.85} onPress={() => setActiveTab('historial')}>
-              <Ionicons name="alert-circle-outline" size={18} color="#e07b21" />
-              <Text style={styles.moduleItemText}>Anomalias detectadas: {HEALTH.ultimoAnalisis.anomalias}</Text>
-              <View style={styles.moduleBadgeWarn}>
-                <Text style={styles.moduleBadgeWarnText}>Atencion</Text>
-              </View>
-            </TouchableOpacity>
-          </View>
+              <TouchableOpacity style={styles.moduleItem} activeOpacity={0.85} onPress={() => setActiveTab('historial')}>
+                <Ionicons name="alert-circle-outline" size={18} color="#e07b21" />
+                <Text style={styles.moduleItemText}>Anomalias detectadas: {latestAnalysis.anomalies}</Text>
+                <View style={styles.moduleBadgeWarn}>
+                  <Text style={styles.moduleBadgeWarnText}>Atencion</Text>
+                </View>
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <Text style={styles.moduleDescription}>Aun no tienes analisis guardados. Sube un dataset para iniciar.</Text>
+          )}
         </View>
 
         <View style={styles.actionsCard}>
@@ -566,7 +640,7 @@ export default function MainScreen({ navigation }) {
     <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <ScrollView style={styles.scroll} contentContainerStyle={styles.tabContent} showsVerticalScrollIndicator={false}>
         <Text style={styles.tabPageTitle}>Ingresar dataset</Text>
-        <Text style={styles.tabPageSub}>Selecciona tu archivo CSV guardado en el movil o, si prefieres, pega el contenido manualmente.</Text>
+        <Text style={styles.tabPageSub}>Selecciona un archivo CSV o Excel guardado en el movil o, si prefieres, pega el contenido manualmente.</Text>
 
         <Text style={styles.fieldLabel}>Nombre del dataset *</Text>
         <View style={styles.inputWrap}>
@@ -618,32 +692,33 @@ export default function MainScreen({ navigation }) {
           </View>
         )}
 
-        <Text style={styles.fieldLabel}>Archivo CSV (recomendado)</Text>
+        <Text style={styles.fieldLabel}>Archivo CSV/Excel (recomendado)</Text>
         <View style={styles.csvPickerCard}>
           <View style={styles.csvPickerHeader}>
             <Ionicons name="folder-open-outline" size={18} color={T} />
             <Text style={styles.csvPickerTitle}>Buscar archivo en mi movil</Text>
           </View>
-          <Text style={styles.csvPickerSubtext}>Se abriran tus archivos para seleccionar un CSV almacenado en el dispositivo.</Text>
+          <Text style={styles.csvPickerSubtext}>Se abriran tus archivos para seleccionar un CSV o Excel almacenado en el dispositivo.</Text>
 
           <TouchableOpacity
             style={[styles.csvPickerBtn, isPickingCsv && styles.csvPickerBtnDisabled]}
-            onPress={pickCsvFromDevice}
+            onPress={pickDatasetFromDevice}
             disabled={isPickingCsv}
             activeOpacity={0.85}
           >
             <Ionicons name={isPickingCsv ? 'hourglass-outline' : 'search-outline'} size={18} color="#ffffff" />
-            <Text style={styles.csvPickerBtnText}>{isPickingCsv ? 'Buscando archivo...' : 'Buscar CSV en mi movil'}</Text>
+            <Text style={styles.csvPickerBtnText}>{isPickingCsv ? 'Buscando archivo...' : 'Buscar CSV/Excel en mi movil'}</Text>
           </TouchableOpacity>
 
-          {selectedCsvMeta && (
+          {selectedDatasetMeta && (
             <View style={styles.csvMetaCard}>
               <View style={styles.csvMetaRow}>
                 <Ionicons name="document-text-outline" size={16} color={T} />
-                <Text style={styles.csvMetaFileName} numberOfLines={1}>{selectedCsvMeta.fileName}</Text>
+                <Text style={styles.csvMetaFileName} numberOfLines={1}>{selectedDatasetMeta.fileName}</Text>
               </View>
-              <Text style={styles.csvMetaText}>Tamano: {formatBytes(selectedCsvMeta.fileSize)}</Text>
-              <Text style={styles.csvMetaText}>Registros detectados: {selectedCsvMeta.rows}</Text>
+              <Text style={styles.csvMetaText}>Formato: {selectedDatasetMeta.format?.toUpperCase() || 'CSV'}</Text>
+              <Text style={styles.csvMetaText}>Tamano: {formatBytes(selectedDatasetMeta.fileSize)}</Text>
+              <Text style={styles.csvMetaText}>Registros detectados: {selectedDatasetMeta.rows}</Text>
             </View>
           )}
         </View>
@@ -665,12 +740,12 @@ export default function MainScreen({ navigation }) {
             }
             placeholderTextColor="#9ab4b8"
             value={datasetContent}
-            onChangeText={setDatasetContent}
+            onChangeText={handleDatasetContentChange}
             textAlignVertical="top"
           />
         </View>
 
-        <Text style={styles.dataHint}>Tip: si seleccionas un CSV, este campo se completa automaticamente para facilitar el analisis.</Text>
+        <Text style={styles.dataHint}>Tip: si seleccionas un archivo CSV/Excel, este campo se completa automaticamente para facilitar el analisis.</Text>
 
         <TouchableOpacity
           style={[styles.analyzeBtn, isAnalyzing && styles.analyzeBtnDisabled]}
@@ -688,14 +763,24 @@ export default function MainScreen({ navigation }) {
   const renderHistorial = () => (
     <ScrollView style={styles.scroll} contentContainerStyle={styles.tabContent} showsVerticalScrollIndicator={false}>
       <Text style={styles.tabPageTitle}>Historial de analisis</Text>
-      <Text style={styles.tabPageSub}>{MOCK_HISTORY.length} analisis realizados</Text>
-      {MOCK_HISTORY.map((item) => (
+      <Text style={styles.tabPageSub}>{analysisHistory.length} analisis realizados</Text>
+      {isLoadingHistory && <Text style={styles.tabPageSub}>Actualizando historial desde Supabase...</Text>}
+      {!isLoadingHistory && analysisHistory.length === 0 && (
+        <View style={styles.historyEmptyCard}>
+          <Ionicons name="cloud-upload-outline" size={18} color={T} />
+          <Text style={styles.historyEmptyText}>Aun no hay analisis registrados para tu usuario.</Text>
+        </View>
+      )}
+      {analysisHistory.map((item) => (
         <TouchableOpacity
           key={item.id}
           style={styles.historyCard}
           activeOpacity={0.85}
           onPress={() =>
-            Alert.alert(item.name, `Tipo: ${item.type}\nFecha: ${item.date}\nEstado: ${item.status}\nAnomalias: ${item.anomalies}`)
+            Alert.alert(
+              item.name,
+              `Tipo: ${formatAnalysisLabel(item.type)}\nFecha: ${formatDate(item.date)}\nEstado: ${item.status}\nRegistros: ${item.totalRecords}\nAnomalias: ${item.anomalies}`
+            )
           }
         >
           <View style={[styles.historyStatusBar, { backgroundColor: item.status === 'completado' ? '#2e9e54' : '#e05a21' }]} />
@@ -705,8 +790,8 @@ export default function MainScreen({ navigation }) {
               <Text style={styles.historyName} numberOfLines={1}>{item.name}</Text>
             </View>
             <View style={styles.historyMeta}>
-              <Text style={styles.historyMetaText}>{item.type}</Text>
-              <Text style={styles.historyMetaText}>{item.date}</Text>
+              <Text style={styles.historyMetaText}>{formatAnalysisLabel(item.type)}</Text>
+              <Text style={styles.historyMetaText}>{formatDate(item.date)}</Text>
               <Text style={[styles.historyMetaText, { color: '#e07b21' }]}>{item.anomalies} anomalias</Text>
             </View>
           </View>
@@ -1519,6 +1604,23 @@ const styles = StyleSheet.create({
   historyName: { flex: 1, fontSize: 13, fontWeight: '700', color: '#15333d' },
   historyMeta: { flexDirection: 'row', gap: 12, flexWrap: 'wrap' },
   historyMetaText: { fontSize: 11, color: '#4f666c' },
+  historyEmptyCard: {
+    backgroundColor: '#ffffff',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#d4e7ee',
+    paddingVertical: 14,
+    paddingHorizontal: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 12,
+  },
+  historyEmptyText: {
+    color: '#4f666c',
+    fontSize: 13,
+    flex: 1,
+  },
   avatarWrap: { alignItems: 'center', paddingVertical: 24 },
   avatarCircle: { width: 90, height: 90, borderRadius: 45, backgroundColor: '#e7f4f5', alignItems: 'center', justifyContent: 'center', marginBottom: 12 },
   avatarName: { fontSize: 20, fontWeight: '700', color: '#15333d' },

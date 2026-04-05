@@ -62,7 +62,7 @@ export default function RoleSelectScreen({ navigation }) {
         </TouchableOpacity>
       </View>
 
-      <StatusBar barStyle="dark-content" backgroundColor="#f3f1ec" />
+      <StatusBar barStyle="dark-content" backgroundColor="#eaf6f5" />
     </View>
   );
 }
@@ -70,7 +70,7 @@ export default function RoleSelectScreen({ navigation }) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f3f1ec',
+    backgroundColor: '#eaf6f5',
     paddingHorizontal: 20,
     paddingTop: 58,
   },
@@ -82,7 +82,7 @@ const styles = StyleSheet.create({
     marginBottom: 28,
   },
   eyebrow: {
-    color: '#6f6a62',
+    color: '#0f6d78',
     fontSize: 12,
     fontWeight: '700',
     letterSpacing: 2,
@@ -90,14 +90,14 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   title: {
-    color: '#161616',
+    color: '#0f6d78',
     fontSize: 31,
     fontWeight: '800',
     lineHeight: 36,
     marginBottom: 10,
   },
   subtitle: {
-    color: '#5f5a54',
+    color: '#5f8a8f',
     fontSize: 15,
     lineHeight: 22,
   },
@@ -106,11 +106,11 @@ const styles = StyleSheet.create({
     paddingBottom: 16,
   },
   card: {
-    backgroundColor: '#fbfaf7',
+    backgroundColor: '#ffffff',
     borderRadius: 28,
     padding: 16,
     borderWidth: 1,
-    borderColor: '#dfd9cf',
+    borderColor: '#d4e7ee',
     shadowColor: '#111111',
     shadowOffset: { width: 0, height: 10 },
     shadowOpacity: 0.08,
@@ -129,7 +129,7 @@ const styles = StyleSheet.create({
     width: 96,
     height: 96,
     borderRadius: 24,
-    backgroundColor: '#ece7de',
+    backgroundColor: '#d9eaf1',
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'hidden',
@@ -138,7 +138,7 @@ const styles = StyleSheet.create({
     width: 96,
     height: 96,
     borderRadius: 24,
-    backgroundColor: '#e5e0d6',
+    backgroundColor: '#d9eaf1',
     overflow: 'hidden',
     position: 'relative',
   },
@@ -160,10 +160,10 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: 'rgba(236, 231, 222, 0.38)',
+    backgroundColor: 'rgba(121, 186, 198, 0.25)',
   },
   badgeText: {
-    color: '#6b655f',
+    color: '#0f6d78',
     fontSize: 12,
     fontWeight: '700',
     textTransform: 'uppercase',
@@ -171,13 +171,13 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   cardTitle: {
-    color: '#161616',
+    color: '#0f6d78',
     fontSize: 18,
     fontWeight: '700',
     marginBottom: 6,
   },
   cardDescription: {
-    color: '#5f5a54',
+    color: '#5f8a8f',
     fontSize: 14,
     lineHeight: 21,
   },

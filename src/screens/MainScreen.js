@@ -1,6 +1,7 @@
 ﻿// src/screens/MainScreen.js
 import React, { useEffect, useRef, useState } from 'react';
 import {
+  ActivityIndicator,
   Alert,
   Animated,
   Image,
@@ -17,6 +18,10 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { useCameraPermissions } from 'expo-camera';
 import * as DocumentPicker from 'expo-document-picker';
+import * as FileSystem from 'expo-file-system/legacy';
+import * as Print from 'expo-print';
+import * as Sharing from 'expo-sharing';
+import { captureRef } from 'react-native-view-shot';
 import { BloodPressureModal } from '../components/health/BloodPressureModal';
 import { HeartRateModal } from '../components/health/HeartRateModal';
 import { LanguageSelector } from '../components/common/LanguageSelector';
@@ -366,6 +371,18 @@ const buildSummaryVisualizationImageUri = (visualizationType, totalRegistros, to
   return `${QUICKCHART_URL}?width=720&height=360&c=${encodeURIComponent(JSON.stringify(chartConfig))}`;
 };
 
+const getSummaryVisualizationUri = (summary) => {
+  if (!summary) return null;
+  return (
+    summary.visualizationImageUri
+    || buildSummaryVisualizationImageUri(
+      summary.visualizationType,
+      summary.totalRegistros,
+      summary.totalAnomalias
+    )
+  );
+};
+
 const FINDINGS_VISUALS = {
   bajo: {
     label: 'Hallazgos bajos',
@@ -454,8 +471,11 @@ export default function MainScreen({ navigation }) {
   const [isCameraMeasuring, setIsCameraMeasuring] = useState(false);
   const [cameraSecondsLeft, setCameraSecondsLeft] = useState(15);
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
+  const [isDownloadingReport, setIsDownloadingReport] = useState(false);
+  const [downloadFormat, setDownloadFormat] = useState('pdf');
 
   const fadeAnim = useRef(new Animated.Value(0)).current;
+  const analysisExportCardRef = useRef(null);
 
   const currentUserId = Number(user?.id_usuario ?? user?.id ?? null);
 
@@ -504,6 +524,194 @@ export default function MainScreen({ navigation }) {
     } finally {
       setIsLoadingHistory(false);
     }
+  };
+
+  const downloadResultAsImage = async () => {
+    try {
+      setIsDownloadingReport(true);
+
+      if (!analysisExportCardRef.current) {
+        Alert.alert('No disponible', 'No se pudo preparar el informe para exportar imagen.');
+        return;
+      }
+
+      const chartUri = getSummaryVisualizationUri(analysisResultSummary);
+      if (chartUri) {
+        try {
+          await Image.prefetch(chartUri);
+        } catch (prefetchError) {
+          console.log('No se pudo precargar la imagen de grafica:', prefetchError);
+        }
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, 180));
+
+      const downloadedUri = await captureRef(analysisExportCardRef, {
+        format: 'png',
+        quality: 1,
+        result: 'tmpfile',
+        backgroundColor: '#ffffff',
+      });
+
+      const isAvailable = await Sharing.isAvailableAsync();
+      if (isAvailable) {
+        await Sharing.shareAsync(downloadedUri, {
+          mimeType: 'image/png',
+          dialogTitle: 'Guardar imagen del informe',
+          UTI: 'public.png',
+        });
+      } else {
+        Alert.alert('No disponible', 'La opcion de compartir no esta disponible en este dispositivo.');
+      }
+    } catch (e) {
+      console.log('Error descargando imagen:', e);
+      Alert.alert('Error', 'No se pudo descargar la imagen del resultado.');
+    } finally {
+      setIsDownloadingReport(false);
+    }
+  };
+
+  const downloadResultAsPdf = async () => {
+    try {
+      setIsDownloadingReport(true);
+      const summary = analysisResultSummary;
+      const findings = getFindingsVisual(summary);
+      const tasa = summary?.totalRegistros
+        ? ((Number(summary.totalAnomalias || 0) / Number(summary.totalRegistros || 1)) * 100).toFixed(1) + '%'
+        : '-';
+
+      // Obtener la URI del gráfico de visualización
+      const chartUri =
+        summary?.visualizationImageUri ||
+        buildSummaryVisualizationImageUri(
+          summary?.visualizationType,
+          summary?.totalRegistros,
+          summary?.totalAnomalias
+        );
+
+      // Convertir la imagen del gráfico a base64 usando fetch + arrayBuffer
+      // (más confiable que FileSystem.downloadAsync para URLs externas en React Native)
+      let chartBase64Html = '';
+      if (chartUri) {
+        try {
+          const fetchResp = await fetch(chartUri);
+          if (fetchResp.ok) {
+            const buffer = await fetchResp.arrayBuffer();
+            const uint8 = new Uint8Array(buffer);
+            let binary = '';
+            const chunkSize = 8192;
+            for (let i = 0; i < uint8.length; i += chunkSize) {
+              const chunk = uint8.subarray(i, Math.min(i + chunkSize, uint8.length));
+              binary += String.fromCharCode(...chunk);
+            }
+            const base64 = btoa(binary);
+            chartBase64Html = `
+              <div class="chart-section">
+                <p class="chart-title">Grafica de visualizacion: ${summary?.visualizationLabel || ''}</p>
+                <img src="data:image/png;base64,${base64}" class="chart-img" />
+              </div>
+            `;
+          } else {
+            console.log('[PDF] QuickChart respondio con status:', fetchResp.status);
+          }
+        } catch (imgErr) {
+          console.log('[PDF] No se pudo cargar la imagen del grafico:', imgErr?.message);
+        }
+      }
+
+      const html = `
+        <!DOCTYPE html>
+        <html>
+          <head>
+            <meta charset="utf-8"/>
+            <style>
+              body { font-family: Arial, sans-serif; padding: 28px; color: #1a3a4a; background: #f6fcfd; }
+              h1 { color: #0f6d78; font-size: 22px; margin: 0 0 4px 0; }
+              .subtitle { font-size: 13px; color: #4f7f8c; margin: 0 0 4px 0; }
+              .badge { display: inline-block; background: ${findings.bg}; color: ${findings.color}; border-radius: 20px; padding: 4px 16px; font-size: 13px; font-weight: bold; margin: 12px 0 10px 0; border: 1px solid ${findings.color}55; }
+              .summary-text { font-size: 14px; margin-bottom: 8px; }
+              .guidance-text { font-size: 13px; color: #4f7f8c; margin-bottom: 16px; }
+              table { width: 100%; border-collapse: collapse; margin-top: 4px; margin-bottom: 16px; }
+              th, td { padding: 10px 14px; border: 1px solid #ddeef3; text-align: left; font-size: 13px; }
+              th { background: #e8f6f8; font-weight: 700; color: #0f6d78; width: 40%; }
+              .metrics { display: flex; gap: 12px; margin-bottom: 16px; }
+              .metric { flex: 1; background: #ffffff; border-radius: 10px; padding: 14px; text-align: center; border: 1px solid #ddeef3; }
+              .metric-val { font-size: 26px; font-weight: 800; color: #0f6d78; }
+              .metric-label { font-size: 11px; color: #4f7f8c; margin-top: 4px; }
+              .chart-section { margin: 16px 0; padding: 14px; background: #ffffff; border-radius: 12px; border: 1px solid #ddeef3; }
+              .chart-title { font-size: 12px; font-weight: 700; color: #0f6d78; margin: 0 0 10px 0; text-transform: uppercase; letter-spacing: 0.5px; }
+              .chart-img { width: 100%; max-width: 520px; display: block; margin: 0 auto; border-radius: 8px; }
+              .footer { margin-top: 20px; font-size: 11px; color: #7a99a4; border-top: 1px solid #ddeef3; padding-top: 10px; text-align: center; }
+              .divider { border: none; border-top: 1px solid #ddeef3; margin: 14px 0; }
+            </style>
+          </head>
+          <body>
+            <h1>Resultado del analisis</h1>
+            <p class="subtitle">Generado por Lumex App</p>
+            <hr class="divider"/>
+            <div class="badge">${findings.label}</div>
+            <p class="summary-text">${findings.summary}</p>
+            <p class="guidance-text">${findings.guidance}</p>
+            ${chartBase64Html}
+            <table>
+              <tr><th>Tipo de analisis</th><td>${summary?.selectedAnalysisLabel || '-'}</td></tr>
+              <tr><th>Dataset</th><td>${summary?.datasetName || '-'}</td></tr>
+              <tr><th>Fecha del examen</th><td>${formatDateTime(summary?.analysisDate)}</td></tr>
+              <tr><th>Estado</th><td>${summary?.status || 'Completado'}</td></tr>
+              <tr><th>Parametro solicitado</th><td>${summary?.visualizationLabel || '-'}</td></tr>
+              <tr><th>Nivel de hallazgo</th><td>${findings.label}</td></tr>
+            </table>
+            <div class="metrics">
+              <div class="metric">
+                <div class="metric-val">${summary?.totalRegistros ?? '-'}</div>
+                <div class="metric-label">Registros</div>
+              </div>
+              <div class="metric">
+                <div class="metric-val">${summary?.totalAnomalias ?? '-'}</div>
+                <div class="metric-label">Anomalias</div>
+              </div>
+              <div class="metric">
+                <div class="metric-val">${tasa}</div>
+                <div class="metric-label">Tasa anomalias</div>
+              </div>
+              <div class="metric">
+                <div class="metric-val">${summary?.idAnalisis ?? '-'}</div>
+                <div class="metric-label">ID Analisis</div>
+              </div>
+            </div>
+            <div class="footer">Lumex App &mdash; ${new Date().toLocaleDateString('es-ES')} &mdash; ID ${summary?.idAnalisis ?? '-'}</div>
+          </body>
+        </html>
+      `;
+      const { uri } = await Print.printToFileAsync({ html });
+      const isAvailable = await Sharing.isAvailableAsync();
+      if (isAvailable) {
+        await Sharing.shareAsync(uri, {
+          mimeType: 'application/pdf',
+          dialogTitle: 'Guardar PDF del resultado',
+          UTI: 'com.adobe.pdf',
+        });
+      } else {
+        Alert.alert('No disponible', 'La opcion de compartir no esta disponible en este dispositivo.');
+      }
+    } catch (e) {
+      console.log('Error generando PDF:', e);
+      Alert.alert('Error', 'No se pudo generar el PDF del resultado.');
+    } finally {
+      setIsDownloadingReport(false);
+    }
+  };
+
+  const handleDownloadResultChoice = () => {
+    Alert.alert(
+      'Descargar resultado',
+      '¿En que formato deseas guardar el resultado?',
+      [
+        { text: 'Imagen (.PNG)', onPress: downloadResultAsImage },
+        { text: 'PDF (.PDF)', onPress: downloadResultAsPdf },
+        { text: 'Cancelar', style: 'cancel' },
+      ]
+    );
   };
 
   useEffect(() => {
@@ -1603,8 +1811,8 @@ export default function MainScreen({ navigation }) {
             <ScrollView
               style={styles.analysisResultScroll}
               contentContainerStyle={styles.analysisResultScrollContent}
-              showsVerticalScrollIndicator
-              persistentScrollbar
+              showsVerticalScrollIndicator={!isDownloadingReport}
+              persistentScrollbar={!isDownloadingReport}
             >
               <Text style={styles.analysisResultTitle}>{analysisResultSummary?.source === 'history' ? 'Resultado del analisis' : 'Analisis completado'}</Text>
 
@@ -1717,29 +1925,169 @@ export default function MainScreen({ navigation }) {
             </ScrollView>
 
             <View style={styles.analysisResultActions}>
-              <TouchableOpacity
-                style={[styles.modalActionBtn, styles.modalActionBtnSecondary]}
-                onPress={() => setShowAnalysisResultModal(false)}
-                activeOpacity={0.85}
-              >
-                <Text style={styles.modalActionBtnSecondaryText}>Cerrar</Text>
-              </TouchableOpacity>
-              {analysisResultSummary?.source !== 'history' && (
+              <Text style={styles.downloadFormatLabel}>Selecciona el formato de descarga</Text>
+              <View style={styles.downloadBtnsRow}>
                 <TouchableOpacity
-                  style={[styles.modalActionBtn, styles.modalActionBtnPrimary]}
-                  onPress={() => {
-                    setShowAnalysisResultModal(false);
-                    setActiveTab('historial');
-                  }}
+                  style={[
+                    styles.downloadOptionTile,
+                    downloadFormat === 'pdf' && styles.downloadOptionTileActive,
+                  ]}
+                  onPress={() => setDownloadFormat('pdf')}
                   activeOpacity={0.85}
                 >
-                  <Text style={styles.modalActionBtnPrimaryText}>Ver historial</Text>
+                  <Ionicons
+                    name="document-text-outline"
+                    size={15}
+                    color={downloadFormat === 'pdf' ? '#0f6d78' : '#7aa8b5'}
+                  />
+                  <Text style={[styles.downloadOptionTileText, downloadFormat === 'pdf' && styles.downloadOptionTileTextActive]}>PDF</Text>
+                  {downloadFormat === 'pdf' && (
+                    <Ionicons name="checkmark-circle" size={14} color="#0f6d78" style={styles.downloadOptionCheck} />
+                  )}
                 </TouchableOpacity>
-              )}
+                <TouchableOpacity
+                  style={[
+                    styles.downloadOptionTile,
+                    downloadFormat === 'imagen' && styles.downloadOptionTileActive,
+                  ]}
+                  onPress={() => setDownloadFormat('imagen')}
+                  activeOpacity={0.85}
+                >
+                  <Ionicons
+                    name="image-outline"
+                    size={15}
+                    color={downloadFormat === 'imagen' ? '#0f6d78' : '#7aa8b5'}
+                  />
+                  <Text style={[styles.downloadOptionTileText, downloadFormat === 'imagen' && styles.downloadOptionTileTextActive]}>Imagen</Text>
+                  {downloadFormat === 'imagen' && (
+                    <Ionicons name="checkmark-circle" size={14} color="#0f6d78" style={styles.downloadOptionCheck} />
+                  )}
+                </TouchableOpacity>
+              </View>
+              <View style={styles.downloadBtnsRow}>
+                <TouchableOpacity
+                  style={[styles.modalActionBtn, styles.modalActionBtnSecondary]}
+                  onPress={() => setShowAnalysisResultModal(false)}
+                  activeOpacity={0.85}
+                >
+                  <Text style={styles.modalActionBtnSecondaryText}>Cerrar</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.modalActionBtn, styles.downloadExecuteBtn]}
+                  onPress={downloadFormat === 'pdf' ? downloadResultAsPdf : downloadResultAsImage}
+                  disabled={isDownloadingReport}
+                  activeOpacity={0.85}
+                >
+                  {isDownloadingReport ? (
+                    <ActivityIndicator size="small" color="#ffffff" />
+                  ) : (
+                    <View style={styles.downloadFormatBtnInner}>
+                      <Ionicons name="download-outline" size={15} color="#ffffff" />
+                      <Text style={styles.downloadExecuteBtnText}>Descargar</Text>
+                    </View>
+                  )}
+                </TouchableOpacity>
+              </View>
             </View>
           </View>
         </View>
       </Modal>
+
+      <View style={styles.exportCaptureHost} pointerEvents="none">
+        <View ref={analysisExportCardRef} collapsable={false} style={styles.exportCaptureCard}>
+          <Text style={styles.exportTitle}>Resultado del analisis</Text>
+          <Text style={styles.exportSubTitle}>Generado por Lumex App</Text>
+
+          <View
+            style={[
+              styles.exportFindingsPill,
+              {
+                backgroundColor: getFindingsVisual(analysisResultSummary).bg,
+                borderColor: getFindingsVisual(analysisResultSummary).color + '44',
+              },
+            ]}
+          >
+            <Text
+              style={[
+                styles.exportFindingsPillText,
+                { color: getFindingsVisual(analysisResultSummary).color },
+              ]}
+            >
+              {getFindingsVisual(analysisResultSummary).label}
+            </Text>
+          </View>
+
+          <Text style={styles.exportSummaryText}>{getFindingsVisual(analysisResultSummary).summary}</Text>
+          <Text style={styles.exportGuidanceText}>{getFindingsVisual(analysisResultSummary).guidance}</Text>
+
+          {!!getSummaryVisualizationUri(analysisResultSummary) && (
+            <View style={styles.exportChartWrap}>
+              <Text style={styles.exportChartLabel}>
+                GRAFICA DE VISUALIZACION: {(analysisResultSummary?.visualizationLabel || '-').toUpperCase()}
+              </Text>
+              <Image
+                source={{ uri: getSummaryVisualizationUri(analysisResultSummary) }}
+                style={styles.exportChartImage}
+                resizeMode="contain"
+              />
+            </View>
+          )}
+
+          <View style={styles.exportTable}>
+            <View style={styles.exportTableRow}>
+              <Text style={styles.exportTableKey}>Tipo de analisis</Text>
+              <Text style={styles.exportTableValue}>{analysisResultSummary?.selectedAnalysisLabel || '-'}</Text>
+            </View>
+            <View style={styles.exportTableRow}>
+              <Text style={styles.exportTableKey}>Dataset</Text>
+              <Text style={styles.exportTableValue}>{analysisResultSummary?.datasetName || '-'}</Text>
+            </View>
+            <View style={styles.exportTableRow}>
+              <Text style={styles.exportTableKey}>Fecha del examen</Text>
+              <Text style={styles.exportTableValue}>{formatDateTime(analysisResultSummary?.analysisDate)}</Text>
+            </View>
+            <View style={styles.exportTableRow}>
+              <Text style={styles.exportTableKey}>Estado</Text>
+              <Text style={styles.exportTableValue}>{analysisResultSummary?.status || 'Completado'}</Text>
+            </View>
+            <View style={styles.exportTableRow}>
+              <Text style={styles.exportTableKey}>Parametro solicitado</Text>
+              <Text style={styles.exportTableValue}>{analysisResultSummary?.visualizationLabel || '-'}</Text>
+            </View>
+            <View style={styles.exportTableRow}>
+              <Text style={styles.exportTableKey}>Nivel de hallazgo</Text>
+              <Text style={styles.exportTableValue}>{analysisResultSummary?.findingsLabel || getFindingsVisual(analysisResultSummary).label}</Text>
+            </View>
+          </View>
+
+          <View style={styles.exportMetricsRow}>
+            <View style={styles.exportMetricBox}>
+              <Text style={styles.exportMetricValue}>{analysisResultSummary?.totalRegistros ?? '-'}</Text>
+              <Text style={styles.exportMetricLabel}>Registros</Text>
+            </View>
+            <View style={styles.exportMetricBox}>
+              <Text style={styles.exportMetricValue}>{analysisResultSummary?.totalAnomalias ?? '-'}</Text>
+              <Text style={styles.exportMetricLabel}>Anomalias</Text>
+            </View>
+            <View style={styles.exportMetricBox}>
+              <Text style={styles.exportMetricValue}>
+                {analysisResultSummary?.totalRegistros
+                  ? `${((Number(analysisResultSummary.totalAnomalias || 0) / Number(analysisResultSummary.totalRegistros || 1)) * 100).toFixed(1)}%`
+                  : '-'}
+              </Text>
+              <Text style={styles.exportMetricLabel}>Tasa anomalias</Text>
+            </View>
+            <View style={styles.exportMetricBox}>
+              <Text style={styles.exportMetricValue}>{analysisResultSummary?.idAnalisis ?? '-'}</Text>
+              <Text style={styles.exportMetricLabel}>ID Analisis</Text>
+            </View>
+          </View>
+
+          <Text style={styles.exportFooter}>
+            Lumex App - {new Date().toLocaleDateString('es-ES')} - ID {analysisResultSummary?.idAnalisis ?? '-'}
+          </Text>
+        </View>
+      </View>
     </Animated.View>
   );
 }
@@ -2308,10 +2656,139 @@ const styles = StyleSheet.create({
   },
   analysisResultScroll: {
     maxHeight: '90%',
+    backgroundColor: '#ffffff',
   },
   analysisResultScrollContent: {
     paddingBottom: 8,
     paddingRight: 6,
+    backgroundColor: '#ffffff',
+  },
+  exportCaptureHost: {
+    position: 'absolute',
+    left: -5000,
+    top: -5000,
+    width: 760,
+    backgroundColor: '#ffffff',
+  },
+  exportCaptureCard: {
+    width: 760,
+    backgroundColor: '#eef7f8',
+    borderWidth: 1,
+    borderColor: '#d4e7ee',
+    paddingHorizontal: 30,
+    paddingTop: 24,
+    paddingBottom: 26,
+  },
+  exportTitle: {
+    color: '#1b5f74',
+    fontSize: 46,
+    fontWeight: '800',
+    marginBottom: 6,
+  },
+  exportSubTitle: {
+    color: '#6a8f99',
+    fontSize: 18,
+    marginBottom: 18,
+  },
+  exportFindingsPill: {
+    alignSelf: 'flex-start',
+    borderRadius: 999,
+    borderWidth: 2,
+    paddingHorizontal: 18,
+    paddingVertical: 8,
+    marginBottom: 14,
+  },
+  exportFindingsPillText: {
+    fontSize: 24,
+    fontWeight: '800',
+  },
+  exportSummaryText: {
+    color: '#355964',
+    fontSize: 18,
+    marginBottom: 8,
+  },
+  exportGuidanceText: {
+    color: '#4f6f7b',
+    fontSize: 16,
+    marginBottom: 16,
+  },
+  exportChartWrap: {
+    backgroundColor: '#ffffff',
+    borderWidth: 1,
+    borderColor: '#d4e7ee',
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 14,
+  },
+  exportChartLabel: {
+    color: '#2a6b7d',
+    fontSize: 16,
+    fontWeight: '800',
+    marginBottom: 6,
+  },
+  exportChartImage: {
+    width: '100%',
+    height: 250,
+  },
+  exportTable: {
+    borderWidth: 1,
+    borderColor: '#d4e7ee',
+    borderRadius: 10,
+    overflow: 'hidden',
+    marginBottom: 14,
+  },
+  exportTableRow: {
+    flexDirection: 'row',
+    borderBottomWidth: 1,
+    borderBottomColor: '#dfeef3',
+  },
+  exportTableKey: {
+    width: '40%',
+    backgroundColor: '#e6f3f6',
+    color: '#24556a',
+    fontSize: 16,
+    fontWeight: '700',
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+  },
+  exportTableValue: {
+    flex: 1,
+    color: '#1f3f4d',
+    fontSize: 16,
+    fontWeight: '500',
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+  },
+  exportMetricsRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginBottom: 14,
+  },
+  exportMetricBox: {
+    flex: 1,
+    backgroundColor: '#ffffff',
+    borderWidth: 1,
+    borderColor: '#d4e7ee',
+    borderRadius: 10,
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
+  exportMetricValue: {
+    color: '#1b5f74',
+    fontSize: 36,
+    fontWeight: '800',
+    lineHeight: 40,
+  },
+  exportMetricLabel: {
+    color: '#678a95',
+    fontSize: 14,
+    marginTop: 2,
+  },
+  exportFooter: {
+    textAlign: 'center',
+    color: '#7f9aa2',
+    fontSize: 13,
+    marginTop: 4,
   },
   analysisResultTitle: {
     fontSize: 19,
@@ -2426,11 +2903,37 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   analysisResultActions: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    gap: 10,
+    flexDirection: 'column',
+    gap: 8,
     marginTop: 10,
     paddingTop: 6,
+  },
+  downloadBtnsRow: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  downloadFormatBtn: {
+    flex: 1,
+    borderRadius: 12,
+    paddingVertical: 11,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  downloadFormatBtnPdf: {
+    backgroundColor: '#0f6d78',
+  },
+  downloadFormatBtnImg: {
+    backgroundColor: '#2f7a96',
+  },
+  downloadFormatBtnInner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+  },
+  downloadFormatBtnText: {
+    color: '#ffffff',
+    fontSize: 13,
+    fontWeight: '700',
   },
   historyEmptyCard: {
     backgroundColor: '#ffffff',
@@ -2533,33 +3036,63 @@ const styles = StyleSheet.create({
   modalCardCompact: {
     paddingBottom: 14,
   },
-  modalHeaderRow: {
+  downloadBtnsRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 8,
+    gap: 10,
   },
-  modalTitle: {
-    color: '#173746',
-    fontSize: 17,
+  downloadFormatLabel: {
+    fontSize: 12,
+    color: '#4f7f8c',
+    fontWeight: '600',
+    marginBottom: 6,
+    textAlign: 'center',
+  },
+  downloadOptionTile: {
+    flex: 1,
+    borderRadius: 12,
+    minHeight: 44,
+    paddingVertical: 12,
+    paddingHorizontal: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    backgroundColor: '#f3fafc',
+    borderWidth: 1,
+    borderColor: '#deedf3',
+  },
+  downloadOptionTileActive: {
+    backgroundColor: '#e4f4f8',
+    borderColor: '#0f6d78',
+  },
+  downloadOptionTileText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#7aa8b5',
+  },
+  downloadOptionTileTextActive: {
+    color: '#0f6d78',
     fontWeight: '700',
   },
-  modalDescription: {
-    color: '#587886',
-    fontSize: 13,
-    lineHeight: 19,
-    marginBottom: 14,
+  downloadOptionCheck: {
+    position: 'absolute',
+    top: 5,
+    right: 6,
   },
-  measureModeRow: {
-    flexDirection: 'row',
-    gap: 8,
-    marginBottom: 12,
-  },
-  measureModeChip: {
+  downloadFormatBtnInner: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 5,
-    backgroundColor: '#f3fafc',
+  },
+  downloadExecuteBtn: {
+    backgroundColor: '#0f6d78',
+  },
+  downloadExecuteBtnText: {
+    color: '#ffffff',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  measureModeChip: {
     borderWidth: 1,
     borderColor: '#deedf3',
     borderRadius: 999,

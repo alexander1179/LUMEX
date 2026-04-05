@@ -71,6 +71,33 @@ const ANALYSIS_VISUALS = {
   },
 };
 
+const VISUALIZATION_OPTIONS = [
+  {
+    value: 'matriz_correlacion',
+    label: 'Matriz de correlacion',
+    icon: 'grid-outline',
+    detail: 'Vista de relaciones entre variables para identificar patrones de correlacion.',
+  },
+  {
+    value: 'histograma',
+    label: 'Histograma',
+    icon: 'stats-chart-outline',
+    detail: 'Distribucion de frecuencias para entender concentraciones y dispersion.',
+  },
+  {
+    value: 'dispersion',
+    label: 'Dispersion',
+    icon: 'share-social-outline',
+    detail: 'Relacion entre dos variables para observar tendencias y valores atipicos.',
+  },
+  {
+    value: 'boxplot',
+    label: 'Boxplot',
+    icon: 'albums-outline',
+    detail: 'Resumen estadistico con cuartiles, mediana y posibles outliers.',
+  },
+];
+
 const HEALTH = {
   frecuenciaCardiaca: { valor: 78, unidad: 'bpm', estado: 'normal' },
   presionArterial: { sistolica: 122, diastolica: 80, estado: 'normal' },
@@ -119,6 +146,224 @@ const formatAnalysisLabel = (analysisType) => {
 
 const getAnalysisVisual = (analysisType) => {
   return ANALYSIS_VISUALS[analysisType] || ANALYSIS_VISUALS.anomalias;
+};
+
+const getVisualizationOption = (visualizationType) => {
+  return VISUALIZATION_OPTIONS.find((item) => item.value === visualizationType) || VISUALIZATION_OPTIONS[0];
+};
+
+const FIXED_ANALYSIS_TYPE = 'anomalias';
+
+const QUICKCHART_URL = 'https://quickchart.io/chart';
+
+const getNumericColumns = (parsedDataset) => {
+  const headers = Array.isArray(parsedDataset?.headers) ? parsedDataset.headers : [];
+  const rows = Array.isArray(parsedDataset?.rows) ? parsedDataset.rows : [];
+
+  return headers
+    .map((header) => {
+      const values = rows
+        .map((row) => Number(String(row?.[header] ?? '').replace(',', '.')))
+        .filter((value) => Number.isFinite(value));
+
+      return { header, values };
+    })
+    .filter((item) => item.values.length > 0);
+};
+
+const quantile = (sortedValues, q) => {
+  if (!sortedValues.length) return 0;
+  const pos = (sortedValues.length - 1) * q;
+  const base = Math.floor(pos);
+  const rest = pos - base;
+  const next = sortedValues[base + 1] ?? sortedValues[base];
+  return sortedValues[base] + rest * (next - sortedValues[base]);
+};
+
+const buildVisualizationChartConfig = (parsedDataset, visualizationType) => {
+  const numericCols = getNumericColumns(parsedDataset);
+  if (!numericCols.length) return null;
+
+  const first = numericCols[0];
+  const second = numericCols[1] || numericCols[0];
+
+  if (visualizationType === 'histograma') {
+    const values = [...first.values].sort((a, b) => a - b);
+    const bins = 8;
+    const min = values[0];
+    const max = values[values.length - 1];
+    const step = max === min ? 1 : (max - min) / bins;
+    const counts = new Array(bins).fill(0);
+
+    values.forEach((value) => {
+      const idx = Math.min(bins - 1, Math.floor((value - min) / step));
+      counts[idx] += 1;
+    });
+
+    const labels = counts.map((_, idx) => {
+      const start = min + (step * idx);
+      const end = start + step;
+      return `${start.toFixed(1)}-${end.toFixed(1)}`;
+    });
+
+    return {
+      type: 'bar',
+      data: { labels, datasets: [{ label: `Histograma ${first.header}`, data: counts, backgroundColor: '#2f7a96' }] },
+      options: { plugins: { legend: { display: false }, title: { display: true, text: 'Histograma' } } },
+    };
+  }
+
+  if (visualizationType === 'dispersion') {
+    const points = [];
+    const limit = Math.min(first.values.length, second.values.length, 80);
+    for (let i = 0; i < limit; i += 1) {
+      points.push({ x: first.values[i], y: second.values[i] });
+    }
+
+    return {
+      type: 'scatter',
+      data: { datasets: [{ label: `${first.header} vs ${second.header}`, data: points, backgroundColor: '#0f6d78' }] },
+      options: { plugins: { title: { display: true, text: 'Grafico de dispersion' } } },
+    };
+  }
+
+  if (visualizationType === 'boxplot') {
+    const sorted = [...first.values].sort((a, b) => a - b);
+    const min = sorted[0];
+    const q1 = quantile(sorted, 0.25);
+    const median = quantile(sorted, 0.5);
+    const q3 = quantile(sorted, 0.75);
+    const max = sorted[sorted.length - 1];
+
+    return {
+      type: 'line',
+      data: {
+        labels: ['Min', 'Q1', 'Mediana', 'Q3', 'Max'],
+        datasets: [{
+          label: `Resumen ${first.header}`,
+          data: [min, q1, median, q3, max],
+          borderColor: '#4f9db8',
+          backgroundColor: 'rgba(79,157,184,0.2)',
+          pointBackgroundColor: '#0d607a',
+          pointRadius: 4,
+          fill: true,
+          tension: 0.2,
+        }],
+      },
+      options: { plugins: { legend: { display: false }, title: { display: true, text: 'Resumen tipo boxplot' } } },
+    };
+  }
+
+  const baseValues = first.values;
+  const labels = [];
+  const correlations = [];
+
+  numericCols.slice(0, 8).forEach((col) => {
+    const size = Math.min(baseValues.length, col.values.length);
+    const xs = baseValues.slice(0, size);
+    const ys = col.values.slice(0, size);
+    const meanX = xs.reduce((sum, v) => sum + v, 0) / (size || 1);
+    const meanY = ys.reduce((sum, v) => sum + v, 0) / (size || 1);
+    const cov = xs.reduce((sum, x, i) => sum + ((x - meanX) * (ys[i] - meanY)), 0) / (size || 1);
+    const stdX = Math.sqrt(xs.reduce((sum, x) => sum + ((x - meanX) ** 2), 0) / (size || 1)) || 1;
+    const stdY = Math.sqrt(ys.reduce((sum, y) => sum + ((y - meanY) ** 2), 0) / (size || 1)) || 1;
+    const corr = cov / (stdX * stdY);
+    labels.push(col.header);
+    correlations.push(Number(corr.toFixed(3)));
+  });
+
+  return {
+    type: 'radar',
+    data: {
+      labels,
+      datasets: [{
+        label: `Correlacion con ${first.header}`,
+        data: correlations,
+        borderColor: '#1b5f79',
+        backgroundColor: 'rgba(27,95,121,0.22)',
+        pointBackgroundColor: '#1b5f79',
+      }],
+    },
+    options: { plugins: { title: { display: true, text: 'Matriz de correlacion (resumen)' } } },
+  };
+};
+
+const buildVisualizationImageUri = (parsedDataset, visualizationType) => {
+  const chartConfig = buildVisualizationChartConfig(parsedDataset, visualizationType);
+  if (!chartConfig) return null;
+  return `${QUICKCHART_URL}?width=720&height=360&c=${encodeURIComponent(JSON.stringify(chartConfig))}`;
+};
+
+const buildSummaryVisualizationImageUri = (visualizationType, totalRegistros, totalAnomalias) => {
+  const total = Math.max(1, Number(totalRegistros || 0));
+  const anomalies = Math.max(0, Math.min(total, Number(totalAnomalias || 0)));
+  const normal = Math.max(0, total - anomalies);
+  const anomalyRate = anomalies / total;
+
+  if (visualizationType === 'histograma') {
+    const chartConfig = {
+      type: 'bar',
+      data: {
+        labels: ['Registros normales', 'Registros con anomalia'],
+        datasets: [{ data: [normal, anomalies], backgroundColor: ['#2f7a96', '#e05a21'] }],
+      },
+      options: { plugins: { legend: { display: false }, title: { display: true, text: 'Histograma de resultado' } } },
+    };
+    return `${QUICKCHART_URL}?width=720&height=360&c=${encodeURIComponent(JSON.stringify(chartConfig))}`;
+  }
+
+  if (visualizationType === 'dispersion') {
+    const chartConfig = {
+      type: 'scatter',
+      data: {
+        datasets: [{
+          label: 'Distribucion analisis',
+          data: [{ x: normal, y: anomalies }, { x: total, y: Math.round(anomalyRate * 100) }],
+          backgroundColor: '#0f6d78',
+        }],
+      },
+      options: { plugins: { title: { display: true, text: 'Dispersion del resultado' } } },
+    };
+    return `${QUICKCHART_URL}?width=720&height=360&c=${encodeURIComponent(JSON.stringify(chartConfig))}`;
+  }
+
+  if (visualizationType === 'boxplot') {
+    const q1 = normal * 0.25;
+    const median = normal * 0.5;
+    const q3 = normal * 0.75;
+    const chartConfig = {
+      type: 'line',
+      data: {
+        labels: ['Min', 'Q1', 'Mediana', 'Q3', 'Max'],
+        datasets: [{
+          data: [0, q1, median, q3, total],
+          borderColor: '#4f9db8',
+          backgroundColor: 'rgba(79,157,184,0.2)',
+          pointBackgroundColor: '#0d607a',
+          fill: true,
+          tension: 0.2,
+        }],
+      },
+      options: { plugins: { legend: { display: false }, title: { display: true, text: 'Boxplot del resultado' } } },
+    };
+    return `${QUICKCHART_URL}?width=720&height=360&c=${encodeURIComponent(JSON.stringify(chartConfig))}`;
+  }
+
+  const chartConfig = {
+    type: 'radar',
+    data: {
+      labels: ['Registros', 'Anomalias', 'Normales', 'Tasa de anomalia'],
+      datasets: [{
+        data: [total, anomalies, normal, Math.round(anomalyRate * 100)],
+        borderColor: '#1b5f79',
+        backgroundColor: 'rgba(27,95,121,0.22)',
+        pointBackgroundColor: '#1b5f79',
+      }],
+    },
+    options: { plugins: { legend: { display: false }, title: { display: true, text: 'Matriz de correlacion (resumen)' } } },
+  };
+
+  return `${QUICKCHART_URL}?width=720&height=360&c=${encodeURIComponent(JSON.stringify(chartConfig))}`;
 };
 
 const FINDINGS_VISUALS = {
@@ -180,8 +425,8 @@ export default function MainScreen({ navigation }) {
   const [selectedDatasetMeta, setSelectedDatasetMeta] = useState(null);
   const [parsedDataset, setParsedDataset] = useState(null);
   const [isPickingCsv, setIsPickingCsv] = useState(false);
-  const [selectedAnalysis, setSelectedAnalysis] = useState('anomalias');
-  const [analysisTypeOpen, setAnalysisTypeOpen] = useState(false);
+  const [selectedVisualization, setSelectedVisualization] = useState('matriz_correlacion');
+  const [visualizationOpen, setVisualizationOpen] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [showAnalysisResultModal, setShowAnalysisResultModal] = useState(false);
   const [analysisResultSummary, setAnalysisResultSummary] = useState(null);
@@ -430,15 +675,20 @@ export default function MainScreen({ navigation }) {
 
     try {
       setIsAnalyzing(true);
-      const selectedAnalysisLabel = formatAnalysisLabel(selectedAnalysis);
+      const selectedAnalysisLabel = formatAnalysisLabel(FIXED_ANALYSIS_TYPE);
+      const selectedVisualizationMeta = getVisualizationOption(selectedVisualization);
+      const baseDatasetPath = selectedDatasetMeta?.fileUri || 'movil://dataset/manual';
+      const datasetPathWithVisualization = `${baseDatasetPath}|viz=${selectedVisualization}`;
 
       const parsed = parsedDataset || parseDatasetContent(datasetContent);
+      const visualizationImageUri = buildVisualizationImageUri(parsed, selectedVisualization);
 
       const saveResult = await saveAnalysisInSupabase({
         userId: currentUserId,
-        analysisType: selectedAnalysis,
+        analysisType: FIXED_ANALYSIS_TYPE,
+        visualizationType: selectedVisualization,
         datasetName: datasetName.trim(),
-        datasetPath: selectedDatasetMeta?.fileUri || 'movil://dataset/manual',
+        datasetPath: datasetPathWithVisualization,
         parsedDataset: parsed,
       });
 
@@ -446,8 +696,11 @@ export default function MainScreen({ navigation }) {
 
       setIsAnalyzing(false);
       setAnalysisResultSummary({
-        selectedAnalysis,
+        selectedAnalysis: FIXED_ANALYSIS_TYPE,
         selectedAnalysisLabel,
+        visualizationType: selectedVisualization,
+        visualizationLabel: selectedVisualizationMeta.label,
+        visualizationImageUri,
         datasetName: datasetName.trim(),
         idDataset: saveResult.idDataset,
         idAnalisis: saveResult.idAnalisis,
@@ -663,7 +916,13 @@ export default function MainScreen({ navigation }) {
     const latestAnalysis = analysisHistory[0];
 
     return (
-      <ScrollView style={styles.scroll} contentContainerStyle={styles.tabContent} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={styles.tabContent}
+        showsVerticalScrollIndicator
+        persistentScrollbar
+        scrollIndicatorInsets={{ right: 8 }}
+      >
         <Text style={styles.sectionHeading}>Estado general</Text>
         <View style={[styles.estadoCard, { borderColor: riesgoMeta.color, backgroundColor: riesgoMeta.bg }]}>
           <View style={styles.estadoLeft}>
@@ -686,13 +945,18 @@ export default function MainScreen({ navigation }) {
           {latestAnalysis ? (
             <View style={styles.moduleList}>
               <View style={styles.moduleItem}>
+                <Ionicons name="alert-circle-outline" size={18} color="#2f7a96" />
+                <Text style={styles.moduleItemText}>Tipo de analisis: {formatAnalysisLabel(FIXED_ANALYSIS_TYPE)}</Text>
+              </View>
+
+              <View style={styles.moduleItem}>
                 <Ionicons name="calendar-outline" size={18} color="#2f7a96" />
                 <Text style={styles.moduleItemText}>Fecha: {formatDate(latestAnalysis.date)}</Text>
               </View>
 
               <View style={styles.moduleItem}>
-                <Ionicons name="git-branch-outline" size={18} color="#2f7a96" />
-                <Text style={styles.moduleItemText}>Tipo: {formatAnalysisLabel(latestAnalysis.type)}</Text>
+                <Ionicons name={getVisualizationOption(latestAnalysis.visualizationType).icon} size={18} color="#2f7a96" />
+                <Text style={styles.moduleItemText}>Parametro de visualizacion: {getVisualizationOption(latestAnalysis.visualizationType).label}</Text>
               </View>
 
               <View style={styles.moduleItem}>
@@ -741,9 +1005,27 @@ export default function MainScreen({ navigation }) {
     );
   };
 
-  const renderDataset = () => (
+  const renderDataset = () => {
+    let visualizationPreviewUri = null;
+    try {
+      if (parsedDataset) {
+        visualizationPreviewUri = buildVisualizationImageUri(parsedDataset, selectedVisualization);
+      } else if (datasetContent.trim()) {
+        visualizationPreviewUri = buildVisualizationImageUri(parseDatasetContent(datasetContent), selectedVisualization);
+      }
+    } catch (_error) {
+      visualizationPreviewUri = null;
+    }
+
+    return (
     <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <ScrollView style={styles.scroll} contentContainerStyle={styles.tabContent} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={styles.tabContent}
+        showsVerticalScrollIndicator
+        persistentScrollbar
+        scrollIndicatorInsets={{ right: 8 }}
+      >
         <Text style={styles.tabPageTitle}>Ingresar dataset</Text>
         <Text style={styles.tabPageSub}>Selecciona un archivo CSV o Excel guardado en el movil o, si prefieres, pega el contenido manualmente.</Text>
 
@@ -760,50 +1042,81 @@ export default function MainScreen({ navigation }) {
         </View>
 
         <Text style={styles.fieldLabel}>Tipo de analisis *</Text>
-        <TouchableOpacity style={styles.selectorButton} onPress={() => setAnalysisTypeOpen((v) => !v)} activeOpacity={0.85}>
+        <View style={styles.selectorButton}>
           <Ionicons
-            name={ANALYSIS_TYPES.find((a) => a.value === selectedAnalysis)?.icon || 'options-outline'}
+            name={ANALYSIS_TYPES.find((a) => a.value === FIXED_ANALYSIS_TYPE)?.icon || 'alert-circle-outline'}
             size={18}
             color={T}
             style={styles.inputIcon}
           />
-          <Text style={styles.selectorText}>{ANALYSIS_TYPES.find((a) => a.value === selectedAnalysis)?.label}</Text>
-          <Ionicons name={analysisTypeOpen ? 'chevron-up-outline' : 'chevron-down-outline'} size={16} color="#4f666c" />
+          <Text style={styles.selectorText}>{ANALYSIS_TYPES.find((a) => a.value === FIXED_ANALYSIS_TYPE)?.label}</Text>
+        </View>
+
+        <View style={styles.analysisVisualCard}>
+          <Image source={{ uri: getAnalysisVisual(FIXED_ANALYSIS_TYPE).imageUri }} style={styles.analysisVisualImage} resizeMode="cover" />
+          <View style={styles.analysisVisualOverlay}>
+            <Text style={styles.analysisVisualTitle}>{getAnalysisVisual(FIXED_ANALYSIS_TYPE).title}</Text>
+            <Text style={styles.analysisVisualSubtitle}>{getAnalysisVisual(FIXED_ANALYSIS_TYPE).subtitle}</Text>
+            <Text style={styles.analysisVisualMeta}>{getAnalysisVisual(FIXED_ANALYSIS_TYPE).focus}</Text>
+            <Text style={styles.analysisVisualTip}>{getAnalysisVisual(FIXED_ANALYSIS_TYPE).tip}</Text>
+          </View>
+        </View>
+
+        <Text style={styles.fieldLabel}>Parametro de visualizacion *</Text>
+        <TouchableOpacity style={styles.selectorButton} onPress={() => setVisualizationOpen((v) => !v)} activeOpacity={0.85}>
+          <Ionicons
+            name={getVisualizationOption(selectedVisualization).icon}
+            size={18}
+            color={T}
+            style={styles.inputIcon}
+          />
+          <Text style={styles.selectorText}>{getVisualizationOption(selectedVisualization).label}</Text>
+          <Ionicons name={visualizationOpen ? 'chevron-up-outline' : 'chevron-down-outline'} size={16} color="#4f666c" />
         </TouchableOpacity>
 
-        {analysisTypeOpen && (
+        {visualizationOpen && (
           <View style={styles.dropdownMenu}>
-            {ANALYSIS_TYPES.map((type) => (
+            {VISUALIZATION_OPTIONS.map((option) => (
               <TouchableOpacity
-                key={type.value}
-                style={[styles.dropdownItem, selectedAnalysis === type.value && styles.dropdownItemActive]}
+                key={option.value}
+                style={[styles.dropdownItem, selectedVisualization === option.value && styles.dropdownItemActive]}
                 onPress={() => {
-                  setSelectedAnalysis(type.value);
-                  setAnalysisTypeOpen(false);
+                  setSelectedVisualization(option.value);
+                  setVisualizationOpen(false);
                 }}
               >
                 <Ionicons
-                  name={type.icon}
+                  name={option.icon}
                   size={16}
-                  color={selectedAnalysis === type.value ? T : '#4f666c'}
+                  color={selectedVisualization === option.value ? T : '#4f666c'}
                   style={styles.dropdownItemIcon}
                 />
-                <Text style={[styles.dropdownItemText, selectedAnalysis === type.value && styles.dropdownItemTextActive]}>
-                  {type.label}
+                <Text style={[styles.dropdownItemText, selectedVisualization === option.value && styles.dropdownItemTextActive]}>
+                  {option.label}
                 </Text>
-                {selectedAnalysis === type.value && <Ionicons name="checkmark-outline" size={16} color={T} />}
+                {selectedVisualization === option.value && <Ionicons name="checkmark-outline" size={16} color={T} />}
               </TouchableOpacity>
             ))}
           </View>
         )}
 
         <View style={styles.analysisVisualCard}>
-          <Image source={{ uri: getAnalysisVisual(selectedAnalysis).imageUri }} style={styles.analysisVisualImage} resizeMode="cover" />
+          {visualizationPreviewUri ? (
+            <Image
+              source={{ uri: visualizationPreviewUri }}
+              style={styles.analysisVisualImage}
+              resizeMode="cover"
+            />
+          ) : (
+            <View style={styles.analysisVisualEmpty}>
+              <Ionicons name="image-outline" size={22} color="#5d7f8e" />
+              <Text style={styles.analysisVisualEmptyText}>Carga datos para generar vista real del parametro.</Text>
+            </View>
+          )}
           <View style={styles.analysisVisualOverlay}>
-            <Text style={styles.analysisVisualTitle}>{getAnalysisVisual(selectedAnalysis).title}</Text>
-            <Text style={styles.analysisVisualSubtitle}>{getAnalysisVisual(selectedAnalysis).subtitle}</Text>
-            <Text style={styles.analysisVisualMeta}>{getAnalysisVisual(selectedAnalysis).focus}</Text>
-            <Text style={styles.analysisVisualTip}>{getAnalysisVisual(selectedAnalysis).tip}</Text>
+            <Text style={styles.analysisVisualTitle}>{getVisualizationOption(selectedVisualization).label}</Text>
+            <Text style={styles.analysisVisualSubtitle}>{getVisualizationOption(selectedVisualization).detail}</Text>
+            <Text style={styles.analysisVisualMeta}>Parametro seleccionado para generar el resultado visual del analisis.</Text>
           </View>
         </View>
 
@@ -874,9 +1187,16 @@ export default function MainScreen({ navigation }) {
       </ScrollView>
     </KeyboardAvoidingView>
   );
+  };
 
   const renderHistorial = () => (
-    <ScrollView style={styles.scroll} contentContainerStyle={styles.tabContent} showsVerticalScrollIndicator={false}>
+    <ScrollView
+      style={styles.scroll}
+      contentContainerStyle={styles.tabContent}
+      showsVerticalScrollIndicator
+      persistentScrollbar
+      scrollIndicatorInsets={{ right: 8 }}
+    >
       <Text style={styles.tabPageTitle}>Historial de analisis</Text>
       <Text style={styles.tabPageSub}>{analysisHistory.length} analisis realizados</Text>
       {isLoadingHistory && <Text style={styles.tabPageSub}>Actualizando historial desde Supabase...</Text>}
@@ -894,9 +1214,13 @@ export default function MainScreen({ navigation }) {
           style={styles.historyCard}
           activeOpacity={0.85}
           onPress={() => {
+            const visualizationMeta = getVisualizationOption(item.visualizationType);
             setAnalysisResultSummary({
-              selectedAnalysis: item.type,
-              selectedAnalysisLabel: formatAnalysisLabel(item.type),
+              selectedAnalysis: FIXED_ANALYSIS_TYPE,
+              selectedAnalysisLabel: formatAnalysisLabel(FIXED_ANALYSIS_TYPE),
+              visualizationType: item.visualizationType,
+              visualizationLabel: visualizationMeta.label,
+              visualizationImageUri: buildSummaryVisualizationImageUri(item.visualizationType, item.totalRecords, item.anomalies),
               datasetName: item.name,
               idAnalisis: item.idAnalisis,
               totalRegistros: item.totalRecords,
@@ -1308,11 +1632,28 @@ export default function MainScreen({ navigation }) {
                 </Text>
               </View>
 
-              <Image
-                source={{ uri: getFindingsVisual(analysisResultSummary).imageUri }}
-                style={styles.analysisResultImage}
-                resizeMode="cover"
-              />
+              {!!(
+                analysisResultSummary?.visualizationImageUri
+                || buildSummaryVisualizationImageUri(
+                  analysisResultSummary?.visualizationType,
+                  analysisResultSummary?.totalRegistros,
+                  analysisResultSummary?.totalAnomalias
+                )
+              ) && (
+                <Image
+                  source={{
+                    uri:
+                      analysisResultSummary?.visualizationImageUri
+                      || buildSummaryVisualizationImageUri(
+                        analysisResultSummary?.visualizationType,
+                        analysisResultSummary?.totalRegistros,
+                        analysisResultSummary?.totalAnomalias
+                      ),
+                  }}
+                  style={styles.analysisResultImage}
+                  resizeMode="cover"
+                />
+              )}
 
               <Text style={styles.analysisResultType}>{analysisResultSummary?.selectedAnalysisLabel || 'Analisis'}</Text>
               <Text style={styles.analysisResultDataset}>Dataset: {analysisResultSummary?.datasetName || '-'}</Text>
@@ -1338,6 +1679,10 @@ export default function MainScreen({ navigation }) {
                 <View style={styles.analysisResultInfoRow}>
                   <Text style={styles.analysisResultInfoLabel}>Estado</Text>
                   <Text style={styles.analysisResultInfoValue}>{analysisResultSummary?.status || 'Completado'}</Text>
+                </View>
+                <View style={styles.analysisResultInfoRow}>
+                  <Text style={styles.analysisResultInfoLabel}>Parametro solicitado</Text>
+                  <Text style={styles.analysisResultInfoValue}>{analysisResultSummary?.visualizationLabel || '-'}</Text>
                 </View>
                 <View style={styles.analysisResultInfoRow}>
                   <Text style={styles.analysisResultInfoLabel}>Nivel de hallazgo</Text>
@@ -1726,6 +2071,16 @@ const styles = StyleSheet.create({
     height: 48,
   },
   selectorText: { flex: 1, fontSize: 14, color: '#15333d' },
+  lockedTag: {
+    backgroundColor: '#d8eef2',
+    color: '#0f6d78',
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+    fontSize: 11,
+    fontWeight: '700',
+    overflow: 'hidden',
+  },
   dropdownMenu: {
     backgroundColor: '#fff',
     borderRadius: 12,
@@ -1902,6 +2257,19 @@ const styles = StyleSheet.create({
   analysisVisualImage: {
     width: '100%',
     height: 140,
+  },
+  analysisVisualEmpty: {
+    height: 120,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#eef6f8',
+    paddingHorizontal: 14,
+    gap: 6,
+  },
+  analysisVisualEmptyText: {
+    color: '#5d7f8e',
+    fontSize: 12,
+    textAlign: 'center',
   },
   analysisVisualOverlay: {
     paddingHorizontal: 14,

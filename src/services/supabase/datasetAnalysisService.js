@@ -259,6 +259,7 @@ const insertResultadosInBatches = async (supabaseClient, resultados, analisisId)
 const saveAnalysisViaServer = async ({
   userId,
   analysisType,
+  visualizationType,
   datasetName,
   datasetPath,
   parsedDataset,
@@ -275,6 +276,7 @@ const saveAnalysisViaServer = async ({
         body: JSON.stringify({
           userId,
           analysisType,
+          visualizationType,
           datasetName,
           datasetPath,
           parsedDataset,
@@ -430,6 +432,7 @@ const resolveModelId = async (analysisType) => {
 export const saveAnalysisInSupabase = async ({
   userId,
   analysisType,
+  visualizationType,
   datasetName,
   datasetPath,
   parsedDataset,
@@ -457,6 +460,7 @@ export const saveAnalysisInSupabase = async ({
       return await saveAnalysisViaServer({
         userId: numericUserId,
         analysisType,
+        visualizationType,
         datasetName,
         datasetPath,
         analysisSummary: {
@@ -556,6 +560,15 @@ export const fetchAnalysisHistoryByUser = async (userId) => {
     return [];
   }
 
+  const resolveVisualizationTypeFromPath = (datasetPath) => {
+    const rawPath = String(datasetPath || '');
+    const match = rawPath.match(/(?:[?#|]viz=)(matriz_correlacion|histograma|dispersion|boxplot)/i);
+    if (match?.[1]) {
+      return match[1].toLowerCase();
+    }
+    return 'matriz_correlacion';
+  };
+
   const resolveAnalysisTypeFromModel = (modelRow) => {
     const tipoModelo = String(modelRow?.tipo_modelo || '').toLowerCase();
     const descripcion = String(modelRow?.descripcion || '').toLowerCase();
@@ -575,7 +588,7 @@ export const fetchAnalysisHistoryByUser = async (userId) => {
 
   const { data, error } = await supabase
     .from('analisis')
-    .select('id_analisis, fecha_analisis, total_registros, total_anomalias, datasets(nombre_archivo), modelos(tipo_modelo,descripcion,nombre_modelo)')
+    .select('id_analisis, fecha_analisis, total_registros, total_anomalias, datasets(nombre_archivo,ruta_archivo), modelos(tipo_modelo,descripcion,nombre_modelo)')
     .eq('id_usuario', numericUserId)
     .order('fecha_analisis', { ascending: false })
     .limit(50);
@@ -589,6 +602,7 @@ export const fetchAnalysisHistoryByUser = async (userId) => {
     idAnalisis: Number(item.id_analisis),
     name: item.datasets?.nombre_archivo || `dataset_${item.id_analisis}.csv`,
     type: resolveAnalysisTypeFromModel(item.modelos),
+    visualizationType: resolveVisualizationTypeFromPath(item.datasets?.ruta_archivo),
     date: item.fecha_analisis,
     status: 'completado',
     anomalies: Number(item.total_anomalias || 0),

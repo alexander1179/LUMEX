@@ -96,6 +96,18 @@ const formatDate = (isoDate) => {
   return `${day}/${month}/${year}`;
 };
 
+const formatDateTime = (isoDate) => {
+  if (!isoDate) return '-';
+  const date = new Date(isoDate);
+  if (Number.isNaN(date.getTime())) return '-';
+  const day = String(date.getDate()).padStart(2, '0');
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const year = date.getFullYear();
+  const hours = String(date.getHours()).padStart(2, '0');
+  const minutes = String(date.getMinutes()).padStart(2, '0');
+  return `${day}/${month}/${year} ${hours}:${minutes}`;
+};
+
 const formatAnalysisLabel = (analysisType) => {
   const match = ANALYSIS_TYPES.find((item) => item.value === analysisType);
   if (match) return match.label;
@@ -441,6 +453,8 @@ export default function MainScreen({ navigation }) {
         idAnalisis: saveResult.idAnalisis,
         totalRegistros: saveResult.totalRegistros,
         totalAnomalias: saveResult.totalAnomalias,
+        analysisDate: new Date().toISOString(),
+        source: 'new',
       });
       setShowAnalysisResultModal(true);
       setDatasetName('');
@@ -671,25 +685,23 @@ export default function MainScreen({ navigation }) {
           <Text style={styles.moduleDescription}>Resumen del ultimo procesamiento del usuario.</Text>
           {latestAnalysis ? (
             <View style={styles.moduleList}>
-              <TouchableOpacity style={styles.moduleItem} activeOpacity={0.85} onPress={() => setActiveTab('historial')}>
+              <View style={styles.moduleItem}>
                 <Ionicons name="calendar-outline" size={18} color="#2f7a96" />
                 <Text style={styles.moduleItemText}>Fecha: {formatDate(latestAnalysis.date)}</Text>
-                <Ionicons name="chevron-forward-outline" size={18} color="#7da6b7" />
-              </TouchableOpacity>
+              </View>
 
-              <TouchableOpacity style={styles.moduleItem} activeOpacity={0.85} onPress={() => setActiveTab('historial')}>
+              <View style={styles.moduleItem}>
                 <Ionicons name="git-branch-outline" size={18} color="#2f7a96" />
                 <Text style={styles.moduleItemText}>Tipo: {formatAnalysisLabel(latestAnalysis.type)}</Text>
-                <Ionicons name="chevron-forward-outline" size={18} color="#7da6b7" />
-              </TouchableOpacity>
+              </View>
 
-              <TouchableOpacity style={styles.moduleItem} activeOpacity={0.85} onPress={() => setActiveTab('historial')}>
+              <View style={styles.moduleItem}>
                 <Ionicons name="alert-circle-outline" size={18} color="#e07b21" />
                 <Text style={styles.moduleItemText}>Anomalias detectadas: {latestAnalysis.anomalies}</Text>
                 <View style={styles.moduleBadgeWarn}>
                   <Text style={styles.moduleBadgeWarnText}>Atencion</Text>
                 </View>
-              </TouchableOpacity>
+              </View>
             </View>
           ) : (
             <Text style={styles.moduleDescription}>Aun no tienes analisis guardados. Sube un dataset para iniciar.</Text>
@@ -874,53 +886,39 @@ export default function MainScreen({ navigation }) {
           <Text style={styles.historyEmptyText}>Aun no hay analisis registrados para tu usuario.</Text>
         </View>
       )}
-      {analysisHistory.map((item) => (
+      {[...analysisHistory]
+        .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+        .map((item) => (
         <TouchableOpacity
           key={item.id}
           style={styles.historyCard}
           activeOpacity={0.85}
-          onPress={() =>
-            Alert.alert(
-              item.name,
-              `Tipo: ${formatAnalysisLabel(item.type)}\nFecha: ${formatDate(item.date)}\nEstado: ${item.status}\nRegistros: ${item.totalRecords}\nAnomalias: ${item.anomalies}\nTasa de anomalias: ${getFindingsRateText(item.totalRecords, item.anomalies)}\nNivel de hallazgo: ${getFindingsVisualFromCounts(item.totalRecords, item.anomalies).label}`
-            )
-          }
+          onPress={() => {
+            setAnalysisResultSummary({
+              selectedAnalysis: item.type,
+              selectedAnalysisLabel: formatAnalysisLabel(item.type),
+              datasetName: item.name,
+              idAnalisis: item.idAnalisis,
+              totalRegistros: item.totalRecords,
+              totalAnomalias: item.anomalies,
+              analysisDate: item.date,
+              status: item.status,
+              findingsLabel: getFindingsVisualFromCounts(item.totalRecords, item.anomalies).label,
+              source: 'history',
+            });
+            setShowAnalysisResultModal(true);
+          }}
         >
           <View style={[styles.historyStatusBar, { backgroundColor: item.status === 'completado' ? '#2e9e54' : '#e05a21' }]} />
           <View style={styles.historyCardBody}>
             <View style={styles.historyTop}>
               <Ionicons name="document-attach-outline" size={20} color={T} />
-              <Text style={styles.historyName} numberOfLines={1}>{item.name}</Text>
+              <Text style={styles.historyName} numberOfLines={1}>Dataset: {item.name}</Text>
+              <View style={styles.historyIdBadge}>
+                <Text style={styles.historyIdBadgeText}>Analisis #{item.idAnalisis}</Text>
+              </View>
             </View>
-            <View style={styles.historyMeta}>
-              <Text style={styles.historyMetaText}>{formatAnalysisLabel(item.type)}</Text>
-              <Text style={styles.historyMetaText}>{formatDate(item.date)}</Text>
-              <Text style={[styles.historyMetaText, { color: '#e07b21' }]}>{item.anomalies} anomalias</Text>
-              <Text style={styles.historyMetaText}>Tasa: {getFindingsRateText(item.totalRecords, item.anomalies)}</Text>
-            </View>
-            <View
-              style={[
-                styles.historyFindingsBadge,
-                {
-                  backgroundColor: getFindingsVisualFromCounts(item.totalRecords, item.anomalies).bg,
-                  borderColor: getFindingsVisualFromCounts(item.totalRecords, item.anomalies).color + '55',
-                },
-              ]}
-            >
-              <Ionicons
-                name="pulse-outline"
-                size={12}
-                color={getFindingsVisualFromCounts(item.totalRecords, item.anomalies).color}
-              />
-              <Text
-                style={[
-                  styles.historyFindingsBadgeText,
-                  { color: getFindingsVisualFromCounts(item.totalRecords, item.anomalies).color },
-                ]}
-              >
-                {getFindingsVisualFromCounts(item.totalRecords, item.anomalies).label}
-              </Text>
-            </View>
+            <Text style={styles.historyDateText}>Fecha: {formatDate(item.date)}</Text>
           </View>
           <Ionicons name="chevron-forward-outline" size={16} color="#9ab4b8" />
         </TouchableOpacity>
@@ -1278,67 +1276,100 @@ export default function MainScreen({ navigation }) {
       >
         <View style={styles.userMenuOverlay}>
           <View style={styles.analysisResultCard}>
-            <Text style={styles.analysisResultTitle}>Analisis completado</Text>
-
-            <View
-              style={[
-                styles.analysisFindingsPill,
-                {
-                  backgroundColor: getFindingsVisual(analysisResultSummary).bg,
-                  borderColor: getFindingsVisual(analysisResultSummary).color + '55',
-                },
-              ]}
+            <ScrollView
+              style={styles.analysisResultScroll}
+              contentContainerStyle={styles.analysisResultScrollContent}
+              showsVerticalScrollIndicator
+              persistentScrollbar
             >
-              <Ionicons
-                name="pulse-outline"
-                size={14}
-                color={getFindingsVisual(analysisResultSummary).color}
-              />
-              <Text
+              <Text style={styles.analysisResultTitle}>{analysisResultSummary?.source === 'history' ? 'Resultado del analisis' : 'Analisis completado'}</Text>
+
+              <View
                 style={[
-                  styles.analysisFindingsPillText,
-                  { color: getFindingsVisual(analysisResultSummary).color },
+                  styles.analysisFindingsPill,
+                  {
+                    backgroundColor: getFindingsVisual(analysisResultSummary).bg,
+                    borderColor: getFindingsVisual(analysisResultSummary).color + '55',
+                  },
                 ]}
               >
-                {getFindingsVisual(analysisResultSummary).label}
-              </Text>
-            </View>
-
-            <Image
-              source={{ uri: getFindingsVisual(analysisResultSummary).imageUri }}
-              style={styles.analysisResultImage}
-              resizeMode="cover"
-            />
-
-            <Text style={styles.analysisResultType}>{analysisResultSummary?.selectedAnalysisLabel || 'Analisis'}</Text>
-            <Text style={styles.analysisResultDataset}>Dataset: {analysisResultSummary?.datasetName || '-'}</Text>
-            <Text style={styles.analysisResultDescription}>
-              {getFindingsVisual(analysisResultSummary).summary}
-            </Text>
-            <Text style={styles.analysisResultGuidance}>{getFindingsVisual(analysisResultSummary).guidance}</Text>
-
-            <View style={styles.analysisResultMetrics}>
-              <View style={styles.analysisMetricItem}>
-                <Text style={styles.analysisMetricLabel}>Registros</Text>
-                <Text style={styles.analysisMetricValue}>{analysisResultSummary?.totalRegistros ?? '-'}</Text>
-              </View>
-              <View style={styles.analysisMetricItem}>
-                <Text style={styles.analysisMetricLabel}>Anomalias</Text>
-                <Text style={styles.analysisMetricValue}>{analysisResultSummary?.totalAnomalias ?? '-'}</Text>
-              </View>
-              <View style={styles.analysisMetricItem}>
-                <Text style={styles.analysisMetricLabel}>ID Analisis</Text>
-                <Text style={styles.analysisMetricValue}>{analysisResultSummary?.idAnalisis ?? '-'}</Text>
-              </View>
-              <View style={styles.analysisMetricItem}>
-                <Text style={styles.analysisMetricLabel}>Tasa anomalias</Text>
-                <Text style={styles.analysisMetricValue}>
-                  {analysisResultSummary?.totalRegistros
-                    ? `${((Number(analysisResultSummary.totalAnomalias || 0) / Number(analysisResultSummary.totalRegistros || 1)) * 100).toFixed(1)}%`
-                    : '-'}
+                <Ionicons
+                  name="pulse-outline"
+                  size={14}
+                  color={getFindingsVisual(analysisResultSummary).color}
+                />
+                <Text
+                  style={[
+                    styles.analysisFindingsPillText,
+                    { color: getFindingsVisual(analysisResultSummary).color },
+                  ]}
+                >
+                  {getFindingsVisual(analysisResultSummary).label}
                 </Text>
               </View>
-            </View>
+
+              <Image
+                source={{ uri: getFindingsVisual(analysisResultSummary).imageUri }}
+                style={styles.analysisResultImage}
+                resizeMode="cover"
+              />
+
+              <Text style={styles.analysisResultType}>{analysisResultSummary?.selectedAnalysisLabel || 'Analisis'}</Text>
+              <Text style={styles.analysisResultDataset}>Dataset: {analysisResultSummary?.datasetName || '-'}</Text>
+              <Text style={styles.analysisResultDate}>Fecha del examen: {formatDateTime(analysisResultSummary?.analysisDate)}</Text>
+              <Text style={styles.analysisResultDescription}>
+                {getFindingsVisual(analysisResultSummary).summary}
+              </Text>
+              <Text style={styles.analysisResultGuidance}>{getFindingsVisual(analysisResultSummary).guidance}</Text>
+
+              <View style={styles.analysisResultInfoList}>
+                <View style={styles.analysisResultInfoRow}>
+                  <Text style={styles.analysisResultInfoLabel}>Tipo de analisis</Text>
+                  <Text style={styles.analysisResultInfoValue}>{analysisResultSummary?.selectedAnalysisLabel || '-'}</Text>
+                </View>
+                <View style={styles.analysisResultInfoRow}>
+                  <Text style={styles.analysisResultInfoLabel}>Nombre del dataset</Text>
+                  <Text style={styles.analysisResultInfoValue}>{analysisResultSummary?.datasetName || '-'}</Text>
+                </View>
+                <View style={styles.analysisResultInfoRow}>
+                  <Text style={styles.analysisResultInfoLabel}>Fecha del examen</Text>
+                  <Text style={styles.analysisResultInfoValue}>{formatDateTime(analysisResultSummary?.analysisDate)}</Text>
+                </View>
+                <View style={styles.analysisResultInfoRow}>
+                  <Text style={styles.analysisResultInfoLabel}>Estado</Text>
+                  <Text style={styles.analysisResultInfoValue}>{analysisResultSummary?.status || 'Completado'}</Text>
+                </View>
+                <View style={styles.analysisResultInfoRow}>
+                  <Text style={styles.analysisResultInfoLabel}>Nivel de hallazgo</Text>
+                  <Text style={styles.analysisResultInfoValue}>
+                    {analysisResultSummary?.findingsLabel || getFindingsVisual(analysisResultSummary).label}
+                  </Text>
+                </View>
+              </View>
+
+              <View style={styles.analysisResultMetrics}>
+                <View style={styles.analysisMetricItem}>
+                  <Text style={styles.analysisMetricLabel}>Registros</Text>
+                  <Text style={styles.analysisMetricValue}>{analysisResultSummary?.totalRegistros ?? '-'}</Text>
+                </View>
+                <View style={styles.analysisMetricItem}>
+                  <Text style={styles.analysisMetricLabel}>Anomalias</Text>
+                  <Text style={styles.analysisMetricValue}>{analysisResultSummary?.totalAnomalias ?? '-'}</Text>
+                </View>
+                <View style={styles.analysisMetricItem}>
+                  <Text style={styles.analysisMetricLabel}>ID Analisis</Text>
+                  <Text style={styles.analysisMetricValue}>{analysisResultSummary?.idAnalisis ?? '-'}</Text>
+                </View>
+                <View style={styles.analysisMetricItem}>
+                  <Text style={styles.analysisMetricLabel}>Tasa anomalias</Text>
+                  <Text style={styles.analysisMetricValue}>
+                    {analysisResultSummary?.totalRegistros
+                      ? `${((Number(analysisResultSummary.totalAnomalias || 0) / Number(analysisResultSummary.totalRegistros || 1)) * 100).toFixed(1)}%`
+                      : '-'}
+                  </Text>
+                </View>
+              </View>
+            </ScrollView>
 
             <View style={styles.analysisResultActions}>
               <TouchableOpacity
@@ -1348,16 +1379,18 @@ export default function MainScreen({ navigation }) {
               >
                 <Text style={styles.modalActionBtnSecondaryText}>Cerrar</Text>
               </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.modalActionBtn, styles.modalActionBtnPrimary]}
-                onPress={() => {
-                  setShowAnalysisResultModal(false);
-                  setActiveTab('historial');
-                }}
-                activeOpacity={0.85}
-              >
-                <Text style={styles.modalActionBtnPrimaryText}>Ver historial</Text>
-              </TouchableOpacity>
+              {analysisResultSummary?.source !== 'history' && (
+                <TouchableOpacity
+                  style={[styles.modalActionBtn, styles.modalActionBtnPrimary]}
+                  onPress={() => {
+                    setShowAnalysisResultModal(false);
+                    setActiveTab('historial');
+                  }}
+                  activeOpacity={0.85}
+                >
+                  <Text style={styles.modalActionBtnPrimaryText}>Ver historial</Text>
+                </TouchableOpacity>
+              )}
             </View>
           </View>
         </View>
@@ -1822,6 +1855,20 @@ const styles = StyleSheet.create({
   historyCardBody: { flex: 1, padding: 12 },
   historyTop: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 6 },
   historyName: { flex: 1, fontSize: 13, fontWeight: '700', color: '#15333d' },
+  historyIdBadge: {
+    backgroundColor: '#eef8fa',
+    borderWidth: 1,
+    borderColor: '#d4e7ee',
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  historyIdBadgeText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#2f7a96',
+  },
+  historyDateText: { fontSize: 12, color: '#4f666c', marginTop: 4 },
   historyMeta: { flexDirection: 'row', gap: 12, flexWrap: 'wrap' },
   historyMetaText: { fontSize: 11, color: '#4f666c' },
   historyFindingsBadge: {
@@ -1886,10 +1933,17 @@ const styles = StyleSheet.create({
     width: '88%',
     backgroundColor: '#ffffff',
     borderRadius: 16,
-    padding: 16,
+    padding: 14,
     maxHeight: '85%',
     borderWidth: 1,
     borderColor: '#d4e7ee',
+  },
+  analysisResultScroll: {
+    maxHeight: '90%',
+  },
+  analysisResultScrollContent: {
+    paddingBottom: 8,
+    paddingRight: 6,
   },
   analysisResultTitle: {
     fontSize: 19,
@@ -1899,8 +1953,8 @@ const styles = StyleSheet.create({
   },
   analysisResultImage: {
     width: '100%',
-    height: 150,
-    borderRadius: 12,
+    height: 92,
+    borderRadius: 10,
     marginBottom: 10,
   },
   analysisResultType: {
@@ -1912,7 +1966,12 @@ const styles = StyleSheet.create({
   analysisResultDataset: {
     fontSize: 13,
     color: '#345b64',
-    marginBottom: 6,
+    marginBottom: 4,
+  },
+  analysisResultDate: {
+    fontSize: 12,
+    color: '#5d7f8e',
+    marginBottom: 8,
   },
   analysisResultDescription: {
     fontSize: 12,
@@ -1926,25 +1985,57 @@ const styles = StyleSheet.create({
     lineHeight: 17,
     marginBottom: 10,
   },
+  analysisResultInfoList: {
+    backgroundColor: '#f7fbfc',
+    borderWidth: 1,
+    borderColor: '#d9eaf0',
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginBottom: 12,
+    gap: 8,
+  },
+  analysisResultInfoRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    gap: 12,
+  },
+  analysisResultInfoLabel: {
+    flex: 1,
+    fontSize: 12,
+    color: '#4f666c',
+    fontWeight: '600',
+  },
+  analysisResultInfoValue: {
+    flex: 1,
+    fontSize: 12,
+    color: '#15333d',
+    textAlign: 'right',
+    fontWeight: '700',
+  },
   analysisResultMetrics: {
     flexDirection: 'row',
     gap: 8,
     flexWrap: 'wrap',
-    marginBottom: 14,
+    marginBottom: 8,
   },
   analysisMetricItem: {
-    flex: 1,
+    width: '48%',
+    flexGrow: 0,
+    flexShrink: 0,
     backgroundColor: '#f3faf9',
     borderRadius: 10,
     borderWidth: 1,
     borderColor: '#d7ecea',
     paddingVertical: 8,
-    paddingHorizontal: 6,
+    paddingHorizontal: 8,
   },
   analysisMetricLabel: {
     fontSize: 11,
     color: '#4f666c',
     marginBottom: 4,
+    lineHeight: 14,
   },
   analysisMetricValue: {
     fontSize: 13,
@@ -1968,8 +2059,10 @@ const styles = StyleSheet.create({
   },
   analysisResultActions: {
     flexDirection: 'row',
-    justifyContent: 'flex-end',
+    justifyContent: 'center',
     gap: 10,
+    marginTop: 10,
+    paddingTop: 6,
   },
   historyEmptyCard: {
     backgroundColor: '#ffffff',

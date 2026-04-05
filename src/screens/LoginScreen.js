@@ -7,6 +7,7 @@ import {
   TouchableOpacity,
   Image,
   Alert,
+  Keyboard,
   StyleSheet,
   Dimensions,
   Animated,
@@ -87,6 +88,13 @@ export default function LoginScreen({ navigation, route }) {
     ]).start();
   }, [isAdminAccess, userCardSlideAnim, userFadeAnim, userLogoScaleAnim]);
 
+  const clearLoginInputs = () => {
+    setUsuario('');
+    setPassword('');
+    setVisible(false);
+    Keyboard.dismiss();
+  };
+
   const handleLogin = async () => {
     if (!acepta) {
       Alert.alert('Error', 'Debes aceptar los términos y condiciones');
@@ -130,10 +138,12 @@ export default function LoginScreen({ navigation, route }) {
           { text: 'OK', onPress: () => navigation.replace(isAdminAccess ? "AdminDashboard" : "Main") }
         ]);
       } else {
+        clearLoginInputs();
         Alert.alert('Error', result.message);
       }
 
     } catch (error) {
+      clearLoginInputs();
       Alert.alert('Error', 'Error de conexión: ' + error.message);
     } finally {
       setLoading(false);

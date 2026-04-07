@@ -1928,33 +1928,7 @@ export default function AdminDashboardScreen({ navigation }) {
                 <Ionicons name="chevron-forward-outline" size={18} color="#7da6b7" />
               </TouchableOpacity>
 
-              <TouchableOpacity
-                style={styles.moduleItem}
-                activeOpacity={0.85}
-                onPress={() => {
-                  if (!selectedUsuario) return;
-                  setShowPatientModulesModal(false);
-                  navigation.navigate('AdminPatientTracking', { user: selectedUsuario });
-                }}
-              >
-                <Ionicons name="pulse-outline" size={18} color="#2f7a96" />
-                <Text style={styles.moduleItemText}>Seguimiento de indicadores médicos</Text>
-                <Ionicons name="chevron-forward-outline" size={18} color="#7da6b7" />
-              </TouchableOpacity>
 
-              <TouchableOpacity
-                style={styles.moduleItem}
-                activeOpacity={0.85}
-                onPress={() => {
-                  if (!selectedUsuario) return;
-                  setShowPatientModulesModal(false);
-                  navigation.navigate('AdminPatientAccess', { user: selectedUsuario });
-                }}
-              >
-                <Ionicons name="shield-checkmark-outline" size={18} color="#2f7a96" />
-                <Text style={styles.moduleItemText}>Control de acceso por personal autorizado</Text>
-                <Ionicons name="chevron-forward-outline" size={18} color="#7da6b7" />
-              </TouchableOpacity>
             </View>
           </View>
         </View>

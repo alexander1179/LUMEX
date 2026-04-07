@@ -110,6 +110,7 @@ export const registerUser = async (userData) => {
         contrasena: passwordHash,
         telefono: phone,
         fecha_registro: new Date().toISOString(),
+        analisis_disponibles: 0,
       }])
       .select()
       .single();

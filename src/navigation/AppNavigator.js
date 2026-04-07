@@ -12,6 +12,7 @@ import AdminDashboardScreen from '../screens/AdminDashboardScreen';
 import AdminPatientRecordsScreen from '../screens/AdminPatientRecordsScreen';
 import AdminPatientTrackingScreen from '../screens/AdminPatientTrackingScreen';
 import AdminPatientAccessScreen from '../screens/AdminPatientAccessScreen';
+import PaymentScreen from '../screens/PaymentScreen';
 import ForgotPasswordScreen from '../screens/ForgotPasswordScreen';
 import VerifyTokenScreen from '../screens/VerifyTokenScreen';
 import ResetPasswordScreen from '../screens/ResetPasswordScreen';
@@ -98,6 +99,11 @@ export default function AppNavigator() {
         name="AdminPatientAccess"
         component={AdminPatientAccessScreen}
         options={{ headerShown: true, title: 'Control de acceso' }}
+      />
+      <Stack.Screen
+        name="Payment"
+        component={PaymentScreen}
+        options={{ headerShown: false }}
       />
       <Stack.Screen 
         name="ForgotPassword" 

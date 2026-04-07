@@ -934,7 +934,17 @@ export default function MainScreen({ navigation }) {
       });
 
       // --- CONSUMO DE CRÉDITO ---
-      await consumeAnalysisCredit(currentUserId);
+      const consumeResult = await consumeAnalysisCredit(currentUserId);
+      if (!consumeResult.success) {
+        console.error('❌ Error consumiendo crédito:', consumeResult.message);
+        // Opcional: Podrías alertar aquí, pero el análisis ya se guardó.
+      }
+
+      // Refrescamos los datos del usuario localmente para actualizar el contador de créditos
+      const freshUserResult = await getCurrentUser();
+      if (freshUserResult.success) {
+        setUser(freshUserResult.user);
+      }
       
       await loadHistory(currentUserId);
 

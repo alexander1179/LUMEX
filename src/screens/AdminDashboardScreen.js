@@ -1924,7 +1924,7 @@ export default function AdminDashboardScreen({ navigation }) {
                 }}
               >
                 <Ionicons name="folder-open-outline" size={18} color="#2f7a96" />
-                <Text style={styles.moduleItemText}>Historias clínicas digitalizadas</Text>
+                <Text style={styles.moduleItemText}>Resultados de análisis</Text>
                 <Ionicons name="chevron-forward-outline" size={18} color="#7da6b7" />
               </TouchableOpacity>
 

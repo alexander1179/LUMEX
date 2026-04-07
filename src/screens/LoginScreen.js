@@ -554,8 +554,8 @@ const styles = StyleSheet.create({
 
   adminCard: {
     marginTop: 10,
-    width: '78%',
-    maxWidth: 340,
+    width: '85%',
+    maxWidth: 380,
     marginBottom: 24,
   },
   adminOnlyBanner: {
@@ -568,8 +568,8 @@ const styles = StyleSheet.create({
     paddingVertical: 9,
     paddingHorizontal: 13,
     marginBottom: 14,
-    width: '78%',
-    maxWidth: 340,
+    width: '85%',
+    maxWidth: 380,
   },
   adminOnlyBannerText: {
     flex: 1,

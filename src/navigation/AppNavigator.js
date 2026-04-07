@@ -82,7 +82,7 @@ export default function AppNavigator() {
       <Stack.Screen
         name="AdminPatientRecords"
         component={AdminPatientRecordsScreen}
-        options={{ headerShown: true, title: 'Historias clínicas' }}
+        options={{ headerShown: true, title: 'Resultados de análisis' }}
       />
       <Stack.Screen
         name="AdminPatientTracking"

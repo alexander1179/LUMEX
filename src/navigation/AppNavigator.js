@@ -82,7 +82,12 @@ export default function AppNavigator() {
       <Stack.Screen
         name="AdminPatientRecords"
         component={AdminPatientRecordsScreen}
-        options={{ headerShown: true, title: 'Resultados de análisis' }}
+        options={{
+          headerShown: true, 
+          title: 'Historial',
+          headerStyle: { backgroundColor: '#173746' },
+          headerTintColor: '#ffffff'
+        }}
       />
       <Stack.Screen
         name="AdminPatientTracking"

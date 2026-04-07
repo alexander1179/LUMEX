@@ -487,7 +487,7 @@ export default function AdminPatientRecordsScreen({ route }) {
                 setShowAnalysisResultModal(true);
               }}
             >
-              <View style={[styles.historyStatusBar, { backgroundColor: item.status === 'completado' ? '#2e9e54' : '#e05a21' }]} />
+              <View style={[styles.historyStatusBar, { backgroundColor: item.status === 'completado' ? '#2f7a96' : '#e05a21' }]} />
               <View style={styles.historyCardBody}>
                 <View style={styles.historyTop}>
                   <Ionicons name="document-attach-outline" size={20} color={T} />
@@ -668,29 +668,24 @@ const styles = StyleSheet.create({
   primaryButtonText: { color: '#fff', fontWeight: '700', fontSize: 13 },
   
   historyCard: {
-    backgroundColor: '#ffffff',
-    borderRadius: 14,
+    backgroundColor: '#f6fbfd',
+    borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#e2f0f4',
-    padding: 14,
+    borderColor: '#deedf3',
+    paddingVertical: 10,
+    paddingHorizontal: 10,
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 10,
-    elevation: 2,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 3,
+    marginBottom: 8,
+    gap: 10,
   },
   historyStatusBar: {
     width: 6,
     height: '100%',
     borderRadius: 3,
-    marginRight: 12,
   },
   historyCardBody: {
     flex: 1,
-    paddingRight: 10,
   },
   historyTop: {
     flexDirection: 'row',
@@ -699,13 +694,13 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   historyName: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '700',
-    color: '#0f6d78',
+    color: '#214b5d',
     flex: 1,
   },
   historyIdBadge: {
-    backgroundColor: '#eff5f7',
+    backgroundColor: '#e6f2f7',
     paddingHorizontal: 6,
     paddingVertical: 2,
     borderRadius: 6,
@@ -719,39 +714,37 @@ const styles = StyleSheet.create({
   },
   historyDateText: {
     fontSize: 12,
-    color: '#6a8b98',
+    color: '#5d7f8e',
+    marginTop: 1,
   },
 
   userMenuOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(10,34,41,0.6)',
+    backgroundColor: 'rgba(12, 34, 44, 0.45)',
     justifyContent: 'center',
-    alignItems: 'center',
-    padding: 20,
+    paddingHorizontal: 18,
   },
   analysisResultCard: {
     backgroundColor: '#ffffff',
-    borderRadius: 20,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#d4e7ee',
+    padding: 16,
     width: '100%',
-    maxHeight: '85%',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.15,
-    shadowRadius: 20,
-    elevation: 10,
+    maxHeight: '82%',
     overflow: 'hidden',
   },
   analysisResultScroll: {
     flexGrow: 1,
   },
   analysisResultScrollContent: {
-    padding: 24,
+    paddingTop: 8,
     paddingBottom: 30,
   },
   analysisResultTitle: {
-    fontSize: 22,
+    fontSize: 18,
     fontWeight: '800',
-    color: '#0a2229',
+    color: '#173746',
     textAlign: 'center',
     marginBottom: 18,
   },

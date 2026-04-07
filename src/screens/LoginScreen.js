@@ -175,13 +175,13 @@ export default function LoginScreen({ navigation, route }) {
 
       <ScrollView 
         showsVerticalScrollIndicator={false}
-        scrollEnabled={!isAdminAccess}
-        bounces={!isAdminAccess}
+        scrollEnabled={false}
+        bounces={false}
         alwaysBounceVertical={false}
         contentContainerStyle={[
           styles.scrollContent,
           styles.scrollContentWithNav,
-          isAdminAccess && styles.scrollContentAdmin,
+          styles.scrollContentAdmin,
         ]}
         scrollEventThrottle={16}
       >
@@ -270,7 +270,7 @@ export default function LoginScreen({ navigation, route }) {
             </View>
           </View>
         ) : (
-          <>
+          <View style={styles.adminContentCluster}>
             <Animated.View
               style={[
                 styles.userLogoWrap,
@@ -293,12 +293,12 @@ export default function LoginScreen({ navigation, route }) {
             <Animated.View
               style={[
                 styles.card,
-                styles.userCard,
+                styles.adminCard,
                 {
                   backgroundColor: userTheme.card,
                   borderColor: userTheme.cardBorder,
-                  shadowOpacity: 0.16,
-                  elevation: 6,
+                  shadowOpacity: 0.08,
+                  elevation: 4,
                   opacity: userFadeAnim,
                   transform: [{ translateY: userCardSlideAnim }],
                 },
@@ -353,7 +353,7 @@ export default function LoginScreen({ navigation, route }) {
                 <Text style={styles.testBtnText}>Prueba de registro</Text>
               </TouchableOpacity>
             </Animated.View>
-          </>
+          </View>
         )}
       </ScrollView>
 
@@ -551,14 +551,11 @@ const styles = StyleSheet.create({
     marginTop: 4,
     marginBottom: 0,
   },
-  userCard: {
-    borderRadius: 24,
-    paddingTop: 18,
-    paddingBottom: 14,
-  },
+
   adminCard: {
     marginTop: 10,
-    width: '88%',
+    width: '78%',
+    maxWidth: 340,
     marginBottom: 24,
   },
   adminOnlyBanner: {
@@ -571,7 +568,8 @@ const styles = StyleSheet.create({
     paddingVertical: 9,
     paddingHorizontal: 13,
     marginBottom: 14,
-    width: '88%',
+    width: '78%',
+    maxWidth: 340,
   },
   adminOnlyBannerText: {
     flex: 1,

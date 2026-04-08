@@ -21,11 +21,13 @@ import { supabase } from '../services/supabase/supabaseClient';
 import { registerUser } from '../services/supabase/authService';
 import { getApiUrl } from '../services/services/api/apiConfig';
 import { storageService } from '../services/storage/storageService';
+import { getAllPayments } from '../services/supabase/paymentService';
 
 const TABS = [
   { key: 'inicio', label: 'Inicio', icon: 'home-outline' },
   { key: 'pacientes', label: 'Pacientes', icon: 'people-outline' },
   { key: 'citas', label: 'Citas', icon: 'calendar-outline' },
+  { key: 'pagos', label: 'Pagos', icon: 'card-outline' },
   { key: 'ajustes', label: 'Ajustes', icon: 'settings-outline' },
 ];
 
@@ -62,6 +64,10 @@ const genBtnStyles = {
 
 export default function AdminDashboardScreen({ navigation }) {
   const [activeTab, setActiveTab] = useState('inicio');
+  const [paymentRows, setPaymentRows] = useState([]);
+  const [loadingPayments, setLoadingPayments] = useState(false);
+  const [selectedPaymentUser, setSelectedPaymentUser] = useState(null);
+  const [showPaymentDetailsModal, setShowPaymentDetailsModal] = useState(false);
   const [usuariosRegistrados, setUsuariosRegistrados] = useState(0);
   const [usuarios, setUsuarios] = useState([]);
   const [loadingUsuarios, setLoadingUsuarios] = useState(true);
@@ -1050,6 +1056,23 @@ export default function AdminDashboardScreen({ navigation }) {
     }
   };
 
+  const loadPaymentsData = async () => {
+    setLoadingPayments(true);
+    try {
+      const result = await getAllPayments();
+      if (result.success) {
+        setPaymentRows(result.data || []);
+      } else {
+        setPaymentRows([]);
+      }
+    } catch (error) {
+      console.log('Error cargando pagos:', error.message);
+      setPaymentRows([]);
+    } finally {
+      setLoadingPayments(false);
+    }
+  };
+
   const loadDashboardData = async () => {
     setLoadingUsuarios(true);
     try {
@@ -1179,6 +1202,13 @@ export default function AdminDashboardScreen({ navigation }) {
     loadSigner();
   }, []);
 
+  useEffect(() => {
+    if (activeTab === 'pagos') {
+      loadPaymentsData();
+    }
+  }, [activeTab]);
+
+
   const handleCreateUser = async () => {
     if (creatingUser) return;
 
@@ -1302,6 +1332,7 @@ export default function AdminDashboardScreen({ navigation }) {
             <Text style={styles.quickText}>Alertas</Text>
           </TouchableOpacity>
         </View>
+
       </View>
     </>
   );
@@ -1413,10 +1444,116 @@ export default function AdminDashboardScreen({ navigation }) {
     </View>
   );
 
+  const renderPagos = () => {
+    // Agrupar pagos por usuario
+    const groupedData = paymentRows.reduce((acc, current) => {
+      const uId = current.id_usuario;
+      if (!acc[uId]) {
+        acc[uId] = {
+          user: current.usuarios || { nombre: 'Usuario Desconocido', email: 'Sin email' },
+          payments: [],
+          totalSpent: 0
+        };
+      }
+      acc[uId].payments.push(current);
+      acc[uId].totalSpent += Number(current.monto) || 0;
+      return acc;
+    }, {});
+
+    const usersWithPayments = Object.values(groupedData).sort((a, b) => 
+      (a.user?.nombre || '').localeCompare(b.user?.nombre || '')
+    );
+
+    return (
+      <View style={styles.actionsCard}>
+        <Text style={styles.sectionTitle}>Historial de Pagos por Usuario</Text>
+        <Text style={styles.moduleDescription}>Lista de usuarios que han adquirido planes Lumex. Toca un usuario para ver su historial detallado.</Text>
+        
+        {loadingPayments ? (
+          <Text style={styles.emptyText}>Cargando datos de pagos...</Text>
+        ) : usersWithPayments.length === 0 ? (
+          <View style={styles.emptyStateContainer}>
+            <Ionicons name="people-outline" size={48} color="#deedf3" />
+            <Text style={styles.emptyText}>No hay usuarios con historial de pagos.</Text>
+          </View>
+        ) : (
+          <View style={styles.paymentsList}>
+            {usersWithPayments.map((item, idx) => (
+              <TouchableOpacity 
+                key={`p-user-${idx}`} 
+                style={styles.paymentUserCard}
+                onPress={() => {
+                  setSelectedPaymentUser(item);
+                  setShowPaymentDetailsModal(true);
+                }}
+                activeOpacity={0.85}
+              >
+                <View style={styles.paymentIconBox}>
+                  <Ionicons name="person-circle-outline" size={24} color="#0f6d78" />
+                </View>
+                <View style={styles.paymentUserBox}>
+                  <Text style={styles.paymentUserName}>{item.user.nombre}</Text>
+                  <Text style={styles.paymentUserEmail}>{item.user.email}</Text>
+                </View>
+                <View style={styles.paymentStatBox}>
+                  <Text style={styles.paymentCountBadge}>{item.payments.length} {item.payments.length === 1 ? 'Plan' : 'Planes'}</Text>
+                  <Text style={styles.paymentTotalText}>${item.totalSpent} USD</Text>
+                </View>
+                <Ionicons name="chevron-forward-outline" size={18} color="#7da6b7" />
+              </TouchableOpacity>
+            ))}
+          </View>
+        )}
+      </View>
+    );
+  };
+
+  const renderPaymentDetailsModal = () => (
+    <Modal
+      visible={showPaymentDetailsModal}
+      animationType="slide"
+      transparent
+      onRequestClose={() => setShowPaymentDetailsModal(false)}
+    >
+      <View style={styles.modalOverlay}>
+        <View style={styles.modalLargeCard}>
+          <View style={styles.modalHeaderRow}>
+            <View>
+              <Text style={styles.modalTitle}>Historial de Planes</Text>
+              <Text style={styles.modalSubTitle}>{selectedPaymentUser?.user?.nombre}</Text>
+            </View>
+            <TouchableOpacity onPress={() => setShowPaymentDetailsModal(false)} activeOpacity={0.85}>
+              <Ionicons name="close-outline" size={24} color="#2f7a96" />
+            </TouchableOpacity>
+          </View>
+
+          <ScrollView style={styles.modalListArea} showsVerticalScrollIndicator={false}>
+            {selectedPaymentUser?.payments?.map((p, idx) => (
+              <View key={`detail-p-${idx}`} style={styles.detailPaymentCard}>
+                <View style={styles.detailPaymentHeader}>
+                  <Text style={styles.detailPlanName}>{p.descripcion || 'Compra de análisis'}</Text>
+                  <Text style={styles.detailAmount}>${p.monto} {p.moneda}</Text>
+                </View>
+                <View style={styles.detailPaymentFooter}>
+                  <View style={styles.detailMethod}>
+                    <Ionicons name="card-outline" size={12} color="#5d7f8d" />
+                    <Text style={styles.detailMethodText}>{p.metodo_pago || 'Tarjeta'}</Text>
+                  </View>
+                  <Text style={styles.detailDate}>{formatDateTime(p.created_at)}</Text>
+                </View>
+              </View>
+            ))}
+          </ScrollView>
+        </View>
+      </View>
+    </Modal>
+  );
+
   const renderActiveModule = () => {
     if (activeTab === 'pacientes') return renderPacientes();
     if (activeTab === 'citas') return renderCitas();
     if (activeTab === 'ajustes') return renderAjustes();
+    if (activeTab === 'pagos') return renderPagos();
     return renderInicio();
   };
 
@@ -1447,6 +1584,8 @@ export default function AdminDashboardScreen({ navigation }) {
       >
         {renderActiveModule()}
       </ScrollView>
+
+      {renderPaymentDetailsModal()}
 
       <Modal
         visible={showCreateModal}
@@ -4324,5 +4463,158 @@ const styles = StyleSheet.create({
     color: '#2f7a96',
     fontWeight: '700',
     fontSize: 14,
+  },
+  emptyStateContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 40,
+    gap: 12,
+  },
+  paymentsList: {
+    gap: 12,
+  },
+  paymentCard: {
+    backgroundColor: '#ffffff',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#deedf3',
+    padding: 16,
+    shadowColor: '#173746',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 5,
+    elevation: 2,
+  },
+  paymentCardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+    gap: 12,
+  },
+  paymentIconBox: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: '#f0f9fa',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  paymentUserBox: {
+    flex: 1,
+  },
+  paymentUserName: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#173746',
+  },
+  paymentUserEmail: {
+    fontSize: 12,
+    color: '#5d7f8d',
+    marginTop: 1,
+  },
+  paymentAmountBox: {
+    alignItems: 'flex-end',
+  },
+  paymentAmountText: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#0f6d78',
+  },
+  paymentCardFooter: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: '#f0f6f8',
+  },
+  paymentDescText: {
+    fontSize: 12,
+    color: '#5d7f8d',
+    fontStyle: 'italic',
+  },
+  paymentDateText: {
+    fontSize: 11,
+    color: '#7da6b7',
+    fontWeight: '600',
+  },
+  paymentUserCard: {
+    backgroundColor: '#ffffff',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#deedf3',
+    padding: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    shadowColor: '#173746',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 5,
+    elevation: 2,
+  },
+  paymentStatBox: {
+    alignItems: 'flex-end',
+    gap: 4,
+  },
+  paymentCountBadge: {
+    backgroundColor: '#eef6f8',
+    color: '#0f6d78',
+    fontSize: 10,
+    fontWeight: '800',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 8,
+    overflow: 'hidden',
+  },
+  paymentTotalText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#173746',
+  },
+  detailPaymentCard: {
+    backgroundColor: '#f6fbfd',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#deedf3',
+    padding: 12,
+    marginBottom: 10,
+  },
+  detailPaymentHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: 8,
+  },
+  detailPlanName: {
+    flex: 1,
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#173746',
+    marginRight: 8,
+  },
+  detailAmount: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#0f6d78',
+  },
+  detailPaymentFooter: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  detailMethod: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  detailMethodText: {
+    fontSize: 11,
+    color: '#5d7f8d',
+  },
+  detailDate: {
+    fontSize: 11,
+    color: '#7da6b7',
+    fontWeight: '600',
   },
 });

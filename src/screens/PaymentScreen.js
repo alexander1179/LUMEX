@@ -106,16 +106,14 @@ export default function PaymentScreen({ navigation }) {
         >
           <Ionicons name="chevron-back-outline" size={24} color="#0f6d78" />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Adquirir Análisis</Text>
-        <View style={{ width: 40 }} />
       </View>
 
-      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+      <View style={styles.fixedContent}>
         <View style={styles.topInfo}>
           <Ionicons name="wallet-outline" size={48} color="#0f6d78" />
           <Text style={styles.mainTitle}>Elige tu Plan</Text>
           <Text style={styles.mainSubtitle}>
-            Para realizar un nuevo análisis de salud con IA, selecciona la opción que mejor se adapte a ti.
+            LUMEX: Bioanalítica de precisión para un monitoreo integral y personalizado de tu bienestar.
           </Text>
         </View>
 
@@ -164,7 +162,7 @@ export default function PaymentScreen({ navigation }) {
           <Ionicons name="shield-checkmark-outline" size={16} color="#5f7f8d" />
           <Text style={styles.secureText}>Pago seguro y encriptado en dólares</Text>
         </View>
-      </ScrollView>
+      </View>
 
       <View style={styles.footer}>
         <View style={styles.totalRow}>
@@ -190,26 +188,21 @@ const styles = StyleSheet.create({
   },
   header: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
     paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#f0f0f0',
+    paddingTop: 60,
+    paddingBottom: 5,
   },
-  headerTitle: {
-    fontSize: 18,
-    fontWeight: '800',
-    color: '#0f6d78',
-  },
+
   backButton: {
     padding: 8,
     borderRadius: 12,
     backgroundColor: '#f6fbfd',
   },
-  scrollContent: {
+  fixedContent: {
+    flex: 1,
     padding: 24,
-    paddingBottom: 40,
+    justifyContent: 'center',
   },
   topInfo: {
     alignItems: 'center',

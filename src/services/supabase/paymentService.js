@@ -90,3 +90,21 @@ export const consumeAnalysisCredit = async (userId) => {
     return { success: false, message: error.message };
   }
 };
+
+/**
+ * Obtiene todos los pagos registrados con información del usuario
+ */
+export const getAllPayments = async () => {
+  try {
+    const { data, error } = await supabase
+      .from('pagos')
+      .select('*, usuarios(nombre, email)')
+      .order('created_at', { ascending: false });
+
+    if (error) throw error;
+    return { success: true, data };
+  } catch (error) {
+    console.error('Error al obtener pagos:', error.message);
+    return { success: false, message: error.message };
+  }
+};

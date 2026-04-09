@@ -83,7 +83,7 @@ export default function PaymentScreen({ navigation }) {
         if (result.success) {
           Alert.alert(
             '¡Pago Exitoso!',
-            `Has adquirido ${plan.credits} crédito(s) de análisis correctamente en dólares (USD).`,
+            'la transaccion ha sido realizada con exito. gracias por utilizar nuestros servicios.',
             [{ text: 'Comenzar Análisis', onPress: () => navigation.goBack() }]
           );
         } else {
@@ -110,10 +110,10 @@ export default function PaymentScreen({ navigation }) {
 
       <View style={styles.fixedContent}>
         <View style={styles.topInfo}>
-          <Ionicons name="wallet-outline" size={48} color="#0f6d78" />
+          <Ionicons name="wallet-outline" size={44} color="#0f6d78" />
           <Text style={styles.mainTitle}>Elige tu Plan</Text>
           <Text style={styles.mainSubtitle}>
-            LUMEX: Bioanalítica de precisión para un monitoreo integral y personalizado de tu bienestar.
+            LUMEX: Bioanalítica de precisión para un monitoreo integral de tu bienestar.
           </Text>
         </View>
 
@@ -130,13 +130,13 @@ export default function PaymentScreen({ navigation }) {
             >
               {plan.isPopular && (
                 <View style={styles.popularBadge}>
-                  <Text style={styles.popularBadgeText}>MÁS RECOMENDADO</Text>
+                  <Text style={styles.popularBadgeText}>RECOMENDADO</Text>
                 </View>
               )}
               
               <View style={styles.planCardHeader}>
                 <View style={[styles.planIconBox, { backgroundColor: plan.color }]}>
-                  <Ionicons name={plan.icon} size={24} color="white" />
+                  <Ionicons name={plan.icon} size={22} color="white" />
                 </View>
                 <View style={styles.planTextMain}>
                   <Text style={styles.planTitleText}>{plan.title}</Text>
@@ -146,7 +146,7 @@ export default function PaymentScreen({ navigation }) {
 
               <View style={styles.planPriceRow}>
                 <View style={styles.creditsBox}>
-                  <Text style={styles.creditsText}>{plan.credits} {plan.credits === 1 ? 'Análisis' : 'Análisis'}</Text>
+                  <Text style={styles.creditsText}>{plan.credits} Análisis</Text>
                 </View>
                 <View style={styles.priceBox}>
                   <Text style={styles.currencySymbol}>$</Text>
@@ -159,8 +159,8 @@ export default function PaymentScreen({ navigation }) {
         </View>
 
         <View style={styles.secureBox}>
-          <Ionicons name="shield-checkmark-outline" size={16} color="#5f7f8d" />
-          <Text style={styles.secureText}>Pago seguro y encriptado en dólares</Text>
+          <Ionicons name="shield-checkmark-outline" size={14} color="#5f7f8d" />
+          <Text style={styles.secureText}>Pago seguro y encriptado (USD)</Text>
         </View>
       </View>
 
@@ -201,34 +201,35 @@ const styles = StyleSheet.create({
   },
   fixedContent: {
     flex: 1,
-    padding: 24,
+    paddingHorizontal: 20,
+    paddingVertical: 10,
     justifyContent: 'center',
   },
   topInfo: {
     alignItems: 'center',
-    marginBottom: 32,
+    marginBottom: 15,
   },
   mainTitle: {
-    fontSize: 26,
+    fontSize: 24,
     fontWeight: '900',
     color: '#173746',
-    marginTop: 12,
+    marginTop: 8,
   },
   mainSubtitle: {
-    fontSize: 15,
+    fontSize: 14,
     color: '#5f7f8d',
     textAlign: 'center',
-    lineHeight: 22,
-    marginTop: 8,
-    paddingHorizontal: 20,
+    lineHeight: 20,
+    marginTop: 4,
+    paddingHorizontal: 15,
   },
   plansContainer: {
-    gap: 20,
+    gap: 12,
   },
   planCard: {
     backgroundColor: '#ffffff',
-    borderRadius: 24,
-    padding: 24,
+    borderRadius: 20,
+    padding: 18,
     borderWidth: 1,
     borderColor: '#deedf3',
     shadowColor: '#173746',

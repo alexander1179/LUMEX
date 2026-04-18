@@ -21,9 +21,8 @@ import { colors } from '../styles/colors';
 import { CustomButton } from '../components/common/CustomButton';
 import { LanguageSelector } from '../components/common/LanguageSelector';
 import { AccessQuickNav } from '../components/common/AccessQuickNav';
-import { loginUser, acceptSecurityTerms } from '../services/supabase/authService';
+import { loginUser, acceptSecurityTerms } from '../services/api/authService';
 import { storageService } from '../services/storage/storageService';
-import { supabase } from '../services/supabase/supabaseClient';
 
 const icon = require('../../assets/lumex.jpeg');
 const adminIcon = require('../../assets/icon.png');

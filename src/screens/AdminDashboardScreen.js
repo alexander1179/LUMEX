@@ -17,8 +17,8 @@ import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
 import * as FileSystem from 'expo-file-system/legacy';
 import ViewShot from 'react-native-view-shot';
-import { supabase } from '../services/supabase/supabaseClient';
-import { registerUser } from '../services/supabase/authService';
+import { supabase } from '../services/api/supabaseClient';
+import { registerUser } from '../services/api/authService';
 import { getApiUrl } from '../services/services/api/apiConfig';
 import { storageService } from '../services/storage/storageService';
 

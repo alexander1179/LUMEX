@@ -78,7 +78,7 @@ export const loginUser = async (identifier, password, acceptTermsIfNeeded = fals
 
 export const forgotPassword = async (email) => {
   try {
-    const { data: resData, ok } = await getApiClient('/forgot-password', {
+    const { data: resData, ok } = await getApiClient('/api/auth/forgot-password', {
       method: 'POST',
       body: JSON.stringify({ email }),
     });
@@ -91,6 +91,7 @@ export const forgotPassword = async (email) => {
     return { success: false, message: error.message };
   }
 };
+
 
 export const verifyToken = async (email, token) => {
   try {
@@ -183,5 +184,22 @@ export const checkTermsAcceptance = async (userId) => {
     return { success: true, accepted: resData.accepted, acceptanceDate: resData.acceptanceDate };
   } catch (error) {
     return { success: true, accepted: false };
+  }
+};
+
+/**
+ * Obtiene los datos frescos del usuario desde el servidor.
+ * @param {number} userId
+ * @returns {Promise<object|null>}
+ */
+export const fetchLatestUserData = async (userId) => {
+  try {
+    const { data, ok } = await getApiClient('/api/auth/get-user', {
+      method: 'POST',
+      body: JSON.stringify({ userId }),
+    });
+    return ok && data?.user ? data.user : null;
+  } catch {
+    return null;
   }
 };

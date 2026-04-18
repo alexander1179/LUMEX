@@ -7,7 +7,6 @@ import {
   Alert,
   StyleSheet
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
 import { resetPassword } from '../services/supabase/authService';
 import { colors } from '../styles/colors';
@@ -82,7 +81,7 @@ export default function ResetPasswordScreen({ route, navigation }) {
           style={styles.backButton}
           onPress={() => navigation.goBack()}
         >
-          <Ionicons name="chevron-back-outline" size={22} color="#0f6d78" />
+          <Text style={styles.backButtonText}>←</Text>
         </TouchableOpacity>
         <LanguageSelector />
       </View>
@@ -94,7 +93,7 @@ export default function ResetPasswordScreen({ route, navigation }) {
       <View style={styles.card}>
         <TextInput
           placeholder="Nueva contraseña"
-          placeholderTextColor="#6b848b"
+          placeholderTextColor="#aaa"
           secureTextEntry
           style={styles.input}
           value={newPassword}
@@ -108,7 +107,7 @@ export default function ResetPasswordScreen({ route, navigation }) {
 
         <TextInput
           placeholder="Confirmar contraseña"
-          placeholderTextColor="#6b848b"
+          placeholderTextColor="#aaa"
           secureTextEntry
           style={styles.input}
           value={confirmPassword}
@@ -120,8 +119,6 @@ export default function ResetPasswordScreen({ route, navigation }) {
           onPress={handleResetPassword}
           loading={loading}
           disabled={loading}
-          backgroundColor="#0f6d78"
-          backgroundColorPressed="#074f57"
         />
       </View>
 
@@ -133,7 +130,7 @@ export default function ResetPasswordScreen({ route, navigation }) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#eef6f8',
+    backgroundColor: colors.primary,
     alignItems: "center",
     paddingTop: 60,
     paddingBottom: 100,
@@ -153,43 +150,35 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: 'rgba(15, 109, 120, 0.1)',
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
     justifyContent: 'center',
     alignItems: 'center',
   },
   backButtonText: {
-    color: '#0f6d78',
+    color: 'white',
     fontSize: 24,
     fontWeight: 'bold',
   },
   title: {
     fontSize: 22,
     fontWeight: "bold",
-    color: "#173746",
+    color: "white",
     marginTop: 100,
     marginBottom: 30,
   },
   card: {
     width: "90%",
-    backgroundColor: "#ffffff",
-    borderRadius: 24,
-    borderWidth: 1,
-    borderColor: '#deedf3',
-    padding: 24,
-    elevation: 3,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.05,
-    shadowRadius: 10,
+    backgroundColor: "#1c1c1c",
+    borderRadius: 25,
+    padding: 20,
+    elevation: 5,
   },
   input: {
-    backgroundColor: "#ffffff",
-    borderWidth: 1,
-    borderColor: '#c6dfea',
+    backgroundColor: "#333",
     padding: 15,
-    borderRadius: 14,
-    marginBottom: 16,
-    color: "#173746",
-    fontSize: 15,
+    borderRadius: 20,
+    marginBottom: 15,
+    color: "white",
+    fontSize: 16,
   },
 });

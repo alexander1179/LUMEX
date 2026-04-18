@@ -7,7 +7,6 @@ import {
   Alert,
   StyleSheet
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
 import { forgotPassword, verifyToken } from '../services/supabase/authService';
 import { colors } from '../styles/colors';
@@ -103,7 +102,7 @@ export default function VerifyTokenScreen({ route, navigation }) {
           style={styles.backButton}
           onPress={() => navigation.goBack()}
         >
-          <Ionicons name="chevron-back-outline" size={22} color="#0f6d78" />
+          <Text style={styles.backButtonText}>←</Text>
         </TouchableOpacity>
         <LanguageSelector />
       </View>
@@ -152,8 +151,6 @@ export default function VerifyTokenScreen({ route, navigation }) {
           onPress={verificarToken}
           loading={loading}
           disabled={loading || resendLoading || timeLeft === 0 || attempts >= MAX_ATTEMPTS}
-          backgroundColor="#0f6d78"
-          backgroundColorPressed="#074f57"
         />
       </View>
 
@@ -165,7 +162,7 @@ export default function VerifyTokenScreen({ route, navigation }) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#eef6f8',
+    backgroundColor: colors.primary,
     alignItems: "center",
     paddingTop: 60,
     paddingBottom: 100,
@@ -185,75 +182,63 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: 'rgba(15, 109, 120, 0.1)',
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
     justifyContent: 'center',
     alignItems: 'center',
   },
   backButtonText: {
-    color: '#0f6d78',
+    color: 'white',
     fontSize: 24,
     fontWeight: 'bold',
   },
   title: {
     fontSize: 22,
     fontWeight: "bold",
-    color: "#173746",
+    color: "white",
     marginTop: 100,
     marginBottom: 30,
   },
   card: {
     width: "90%",
-    backgroundColor: "#ffffff",
-    borderRadius: 24,
-    borderWidth: 1,
-    borderColor: '#deedf3',
-    padding: 24,
-    elevation: 3,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.05,
-    shadowRadius: 10,
+    backgroundColor: "#1c1c1c",
+    borderRadius: 25,
+    padding: 20,
+    elevation: 5,
   },
   description: {
-    color: '#5f7f8d',
+    color: '#ccc',
     fontSize: 14,
     textAlign: 'center',
     marginBottom: 20,
-    lineHeight: 20,
   },
   codeInput: {
-    backgroundColor: "#ffffff",
-    borderWidth: 1,
-    borderColor: '#c6dfea',
+    backgroundColor: "#333",
     padding: 15,
-    borderRadius: 14,
-    marginBottom: 16,
-    color: "#173746",
+    borderRadius: 20,
+    marginBottom: 15,
+    color: "white",
     fontSize: 24,
     textAlign: 'center',
     letterSpacing: 8,
   },
   timerText: {
-    color: '#20495a',
+    color: '#fff',
     fontSize: 14,
     textAlign: 'center',
     marginVertical: 10,
-    fontWeight: '600',
   },
   attemptsText: {
-    color: '#6b848b',
+    color: '#bbb',
     fontSize: 13,
     textAlign: 'center',
-    marginBottom: 12,
+    marginBottom: 8,
   },
   resendButton: {
     marginTop: 15,
-    marginBottom: 15,
     alignItems: 'center',
   },
   resendText: {
-    color: '#0f6d78',
-    fontSize: 15,
-    fontWeight: '700',
+    color: colors.primary,
+    fontSize: 14,
   },
 });

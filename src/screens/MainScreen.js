@@ -1,6 +1,5 @@
 // src/screens/MainScreen.js
-import React, { useEffect, useRef, useState, useCallback } from 'react';
-import { useFocusEffect } from '@react-navigation/native';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -34,8 +33,6 @@ import {
   readDatasetAsset,
   saveAnalysisInSupabase,
 } from '../services/supabase/datasetAnalysisService';
-import { getCurrentUser } from '../services/supabase/authService';
-import { consumeAnalysisCredit } from '../services/supabase/paymentService';
 
 const icon = require('../../assets/lumex.jpeg');
 const alexPhoto = require('../../assets/Alexander.jpg');
@@ -513,23 +510,6 @@ export default function MainScreen({ navigation }) {
     getUser();
   }, [fadeAnim, navigation]);
 
-  useFocusEffect(
-    useCallback(() => {
-      const refreshUser = async () => {
-        try {
-          const result = await getCurrentUser();
-          if (result.success) {
-            setUser(result.user);
-            console.log('🔄 Usuario refrescado automáticamente. Créditos:', result.user.analisis_disponibles);
-          }
-        } catch (error) {
-          console.log('Error refreshing user on focus:', error);
-        }
-      };
-      refreshUser();
-    }, [])
-  );
-
   const loadHistory = async (userIdParam) => {
     const safeUserId = Number(userIdParam);
     if (!Number.isInteger(safeUserId)) return;
@@ -897,20 +877,7 @@ export default function MainScreen({ navigation }) {
     }
 
     if (!Number.isInteger(currentUserId)) {
-      return;
-    }
-
-    // --- VALIDACIÓN DE CRÉDITOS ---
-    const credits = Number(user?.analisis_disponibles || 0);
-    if (credits <= 0) {
-      Alert.alert(
-        'Créditos insuficientes',
-        'No tienes créditos de análisis disponibles. Selecciona un plan para continuar.',
-        [
-          { text: 'Cancelar', style: 'cancel' },
-          { text: 'Ir a pagar', onPress: () => navigation.navigate('Payment') }
-        ]
-      );
+      Alert.alert('Usuario invalido', 'No se encontro un id de usuario valido para guardar el analisis.');
       return;
     }
 
@@ -933,19 +900,6 @@ export default function MainScreen({ navigation }) {
         parsedDataset: parsed,
       });
 
-      // --- CONSUMO DE CRÉDITO ---
-      const consumeResult = await consumeAnalysisCredit(currentUserId);
-      if (!consumeResult.success) {
-        console.error('❌ Error consumiendo crédito:', consumeResult.message);
-        // Opcional: Podrías alertar aquí, pero el análisis ya se guardó.
-      }
-
-      // Refrescamos los datos del usuario localmente para actualizar el contador de créditos
-      const freshUserResult = await getCurrentUser();
-      if (freshUserResult.success) {
-        setUser(freshUserResult.user);
-      }
-      
       await loadHistory(currentUserId);
 
       setIsAnalyzing(false);

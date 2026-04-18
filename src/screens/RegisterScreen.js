@@ -18,7 +18,6 @@ import { colors } from '../styles/colors';
 import { validators } from '../utils/validators';
 import { CustomButton } from '../components/common/CustomButton';
 import { PasswordRequirements } from '../components/auth/PasswordRequirements';
-import { LanguageSelector } from '../components/common/LanguageSelector';
 import { registerUser } from '../services/lumex';
 
 const { width, height } = Dimensions.get('window');
@@ -186,9 +185,6 @@ export default function RegisterScreen({ navigation, route }) {
         >
           <Ionicons name="chevron-back-outline" size={22} color={theme.accent} />
         </TouchableOpacity>
-        <View style={styles.languageWrapTop}>
-          <LanguageSelector style={styles.languageSelectorButton} />
-        </View>
       </View>
 
       <View style={styles.scrollContent}>

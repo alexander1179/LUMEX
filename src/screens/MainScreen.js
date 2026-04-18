@@ -24,7 +24,6 @@ import * as Sharing from 'expo-sharing';
 import { captureRef } from 'react-native-view-shot';
 import { BloodPressureModal } from '../components/health/BloodPressureModal';
 import { HeartRateModal } from '../components/health/HeartRateModal';
-import { LanguageSelector } from '../components/common/LanguageSelector';
 import { storageService } from '../services/storage/storageService';
 import {
   fetchAnalysisHistoryByUser,
@@ -1580,7 +1579,6 @@ export default function MainScreen({ navigation }) {
       )}
 
       <View style={styles.langRow}>
-        <LanguageSelector />
       </View>
     </ScrollView>
   );

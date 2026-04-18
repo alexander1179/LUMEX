@@ -17,7 +17,6 @@ import Checkbox from "expo-checkbox";
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
 import { CustomButton } from '../components/common/CustomButton';
-import { LanguageSelector } from '../components/common/LanguageSelector';
 import { loginUser } from '../services/lumex';
 import { storageService } from '../services/storage/storageService';
 
@@ -42,7 +41,6 @@ export default function LoginScreen({ navigation }) {
   const [usuario, setUsuario] = useState("");
   const [password, setPassword] = useState("");
   const [visible, setVisible] = useState(false);
-  const [acepta, setAcepta] = useState(false);
   const [loading, setLoading] = useState(false);
 
   const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -72,11 +70,6 @@ export default function LoginScreen({ navigation }) {
   };
 
   const handleLogin = async () => {
-    if (!acepta) {
-      Alert.alert('Términos requeridos', 'Debes aceptar los términos y condiciones para continuar.');
-      return;
-    }
-
     if (!usuario.trim() || !password.trim()) {
       Alert.alert('Datos requeridos', 'Debes completar usuario y contraseña');
       return;
@@ -99,7 +92,7 @@ export default function LoginScreen({ navigation }) {
         const role = String(result.user?.rol || 'usuario').toLowerCase();
         const welcomeName = result.user?.nombre || result.user?.usuario || 'Portal';
 
-        if (role === 'superadmin') {
+        if (role === 'superadmin' || role === 'superadministrador') {
           Alert.alert('Acceso Máximo', `Bienvenido(a) Superadministrador: ${welcomeName}`, [
             { text: 'Entrar', onPress: () => navigation.replace("SuperAdminDashboard") }
           ]);
@@ -131,9 +124,6 @@ export default function LoginScreen({ navigation }) {
       <View style={styles.bgGlowBottom} />
 
       <View style={styles.header} pointerEvents="box-none">
-        <View style={styles.languageWrap}>
-          <LanguageSelector style={styles.languageSelectorButton} />
-        </View>
       </View>
 
       <ScrollView 
@@ -181,16 +171,6 @@ export default function LoginScreen({ navigation }) {
             <TouchableOpacity style={styles.forgotTouch} onPress={() => navigation.navigate('ForgotPassword')}>
               <Text style={[styles.forgot, { color: theme.accent }]}>{t('login.forgotPassword')}</Text>
             </TouchableOpacity>
-
-            <View style={styles.checkboxRow}>
-              <Checkbox
-                value={acepta}
-                onValueChange={setAcepta}
-                color={acepta ? theme.accent : undefined}
-                style={styles.checkbox}
-              />
-              <Text style={[styles.checkboxText, { color: '#a0afb5' }]}>{t('login.acceptTerms')}</Text>
-            </View>
 
             <CustomButton
               title={loading ? 'Procesando...' : 'Acceder'}

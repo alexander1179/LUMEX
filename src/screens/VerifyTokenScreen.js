@@ -5,17 +5,20 @@ import {
   TextInput,
   TouchableOpacity,
   Alert,
-  StyleSheet
+  StyleSheet,
+  Dimensions,
+  Animated
 } from 'react-native';
 import { useTranslation } from 'react-i18next';
+import { Ionicons } from '@expo/vector-icons';
 import { forgotPassword, verifyToken } from '../services/lumex';
 import { colors } from '../styles/colors';
 import { useCountdown } from '../hooks/useCountdown';
 import { CustomButton } from '../components/common/CustomButton';
-import { LanguageSelector } from '../components/common/LanguageSelector';
 import { AccessQuickNav } from '../components/common/AccessQuickNav';
 import { AUTH_CONFIG } from '../config/authConfig';
 
+const { width } = Dimensions.get('window');
 const MAX_ATTEMPTS = 5;
 const OTP_MIN_LENGTH = AUTH_CONFIG.OTP_MIN_LENGTH;
 const OTP_MAX_LENGTH = AUTH_CONFIG.OTP_MAX_LENGTH;
@@ -29,6 +32,17 @@ export default function VerifyTokenScreen({ route, navigation }) {
   const [attempts, setAttempts] = useState(0);
   const { formatTime, timeLeft, reset } = useCountdown(900);
 
+  const theme = {
+    background: '#eaf6f5',
+    card: 'rgba(255,255,255,0.86)',
+    cardBorder: 'rgba(15,109,120,0.22)',
+    input: '#f4fbfb',
+    inputText: '#15333d',
+    mutedText: '#4f666c',
+    title: '#15333d',
+    accent: '#0f6d78',
+  };
+
   const verificarToken = async () => {
     if (loading || resendLoading) return;
 
@@ -38,7 +52,6 @@ export default function VerifyTokenScreen({ route, navigation }) {
     }
 
     const normalizedToken = token.trim();
-
     const otpRegex = new RegExp(`^\\d{${OTP_MIN_LENGTH},${OTP_MAX_LENGTH}}$`);
 
     if (!otpRegex.test(normalizedToken)) {
@@ -84,7 +97,7 @@ export default function VerifyTokenScreen({ route, navigation }) {
         setAttempts(0);
         setToken('');
         reset(900);
-        Alert.alert("✅ Código reenviado", "Revisa tu correo e ingresa el nuevo código.");
+        Alert.alert("✅ Código reenviado", "Busca el nuevo código en la consola del servidor.");
       } else {
         Alert.alert("Error", result.message || "No se pudo reenviar el código");
       }
@@ -96,62 +109,64 @@ export default function VerifyTokenScreen({ route, navigation }) {
   };
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { backgroundColor: theme.background }]}>
       <View style={styles.header}>
         <TouchableOpacity 
-          style={styles.backButton}
+          style={[styles.backButton, { backgroundColor: 'rgba(15,109,120,0.1)' }]}
           onPress={() => navigation.goBack()}
         >
-          <Text style={styles.backButtonText}>←</Text>
+          <Ionicons name="chevron-back" size={24} color={theme.accent} />
         </TouchableOpacity>
-        <LanguageSelector />
       </View>
 
-      <Text style={styles.title}>
-        Verificar Código
-      </Text>
-
-      <View style={styles.card}>
-        <Text style={styles.description}>
-          Ingresa el código enviado a {email} ({OTP_MIN_LENGTH} a {OTP_MAX_LENGTH} dígitos). Si abriste el enlace del correo, ignóralo y usa solo el código.
+      <View style={styles.content}>
+        <Text style={[styles.title, { color: theme.title }]}>
+          Verificar Código
         </Text>
 
-        <TextInput
-          placeholder={OTP_MAX_LENGTH === 8 ? "00000000" : "000000"}
-          placeholderTextColor="#aaa"
-          style={styles.codeInput}
-          value={token}
-          onChangeText={(value) => setToken(value.replace(/\D/g, ''))}
-          maxLength={OTP_MAX_LENGTH}
-          keyboardType="number-pad"
-        />
+        <View style={[styles.card, { backgroundColor: theme.card, borderColor: theme.cardBorder }]}>
+          <Text style={[styles.description, { color: theme.mutedText }]}>
+            Ingresa el código enviado a {email}. El código aparecerá en la terminal donde se ejecuta el servidor.
+          </Text>
 
-        <Text style={styles.timerText}>
-          ⏰ Tiempo restante: {formatTime}
-        </Text>
+          <TextInput
+            placeholder="000000"
+            placeholderTextColor="#aaa"
+            style={[styles.codeInput, { backgroundColor: theme.input, color: theme.inputText, borderColor: 'rgba(15,109,120,0.1)' }]}
+            value={token}
+            onChangeText={(value) => setToken(value.replace(/\D/g, ''))}
+            maxLength={OTP_MAX_LENGTH}
+            keyboardType="number-pad"
+          />
 
-        <Text style={styles.attemptsText}>
-          Intentos restantes: {Math.max(MAX_ATTEMPTS - attempts, 0)}
-        </Text>
+          <Text style={[styles.timerText, { color: theme.accent }]}>
+             Tiempo restante: {formatTime}
+          </Text>
 
-        {(timeLeft === 0 || attempts >= MAX_ATTEMPTS) && (
-          <TouchableOpacity 
-            style={styles.resendButton}
-            onPress={reenviarCodigo}
-            disabled={resendLoading}
-          >
-            <Text style={styles.resendText}>
-              {resendLoading ? 'Reenviando...' : 'Solicitar nuevo código'}
-            </Text>
-          </TouchableOpacity>
-        )}
+          <Text style={[styles.attemptsText, { color: theme.mutedText }]}>
+            Intentos restantes: {Math.max(MAX_ATTEMPTS - attempts, 0)}
+          </Text>
 
-        <CustomButton
-          title={loading ? "Verificando..." : "Verificar código"}
-          onPress={verificarToken}
-          loading={loading}
-          disabled={loading || resendLoading || timeLeft === 0 || attempts >= MAX_ATTEMPTS}
-        />
+          {(timeLeft === 0 || attempts >= MAX_ATTEMPTS) && (
+            <TouchableOpacity 
+              style={styles.resendButton}
+              onPress={reenviarCodigo}
+              disabled={resendLoading}
+            >
+              <Text style={[styles.resendText, { color: theme.accent }]}>
+                {resendLoading ? 'Reenviando...' : 'Solicitar nuevo código'}
+              </Text>
+            </TouchableOpacity>
+          )}
+
+          <CustomButton
+            title={loading ? "Verificando..." : "Verificar código"}
+            onPress={verificarToken}
+            loading={loading}
+            disabled={loading || resendLoading || timeLeft === 0 || attempts >= MAX_ATTEMPTS}
+            backgroundColor={theme.accent}
+          />
+        </View>
       </View>
 
       <AccessQuickNav navigation={navigation} current="usuario" />
@@ -162,83 +177,77 @@ export default function VerifyTokenScreen({ route, navigation }) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.primary,
     alignItems: "center",
-    paddingTop: 60,
-    paddingBottom: 100,
   },
   header: {
-    position: 'absolute',
-    top: 50,
-    left: 0,
-    right: 0,
+    width: '100%',
+    paddingTop: 50,
+    paddingHorizontal: 20,
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 15,
     zIndex: 10,
   },
   backButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    width: 45,
+    height: 45,
+    borderRadius: 15,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  backButtonText: {
-    color: 'white',
-    fontSize: 24,
-    fontWeight: 'bold',
+  content: {
+    width: '100%',
+    alignItems: 'center',
+    marginTop: 40,
   },
   title: {
-    fontSize: 22,
-    fontWeight: "bold",
-    color: "white",
-    marginTop: 100,
+    fontSize: 26,
+    fontWeight: "800",
     marginBottom: 30,
   },
   card: {
     width: "90%",
-    backgroundColor: "#1c1c1c",
-    borderRadius: 25,
-    padding: 20,
-    elevation: 5,
+    borderRadius: 30,
+    padding: 25,
+    borderWidth: 1,
+    elevation: 4,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 10,
   },
   description: {
-    color: '#ccc',
-    fontSize: 14,
+    fontSize: 15,
     textAlign: 'center',
-    marginBottom: 20,
+    marginBottom: 25,
+    lineHeight: 22,
   },
   codeInput: {
-    backgroundColor: "#333",
     padding: 15,
-    borderRadius: 20,
+    borderRadius: 15,
     marginBottom: 15,
-    color: "white",
-    fontSize: 24,
+    fontSize: 28,
     textAlign: 'center',
-    letterSpacing: 8,
+    letterSpacing: 10,
+    fontWeight: 'bold',
+    borderWidth: 1,
   },
   timerText: {
-    color: '#fff',
     fontSize: 14,
     textAlign: 'center',
     marginVertical: 10,
+    fontWeight: '600',
   },
   attemptsText: {
-    color: '#bbb',
     fontSize: 13,
     textAlign: 'center',
-    marginBottom: 8,
+    marginBottom: 15,
   },
   resendButton: {
-    marginTop: 15,
+    marginBottom: 20,
     alignItems: 'center',
   },
   resendText: {
-    color: colors.primary,
     fontSize: 14,
+    fontWeight: '700',
+    textDecorationLine: 'underline',
   },
 });

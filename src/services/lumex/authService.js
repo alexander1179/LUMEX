@@ -114,7 +114,7 @@ export const acceptSecurityTerms = async (userId) => {
 };
 
 export const forgotPassword = async (email) => {
-  const { data, ok } = await getApiClient('/forgot-password', {
+  const { data, ok } = await getApiClient('/api/auth/forgot-password', {
     method: 'POST',
     body: JSON.stringify({ email }),
   });
@@ -129,10 +129,17 @@ export const verifyToken = async (email, token) => {
   return ok ? { success: true } : { success: false, message: data?.message };
 };
 
-export const resetPassword = async (newPassword) => {
-  // En un entorno real necesitaríamos el token/email. 
-  // Por ahora lo simplificamos para que la App no crashee.
-  return { success: true, message: 'Contraseña actualizada' };
+export const resetPassword = async (email, newPassword) => {
+  try {
+    const passwordHash = await hashPassword(newPassword);
+    const { data, ok } = await getApiClient('/api/auth/reset-password', {
+      method: 'POST',
+      body: JSON.stringify({ email, newPassword: passwordHash }),
+    });
+    return ok ? { success: true, message: data.message } : { success: false, message: data?.message };
+  } catch (error) {
+    return { success: false, message: error.message };
+  }
 };
 
 // --- MÉTODOS DE ADMIN ---
@@ -145,6 +152,14 @@ export const updateUserRole = async (userId, newRole) => {
   const { data, ok } = await getApiClient('/api/admin/update-role', {
     method: 'POST',
     body: JSON.stringify({ userId, newRole }),
+  });
+  return ok;
+};
+
+export const updateUser = async (userData) => {
+  const { data, ok } = await getApiClient('/api/admin/update-user', {
+    method: 'POST',
+    body: JSON.stringify(userData),
   });
   return ok;
 };

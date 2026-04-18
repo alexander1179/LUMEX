@@ -15,7 +15,6 @@ import Checkbox from "expo-checkbox";
 import { Ionicons } from '@expo/vector-icons';
 import { storageService } from '../services/storage/storageService';
 import { loadSavedLanguage } from '../i18n';
-import { LanguageSelector } from '../components/common/LanguageSelector';
 import { AccessQuickNav } from '../components/common/AccessQuickNav';
 import { colors } from '../styles/colors';
 
@@ -82,7 +81,6 @@ export default function PrivacyScreen({ navigation, route }) {
       <View style={styles.header}>
         <View style={styles.headerGlow} />
         <View style={styles.headerTop}>
-          <LanguageSelector />
         </View>
         <View style={styles.logoWrap}>
           <View style={styles.logoGlowLarge} />

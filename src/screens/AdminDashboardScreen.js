@@ -25,7 +25,6 @@ import { storageService } from '../services/storage/storageService';
 const TABS = [
   { key: 'inicio', label: 'Inicio', icon: 'home-outline' },
   { key: 'pacientes', label: 'Pacientes', icon: 'people-outline' },
-  { key: 'citas', label: 'Citas', icon: 'calendar-outline' },
   { key: 'ajustes', label: 'Ajustes', icon: 'settings-outline' },
 ];
 
@@ -1431,7 +1430,10 @@ export default function AdminDashboardScreen({ navigation }) {
         </View>
 
         <TouchableOpacity
-          onPress={() => navigation.replace('RoleSelect')}
+          onPress={async () => {
+            await storageService.removeUser();
+            navigation.replace('Login');
+          }}
           style={styles.logoutButton}
           activeOpacity={0.85}
         >

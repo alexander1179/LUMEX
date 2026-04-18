@@ -18,8 +18,21 @@ const pool = mysql.createPool({
   queueLimit: 0
 });
 
+pool.on('error', (err) => {
+  console.error('[DB ERROR]', err);
+});
+
+// Almacenamiento temporal de OTPs (En producción usar Redis o DB)
+const otps = {};
+
 app.use(cors());
 app.use(express.json());
+
+// Middleware para ver qué llega al servidor
+app.use((req, res, next) => {
+  console.log(`[${new Date().toLocaleTimeString()}] ${req.method} ${req.url}`);
+  next();
+});
 
 // --- ENDPOINTS DE AUTENTICACIÓN ---
 
@@ -108,9 +121,6 @@ app.get('/', (req, res) => {
   res.send('Servidor activo');
 });
 
-app.listen(3000, () => {
-  console.log('Servidor corriendo en puerto 3000');
-});
 
 // Actualizar rol
 app.post('/api/admin/update-role', async (req, res) => {
@@ -130,6 +140,20 @@ app.delete('/api/admin/user/:id', async (req, res) => {
     res.json({ success: true, message: 'Usuario eliminado' });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// Actualizar datos completos de usuario
+app.post('/api/admin/update-user', async (req, res) => {
+  const { id_usuario, nombre, email, usuario, rol, telefono } = req.body;
+  try {
+    await pool.query(
+      'UPDATE usuarios SET nombre = ?, email = ?, usuario = ?, rol = ?, telefono = ? WHERE id_usuario = ?',
+      [nombre, email, usuario, rol, telefono, id_usuario]
+    );
+    res.json({ success: true, message: 'Usuario actualizado correctamente' });
+  } catch (error) {
+    res.status(500).json({ success: false, message: 'Error al actualizar usuario: ' + error.message });
   }
 });
 
@@ -157,8 +181,91 @@ app.post('/api/auth/accept-terms', async (req, res) => {
   }
 });
 
-app.listen(PORT, '0.0.0.0', () => {
+// Recuperar contraseña (Generar código)
+app.post('/api/auth/forgot-password', async (req, res) => {
+  const { email } = req.body;
+  try {
+    const normalizedEmail = email.trim().toLowerCase();
+    const [rows] = await pool.query('SELECT id_usuario FROM usuarios WHERE email = ?', [normalizedEmail]);
+    if (rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Correo no registrado' });
+    }
+    
+    // Generar código de 6 dígitos
+    const code = Math.floor(100000 + Math.random() * 900000).toString();
+    
+    // Guardar en memoria (expira en 15 min)
+    otps[normalizedEmail] = {
+      code,
+      expires: Date.now() + (15 * 60 * 1000)
+    };
+
+    console.log("**************************************************");
+    console.log(`🔑 CÓDIGO PARA: ${normalizedEmail}`);
+    console.log(`👉 CÓDIGO: ${code}`);
+    console.log("**************************************************");
+    
+    res.json({ success: true, message: 'Código generado correctamente. Revisa la consola del servidor.' });
+  } catch (error) {
+    res.status(500).json({ success: false, message: 'Error en el servidor' });
+  }
+});
+
+// Verificar código
+app.post('/api/auth/verify-token', async (req, res) => {
+  const { email, token } = req.body;
+  const normalizedEmail = email.trim().toLowerCase();
+  
+  const stored = otps[normalizedEmail];
+  
+  if (!stored) {
+    return res.status(400).json({ success: false, message: 'No hay un código pendiente para este correo' });
+  }
+  
+  if (Date.now() > stored.expires) {
+    delete otps[normalizedEmail];
+    return res.status(400).json({ success: false, message: 'El código ha expirado' });
+  }
+  
+  if (stored.code !== token) {
+    return res.status(400).json({ success: false, message: 'Código incorrecto' });
+  }
+  
+  res.json({ success: true, message: 'Código verificado' });
+});
+
+// Cambiar contraseña real
+app.post('/api/auth/reset-password', async (req, res) => {
+  const { email, newPassword } = req.body;
+  const normalizedEmail = email.trim().toLowerCase();
+  
+  try {
+    // En una App real aquí deberíamos verificar que el token fue validado antes.
+    // Para el demo, lo permitimos si el email existe.
+    await pool.query('UPDATE usuarios SET contrasena = ? WHERE email = ?', [newPassword, normalizedEmail]);
+    
+    // Limpiar OTP después de usarlo
+    delete otps[normalizedEmail];
+    
+    res.json({ success: true, message: 'Contraseña actualizada correctamente' });
+  } catch (error) {
+    res.status(500).json({ success: false, message: 'Error al actualizar contraseña' });
+  }
+});
+
+const server = app.listen(PORT, '0.0.0.0', () => {
   console.log(`🚀 Servidor MySQL corriendo en:`);
   console.log(`   - Local: http://localhost:${PORT}`);
   console.log(`   - Red:   http://192.168.20.141:${PORT}`);
+});
+
+server.on('error', (err) => {
+  console.error('[SERVER ERROR]', err);
+  if (err.code === 'EADDRINUSE') {
+    console.error(`OJO: El puerto ${PORT} ya está en uso por otro proceso.`);
+  }
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('Unhandled Rejection at:', promise, 'reason:', reason);
 });

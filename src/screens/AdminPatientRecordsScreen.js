@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Modal, Image, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { fetchAnalysisHistoryByUser } from '../services/lumex';
+import { fetchAnalysisHistoryByUser } from '../services/api/datasetAnalysisService';
+
 
 const ANALYSIS_TYPES = [
   { value: 'anomalias', label: 'Deteccion de anomalias', icon: 'alert-circle-outline' },

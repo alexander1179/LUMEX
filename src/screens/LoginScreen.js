@@ -17,7 +17,10 @@ import Checkbox from "expo-checkbox";
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
 import { CustomButton } from '../components/common/CustomButton';
-import { loginUser } from '../services/lumex';
+import { LanguageSelector } from '../components/common/LanguageSelector';
+import { AccessQuickNav } from '../components/common/AccessQuickNav';
+import { loginUser, acceptSecurityTerms } from '../services/api/authService';
+
 import { storageService } from '../services/storage/storageService';
 
 const icon = require('../../assets/lumex.jpeg');

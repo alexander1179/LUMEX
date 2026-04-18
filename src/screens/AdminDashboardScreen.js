@@ -17,9 +17,9 @@ import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
 import * as FileSystem from 'expo-file-system/legacy';
 import ViewShot from 'react-native-view-shot';
-import { supabase } from '../services/lumex';
-import { registerUser } from '../services/lumex';
-import { getApiUrl } from '../services/lumex';
+import { supabase } from '../services/api/supabaseClient';
+import { registerUser } from '../services/api/authService';
+import { getApiUrl } from '../services/api/apiConfig';
 import { storageService } from '../services/storage/storageService';
 
 const TABS = [

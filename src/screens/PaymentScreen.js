@@ -14,7 +14,8 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
 import { storageService } from '../services/storage/storageService';
-import { registerPayment } from '../services/lumex';
+import { registerPayment } from '../services/api/paymentService';
+
 import { CustomButton } from '../components/common/CustomButton';
 
 const { width } = Dimensions.get('window');

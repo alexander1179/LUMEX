@@ -31,11 +31,15 @@ import {
   isDatasetFileSupported,
   parseDatasetContent,
   readDatasetAsset,
-  saveAnalysisInSupabase,
-  deductCredit,
-  addCredits,
-  fetchLatestUserData
-} from '../services/lumex';
+  saveAnalysis
+} from '../services/api/datasetAnalysisService';
+import { 
+  registerPayment, 
+  consumePaymentCredit 
+} from '../services/api/paymentService';
+import { 
+  fetchLatestUserData 
+} from '../services/api/authService';
 
 const icon = require('../../assets/lumex.jpeg');
 const alexPhoto = require('../../assets/Alexander.jpg');
@@ -919,7 +923,7 @@ export default function MainScreen({ navigation }) {
       const parsed = parsedDataset || parseDatasetContent(datasetContent);
       const visualizationImageUri = buildVisualizationImageUri(parsed, selectedVisualization);
 
-      const saveResult = await saveAnalysisInSupabase({
+      const saveResult = await saveAnalysis({
         userId: currentUserId,
         analysisType: FIXED_ANALYSIS_TYPE,
         visualizationType: selectedVisualization,
@@ -929,7 +933,7 @@ export default function MainScreen({ navigation }) {
       });
 
       // DESCONTAR CRÉDITO EXITOSAMENTE
-      await deductCredit(currentUserId);
+      await consumePaymentCredit(currentUserId);
       setAvailableCredits(prev => Math.max(0, prev - 1));
 
       await loadHistory(currentUserId);
@@ -983,12 +987,13 @@ export default function MainScreen({ navigation }) {
         return;
       }
 
-      const res = await addCredits(
+      const res = await registerPayment(
         safeUserId, 
         pendingPlan?.amount || 0, 
         pendingPlan?.price || 0, 
         paymentMethod, 
-        `Compra de ${pendingPlan?.name || 'creditos'}`
+        `Compra de ${pendingPlan?.name || 'creditos'}`,
+        pendingPlan?.amount || 0
       );
       if (res.success) {
         setAvailableCredits(prev => prev + (pendingPlan?.amount || 0));

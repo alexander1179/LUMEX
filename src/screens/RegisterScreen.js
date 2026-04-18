@@ -18,7 +18,10 @@ import { colors } from '../styles/colors';
 import { validators } from '../utils/validators';
 import { CustomButton } from '../components/common/CustomButton';
 import { PasswordRequirements } from '../components/auth/PasswordRequirements';
-import { registerUser } from '../services/lumex';
+import { LanguageSelector } from '../components/common/LanguageSelector';
+import { AccessQuickNav } from '../components/common/AccessQuickNav';
+import { registerUser } from '../services/api/authService';
+
 
 const { width, height } = Dimensions.get('window');
 const icon = require('../../assets/lumex.jpeg');

@@ -121,6 +121,4 @@ export default function AppNavigator() {
     </Stack.Navigator>
     
   );
-}
-
-}
+}

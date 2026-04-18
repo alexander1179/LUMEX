@@ -32,7 +32,7 @@ import {
   parseDatasetContent,
   readDatasetAsset,
   saveAnalysisInSupabase,
-} from '../services/supabase/datasetAnalysisService';
+} from '../services/lumex';
 
 const icon = require('../../assets/lumex.jpeg');
 const alexPhoto = require('../../assets/Alexander.jpg');

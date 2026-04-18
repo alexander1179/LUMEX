@@ -8,8 +8,8 @@ import {
   Alert,
   TextInput
 } from 'react-native';
-import { testConnection } from '../services/supabase/supabaseClient';
-import { registerUser, loginUser } from '../services/supabase/authService';
+import { testConnection } from '../services/lumex';
+import { registerUser, loginUser } from '../services/lumex';
 import { colors } from '../styles/colors';
 
 export default function TestSupabaseScreen({ navigation }) {

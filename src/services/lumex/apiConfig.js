@@ -1,10 +1,10 @@
-// src/services/api/apiConfig.js
+// src/services/lumex.js
 import { Platform } from 'react-native';
 import Constants from 'expo-constants';
 
 // Obtener la IP local de tu computadora
 // Reemplaza con la IP de tu computadora (ejecuta 'ipconfig' en Windows o 'ifconfig' en Mac/Linux)
-const LOCAL_IP = '10.157.28.88'; // 🔥 CAMBIA ESTA IP POR LA TUYA
+const LOCAL_IP = '192.168.20.141'; // 🔥 IP actualizada según ipconfig
 
 const normalizeUrl = (url) => String(url || '').trim().replace(/\/$/, '');
 
@@ -42,8 +42,8 @@ export const getApiUrlCandidates = () => {
   if (Platform.OS === 'web') {
     urls.push('http://localhost:3000');
   } else if (Platform.OS === 'android') {
-    urls.push('http://10.0.2.2:3000');
     urls.push(`http://${LOCAL_IP}:3000`);
+    urls.push('http://10.0.2.2:3000');
   } else {
     urls.push(`http://${LOCAL_IP}:3000`);
   }

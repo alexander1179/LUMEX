@@ -1,8 +1,8 @@
 // src/hooks/useSupabaseAuth.js
 import { useState, useEffect } from 'react';
 import { Alert } from 'react-native';
-import { supabase } from '../services/supabase/supabaseClient';
-import { loginUser, registerUser, logoutUser, getCurrentUser } from '../services/supabase/authService';
+import { supabase } from '../services/lumex';
+import { loginUser, registerUser, logoutUser, getCurrentUser } from '../services/lumex';
 import { storageService } from '../services/storage/storageService';
 
 export const useSupabaseAuth = (navigation) => {

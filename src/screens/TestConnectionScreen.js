@@ -8,7 +8,7 @@ import {
   ScrollView,
   Alert
 } from 'react-native';
-import { supabase, testSupabaseConnection } from '../services/supabase/supabaseClient';
+import { supabase, testSupabaseConnection } from '../services/lumex';
 import { colors } from '../styles/colors';
 
 export default function TestConnectionScreen({ navigation }) {

@@ -21,7 +21,7 @@ import { colors } from '../styles/colors';
 
 const icon = require('../../assets/lumex.jpeg');
 
-export default function PrivacyScreen({ navigation }) {
+export default function PrivacyScreen({ navigation, route }) {
   const { t, i18n } = useTranslation();
   const [isChecked, setChecked] = useState(false);
   const [expandedSection, setExpandedSection] = useState(null);
@@ -699,14 +699,17 @@ export default function PrivacyScreen({ navigation }) {
             { backgroundColor: isChecked ? "#0f6d78" : "#c8d8dc" }
           ]}
           disabled={!isChecked}
-          onPress={() => navigation.replace("Register")}
+          onPress={() => navigation.navigate("Register", { 
+            formData: route.params?.formData, 
+            accepted: true 
+          })}
         >
           <Text style={styles.acceptButtonText}>{t('privacy.acceptButton')}</Text>
         </TouchableOpacity>
 
         <TouchableOpacity
           style={styles.cancelButton}
-          onPress={() => navigation.replace("Gracias")}
+          onPress={() => navigation.replace("Login")}
         >
           <Text style={styles.cancelButtonText}>{t('privacy.declineButton')}</Text>
         </TouchableOpacity>

@@ -113,6 +113,46 @@ export const acceptSecurityTerms = async (userId) => {
   }
 };
 
+export const fetchLatestUserData = async (userId) => {
+  try {
+    const { data, ok } = await getApiClient('/api/auth/get-user', {
+      method: 'POST',
+      body: JSON.stringify({ userId }),
+    });
+    return ok ? data.user : null;
+  } catch { return null; }
+};
+
+export const deductCredit = async (userId) => {
+  try {
+    const { ok } = await getApiClient('/api/auth/deduct-credit', {
+      method: 'POST',
+      body: JSON.stringify({ userId }),
+    });
+    return ok;
+  } catch { return false; }
+};
+
+export const addCredits = async (userId, amount, monto, metodoPago, descripcion) => {
+  try {
+    const result = await getApiClient('/api/auth/add-credits', {
+      method: 'POST',
+      body: JSON.stringify({ userId, amount, monto, metodoPago, descripcion }),
+    });
+
+    const { data, ok, message: clientMessage } = result;
+    
+    if (ok) {
+      return { success: true, message: data?.message };
+    } else {
+      // Priorizar el mensaje del servidor, si no, usar el del cliente (error de conexión)
+      return { success: false, message: data?.message || clientMessage || data?.detail };
+    }
+  } catch (error) { 
+    return { success: false, message: error.message }; 
+  }
+};
+
 export const forgotPassword = async (email) => {
   const { data, ok } = await getApiClient('/api/auth/forgot-password', {
     method: 'POST',

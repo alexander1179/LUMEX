@@ -170,6 +170,73 @@ app.post('/api/auth/get-user', async (req, res) => {
   }
 });
 
+// Descontar un crédito por análisis
+app.post('/api/auth/deduct-credit', async (req, res) => {
+  const { userId } = req.body;
+  try {
+    const [user] = await pool.query('SELECT analisis_disponibles FROM usuarios WHERE id_usuario = ?', [userId]);
+    if (user[0].analisis_disponibles <= 0) {
+      return res.status(400).json({ success: false, message: 'No tienes créditos suficientes' });
+    }
+    await pool.query('UPDATE usuarios SET analisis_disponibles = analisis_disponibles - 1 WHERE id_usuario = ?', [userId]);
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+const crypto = require('crypto');
+
+// Añadir créditos (Compra) y Registrar Pago con Validación Robusta
+app.post('/api/auth/add-credits', async (req, res) => {
+  const { userId, amount, monto, metodoPago, descripcion } = req.body;
+  
+  // Forzar tipos numéricos
+  const safeUserId = Number(userId);
+  const safeAmount = Number(amount);
+  const safeMonto = Number(monto);
+
+  try {
+    if (!safeUserId || isNaN(safeUserId)) {
+      return res.status(400).json({ success: false, message: 'ID de usuario invalido' });
+    }
+
+    // 0. Verificar que el usuario existe (para evitar fallos de llave foranea en pagos)
+    const [userExists] = await pool.query('SELECT id_usuario FROM usuarios WHERE id_usuario = ?', [safeUserId]);
+    if (userExists.length === 0) {
+      return res.status(404).json({ success: false, message: 'El usuario no existe en la base de datos' });
+    }
+
+    const idPago = crypto.randomUUID();
+    
+    // 1. Aumentar créditos del usuario
+    await pool.query('UPDATE usuarios SET analisis_disponibles = analisis_disponibles + ? WHERE id_usuario = ?', [safeAmount, safeUserId]);
+    
+    // 2. Registrar la transacción en la tabla pagos
+    await pool.query(
+      'INSERT INTO pagos (id_pago, id_usuario, monto, moneda, descripcion, metodo_pago, estado) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      [
+        idPago, 
+        safeUserId, 
+        safeMonto, 
+        'USD', 
+        descripcion || `Compra de ${safeAmount} creditos`, 
+        metodoPago || 'Tarjeta', 
+        'completado'
+      ]
+    );
+
+    res.json({ success: true, message: `Se han añadido ${safeAmount} créditos correctamente` });
+  } catch (error) {
+    console.error('Error en add-credits:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Error al procesar el pago en el servidor',
+      detail: error.sqlMessage || error.message 
+    });
+  }
+});
+
 // Aceptar términos
 app.post('/api/auth/accept-terms', async (req, res) => {
   const { userId } = req.body;

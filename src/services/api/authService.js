@@ -47,10 +47,15 @@ export const loginUser = async (identifier, password, acceptTermsIfNeeded = fals
     const { requiredRole = null } = options;
     const passwordHash = await hashPassword(password);
 
-    const { data: resData, ok } = await getApiClient('/api/auth/login', {
+    const { data: resData, ok, error: netError } = await getApiClient('/api/auth/login', {
       method: 'POST',
       body: JSON.stringify({ identifier, passwordHash, requiredRole }),
     });
+
+    // Sin datos = error de red o timeout
+    if (!resData) {
+      return { success: false, message: netError || 'No se pudo conectar al servidor. Verifica tu red.' };
+    }
 
     if (!ok || !resData?.success) {
       return { success: false, message: resData?.message || 'Error de login' };
@@ -69,6 +74,7 @@ export const loginUser = async (identifier, password, acceptTermsIfNeeded = fals
     return { success: false, message: error.message };
   }
 };
+
 
 export const forgotPassword = async (email) => {
   try {

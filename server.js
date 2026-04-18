@@ -496,8 +496,16 @@ app.delete('/api/admin/user/:id', async (req, res) => {
   }
 });
 
+// 404 — Ruta no encontrada
 app.use((req, res) => {
-  res.status(404).json({ success: false, message: 'Ruta no encontrada' });
+  res.status(404).json({ success: false, message: `Ruta no encontrada: ${req.method} ${req.url}` });
+});
+
+// 500 — Error global (4 parámetros obligatorios para que Express lo reconozca como error handler)
+// eslint-disable-next-line no-unused-vars
+app.use((err, req, res, next) => {
+  console.error('[SERVER ERROR]', err?.message || err);
+  res.status(500).json({ success: false, message: err?.message || 'Error interno del servidor' });
 });
 
 app.listen(PORT, '0.0.0.0', () => {

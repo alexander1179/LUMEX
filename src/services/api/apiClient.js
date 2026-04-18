@@ -19,15 +19,13 @@ const ENV_API_URL = normalizeUrl(
  */
 export const getBaseUrl = () => {
   if (ENV_API_URL) return ENV_API_URL;
-
   if (Platform.OS === 'web') return 'http://localhost:3000';
-  if (Platform.OS === 'android') return `http://${LOCAL_IP}:3000`;
   return `http://${LOCAL_IP}:3000`;
 };
 
 /**
  * Cliente HTTP central con timeout y manejo robusto de errores.
- * Retorna { ok, status, data } siempre — nunca lanza excepción.
+ * NUNCA lanza excepción — siempre retorna { ok, status, data, error }.
  */
 export const getApiClient = async (endpoint, options = {}) => {
   const baseUrl = getBaseUrl();
@@ -49,7 +47,23 @@ export const getApiClient = async (endpoint, options = {}) => {
     });
 
     clearTimeout(timer);
-    const json = await response.json();
+
+    // Intentar parsear JSON — si el servidor devuelve HTML (error page),
+    // response.json() lanza. Lo capturamos y retornamos error legible.
+    let json = null;
+    try {
+      json = await response.json();
+    } catch {
+      const text = await response.text().catch(() => '');
+      console.error(`[API] Respuesta no-JSON en ${url} (status ${response.status}):`, text.slice(0, 120));
+      return {
+        ok: false,
+        status: response.status,
+        data: null,
+        error: `El servidor respondió con formato inesperado (status ${response.status}). Verifica que el servidor esté corriendo correctamente.`,
+      };
+    }
+
     return { ok: response.ok, status: response.status, data: json };
   } catch (error) {
     clearTimeout(timer);

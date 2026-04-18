@@ -13,14 +13,13 @@ import {
 } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { Ionicons } from '@expo/vector-icons';
-import { supabase } from '../services/supabase/supabaseClient';
 import { colors } from '../styles/colors';
 import { validators } from '../utils/validators';
 import { CustomButton } from '../components/common/CustomButton';
 import { PasswordRequirements } from '../components/auth/PasswordRequirements';
 import { LanguageSelector } from '../components/common/LanguageSelector';
 import { AccessQuickNav } from '../components/common/AccessQuickNav';
-import { registerUser } from '../services/supabase/authService';
+import { registerUser } from '../services/api/authService';
 
 const { width, height } = Dimensions.get('window');
 const icon = require('../../assets/lumex.jpeg');

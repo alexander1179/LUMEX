@@ -16,10 +16,7 @@ import PaymentScreen from '../screens/PaymentScreen';
 import ForgotPasswordScreen from '../screens/ForgotPasswordScreen';
 import VerifyTokenScreen from '../screens/VerifyTokenScreen';
 import ResetPasswordScreen from '../screens/ResetPasswordScreen';
-import TestConnectionScreen from '../screens/TestConnectionScreen';
-import TestSupabaseScreen from '../screens/TestSupabaseScreen';
-import SimpleTestScreen from '../screens/SimpleTestScreen';
-import TestRegistroScreen from '../screens/TestRegistroScreen';
+
 
 const Stack = createNativeStackNavigator();
 
@@ -121,29 +118,9 @@ export default function AppNavigator() {
         options={{ headerShown: false }}
       />
 
-      <Stack.Screen 
-        name="TestSupabase" 
-        component={TestSupabaseScreen} 
-        options={{ headerShown: false }}
-      />
 
-      <Stack.Screen 
-        name="SimpleTest" 
-        component={SimpleTestScreen} 
-        options={{ headerShown: false }}
-      />
 
-      <Stack.Screen 
-        name="TestConnection" 
-        component={TestConnectionScreen} 
-        options={{ headerShown: true, title: 'Test Supabase' }}
-      />
 
-      <Stack.Screen 
-        name="TestRegistro" 
-        component={TestRegistroScreen} 
-        options={{ headerShown: true, title: 'Prueba Registro' }}
-      />
     </Stack.Navigator>
     
   );

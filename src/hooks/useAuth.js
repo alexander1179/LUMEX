@@ -1,7 +1,7 @@
 // src/hooks/useAuth.js
 import { useState, useEffect } from 'react';
 import { Alert } from 'react-native';
-import { loginUser, getCurrentUser, logoutUser } from '../services/supabase/authService';
+import { loginUser, getCurrentUser, logoutUser } from '../services/api/authService';
 import { storageService } from '../services/storage/storageService';
 import { MESSAGES } from '../utils/constants';
 

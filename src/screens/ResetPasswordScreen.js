@@ -8,7 +8,7 @@ import {
   StyleSheet
 } from 'react-native';
 import { useTranslation } from 'react-i18next';
-import { resetPassword } from '../services/supabase/authService';
+import { resetPassword } from '../services/api/authService';
 import { colors } from '../styles/colors';
 import { validators } from '../utils/validators';
 import { CustomButton } from '../components/common/CustomButton';

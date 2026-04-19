@@ -184,8 +184,16 @@ export const resetPassword = async (email, newPassword) => {
 
 // --- MÉTODOS DE ADMIN ---
 export const fetchAllUsers = async () => {
-  const { data, ok } = await getApiClient('/api/admin/users');
+  const { data, ok } = await getApiClient('/api/superadmin/users');
   return ok ? data.users : [];
+};
+
+export const updateAdminPermission = async (userId, puede_gestionar) => {
+  const { data, ok } = await getApiClient('/api/superadmin/toggle-admin-permission', {
+    method: 'POST',
+    body: JSON.stringify({ id_usuario: userId, puede_gestionar_usuarios: puede_gestionar }),
+  });
+  return ok;
 };
 
 export const updateUserRole = async (userId, newRole) => {

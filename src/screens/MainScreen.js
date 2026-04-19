@@ -1491,7 +1491,7 @@ export default function MainScreen({ navigation }) {
     >
       <Text style={styles.tabPageTitle}>Historial de analisis</Text>
       <Text style={styles.tabPageSub}>{analysisHistory.length} analisis realizados</Text>
-      {isLoadingHistory && <Text style={styles.tabPageSub}>Actualizando historial desde Supabase...</Text>}
+      {isLoadingHistory && <Text style={styles.tabPageSub}>Actualizando historial...</Text>}
       {!isLoadingHistory && analysisHistory.length === 0 && (
         <View style={styles.historyEmptyCard}>
           <Ionicons name="cloud-upload-outline" size={18} color={T} />

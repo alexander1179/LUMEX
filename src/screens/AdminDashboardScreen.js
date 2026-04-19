@@ -8,6 +8,7 @@ import {
   StatusBar,
   Modal,
   TextInput,
+  Pressable,
   Alert,
   Keyboard,
 } from 'react-native';
@@ -17,7 +18,6 @@ import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
 import * as FileSystem from 'expo-file-system/legacy';
 import ViewShot from 'react-native-view-shot';
-import { supabase } from '../services/api/supabaseClient';
 import { registerUser } from '../services/api/authService';
 import { getApiUrl } from '../services/api/apiConfig';
 import { storageService } from '../services/storage/storageService';
@@ -67,23 +67,10 @@ export default function AdminDashboardScreen({ navigation }) {
   const [loadingUsuarios, setLoadingUsuarios] = useState(true);
   const [selectedUsuario, setSelectedUsuario] = useState(null);
   const [showPatientModulesModal, setShowPatientModulesModal] = useState(false);
-  const [citasHoy, setCitasHoy] = useState(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showUserAdminModal, setShowUserAdminModal] = useState(false);
   const [showActivityModal, setShowActivityModal] = useState(false);
-  const [showCitasModal, setShowCitasModal] = useState(false);
-  const [citasModalType, setCitasModalType] = useState(null);
-  const [citasRows, setCitasRows] = useState([]);
-  const [loadingCitasRows, setLoadingCitasRows] = useState(false);
-  const [agendaFecha, setAgendaFecha] = useState(new Date());
-  const [showAgendaDatePicker, setShowAgendaDatePicker] = useState(false);
-  const [agendaPaciente, setAgendaPaciente] = useState('');
-  const [agendaEmail, setAgendaEmail] = useState('');
-  const [agendaCelular, setAgendaCelular] = useState('');
-  const [agendaFamiliar, setAgendaFamiliar] = useState('');
-  const [agendaHora, setAgendaHora] = useState('');
-  const [agendaDoctor, setAgendaDoctor] = useState('');
-  const [savingAgendaCita, setSavingAgendaCita] = useState(false);
+  const [showPickUserModal, setShowPickUserModal] = useState(false);
   const [showAlertsModal, setShowAlertsModal] = useState(false);
   const [alertRows, setAlertRows] = useState([]);
   const [loadingAlerts, setLoadingAlerts] = useState(false);
@@ -128,8 +115,6 @@ export default function AdminDashboardScreen({ navigation }) {
   const [reporteDataset, setReporteDataset] = useState(null);
   const [reporteResultado, setReporteResultado] = useState(null);
   const [generandoReporte, setGenerandoReporte] = useState(false);
-  const [showPickUserModal, setShowPickUserModal] = useState(false);
-  const [buscarUsuario, setBuscarUsuario] = useState('');
   const [showPickDatasetModal, setShowPickDatasetModal] = useState(false);
   const [buscarDataset, setBuscarDataset] = useState('');
   const [datasetMetodo, setDatasetMetodo] = useState(null);
@@ -137,6 +122,12 @@ export default function AdminDashboardScreen({ navigation }) {
   const [showDatasetDatePicker, setShowDatasetDatePicker] = useState(false);
   const [showPickResultadoModal, setShowPickResultadoModal] = useState(false);
   const [buscarResultado, setBuscarResultado] = useState('');
+
+  const [showMyProfileModal, setShowMyProfileModal] = useState(false);
+  const [profileNombre, setProfileNombre] = useState('');
+  const [profileEmail, setProfileEmail] = useState('');
+  const [profileUsuario, setProfileUsuario] = useState('');
+  const [savingProfile, setSavingProfile] = useState(false);
 
   const resultadoOptions = [
     { id: 'diagnosticos', nombre: 'Diagnósticos', detalle: 'Resultados de valoración clínica' },
@@ -426,48 +417,6 @@ export default function AdminDashboardScreen({ navigation }) {
     return isUserBlockedFromRow(user);
   };
 
-  const tryPersistBlockedStatus = async (user, blocked) => {
-    const idField = getUserIdField(user);
-    const userId = getUserId(user);
-
-    if (!idField || userId === null) {
-      return { success: false, message: 'No se pudo identificar el usuario.' };
-    }
-
-    const attempts = [
-      { col: 'bloqueado', value: blocked },
-      { col: 'blocked', value: blocked },
-      { col: 'acceso_bloqueado', value: blocked },
-      { col: 'esta_bloqueado', value: blocked },
-      { col: 'inactivo', value: blocked },
-      { col: 'habilitado', value: !blocked },
-      { col: 'activo', value: !blocked },
-      { col: 'estado_acceso', value: blocked ? 'bloqueado' : 'activo' },
-      { col: 'estado', value: blocked ? 'bloqueado' : 'activo' },
-    ];
-
-    let lastError = null;
-    for (const attempt of attempts) {
-      const { error } = await supabase
-        .from('usuarios')
-        .update({ [attempt.col]: attempt.value })
-        .eq(idField, userId)
-        .select(idField)
-        .limit(1);
-
-      if (!error) {
-        return { success: true, column: attempt.col };
-      }
-
-      lastError = error;
-    }
-
-    return {
-      success: false,
-      message: lastError?.message || 'No se encontró una columna de bloqueo compatible en la tabla usuarios.',
-    };
-  };
-
   const deleteUserViaServer = async (user, attempts = []) => {
     try {
       const apiUrl = getApiUrl();
@@ -505,6 +454,11 @@ export default function AdminDashboardScreen({ navigation }) {
   };
 
   const handleSaveUserEdit = async () => {
+    const me = await storageService.getUser();
+    if (me?.puede_gestionar_usuarios === 0 || me?.puede_gestionar_usuarios === false) {
+      Alert.alert('Acceso Denegado', 'Privilegio inhabilitado. El Superadministrador ha restringido tus permisos para editar o boquear usuarios y pacientes.');
+      return;
+    }
     if (!editingUser || savingEdit) return;
 
     if (!editNombre.trim() || !editEmail.trim() || !editRol.trim()) {
@@ -549,6 +503,11 @@ export default function AdminDashboardScreen({ navigation }) {
   };
 
   const handleDeleteUser = async (user) => {
+    const me = await storageService.getUser();
+    if (me?.puede_gestionar_usuarios === 0 || me?.puede_gestionar_usuarios === false) {
+      Alert.alert('Acceso Denegado', 'Privilegio inhabilitado. No puedes eliminar registros.');
+      return;
+    }
     Alert.alert(
       'Eliminar usuario',
       `¿Deseas eliminar a ${user.nombre || user.usuario || 'este usuario'}?`,
@@ -558,107 +517,29 @@ export default function AdminDashboardScreen({ navigation }) {
           text: 'Eliminar',
           style: 'destructive',
           onPress: async () => {
-            const idField = getUserIdField(user);
             const userId = getUserId(user);
-
-            if (!idField || userId === null) {
+            if (userId === null) {
               Alert.alert('Error', 'No se pudo identificar el usuario a eliminar.');
               return;
             }
 
-            const attempts = [];
-            const pushAttempt = (field, value) => {
-              if (!field || value === null || value === undefined) return;
-              if (!attempts.find((a) => a.field === field && String(a.value) === String(value))) {
-                attempts.push({ field, value });
-              }
+            try {
+              const response = await fetch(`${getApiUrl()}/admin/user/${userId}`, {
+                method: 'DELETE',
+                headers: { 'Content-Type': 'application/json' }
+              });
+              const data = await response.json();
 
-              // Intenta ambas variantes cuando el valor parece numérico (string/number).
-              if (typeof value === 'string' && /^\d+$/.test(value.trim())) {
-                const numVal = Number(value);
-                if (!Number.isNaN(numVal) && !attempts.find((a) => a.field === field && String(a.value) === String(numVal))) {
-                  attempts.push({ field, value: numVal });
-                }
-              }
-              if (typeof value === 'number') {
-                const strVal = String(value);
-                if (!attempts.find((a) => a.field === field && String(a.value) === strVal)) {
-                  attempts.push({ field, value: strVal });
-                }
-              }
-            };
-
-            pushAttempt(idField, userId);
-            pushAttempt('id_usuario', user?.id_usuario);
-            pushAttempt('id', user?.id);
-            pushAttempt('uuid', user?.uuid);
-            pushAttempt('user_id', user?.user_id);
-            pushAttempt('email', user?.email);
-            pushAttempt('usuario', user?.usuario);
-
-            let deletedRows = 0;
-            let lastError = null;
-            let usedField = idField;
-            let usedValue = userId;
-
-            for (const attempt of attempts) {
-              const { data: deletedData, error } = await supabase
-                .from('usuarios')
-                .delete()
-                .eq(attempt.field, attempt.value)
-                .select('id,id_usuario,uuid,user_id');
-
-              if (error) {
-                lastError = error;
-                continue;
-              }
-
-              if (Array.isArray(deletedData) && deletedData.length > 0) {
-                // Verificación adicional: confirma que el registro ya no existe por el mismo criterio.
-                const { data: stillThere, error: verifyError } = await supabase
-                  .from('usuarios')
-                  .select('*')
-                  .eq(attempt.field, attempt.value)
-                  .limit(1);
-
-                if (!verifyError && (!Array.isArray(stillThere) || stillThere.length === 0)) {
-                  deletedRows = deletedData.length;
-                  usedField = attempt.field;
-                  usedValue = attempt.value;
-                  break;
-                }
-              }
-            }
-
-            if (deletedRows === 0) {
-              // Respaldo por backend con service role (evita bloqueos por RLS desde móvil).
-              const serverResult = await deleteUserViaServer(user, attempts);
-
-              if (!(serverResult.success && serverResult.deletedRows > 0)) {
-                await loadDashboardData();
-                Alert.alert(
-                  'No se eliminó',
-                  serverResult.message || lastError?.message || 'Supabase no eliminó filas del usuario seleccionado. Verifica permisos RLS o el identificador del registro.',
-                );
+              if (!response.ok || !data.success) {
+                Alert.alert('Error', data.message || 'No se pudo eliminar el usuario de la base principal.');
                 return;
               }
 
-              usedField = serverResult.usedField || usedField;
-              usedValue = serverResult.usedValue ?? usedValue;
+              Alert.alert('Éxito', 'Registro eliminado definitivamente.');
+              await loadDashboardData();
+            } catch (err) {
+              Alert.alert('Error de red', 'Fallo al conectar con el servidor para eliminar el registro.');
             }
-
-            setSelectedUsuario((prev) => (prev && getUserId(prev) === userId ? null : prev));
-            setBlockedUsers((prev) => {
-              const next = { ...prev };
-              delete next[userId];
-              return next;
-            });
-
-            await loadDashboardData();
-            Alert.alert(
-              'Eliminación confirmada',
-              `Usuario eliminado en Supabase (${usedField}: ${String(usedValue)}) y retirado de la tabla de administración.`,
-            );
           }
         }
       ]
@@ -672,7 +553,6 @@ export default function AdminDashboardScreen({ navigation }) {
     const currentBlocked = getBlockedValueFromStateOrRow(user);
     const nextValue = !currentBlocked;
 
-    // Refleja el cambio de inmediato en UI.
     setBlockedUsers((prev) => ({ ...prev, [userId]: nextValue }));
 
     try {
@@ -867,7 +747,7 @@ export default function AdminDashboardScreen({ navigation }) {
           level: 'alta',
           title: 'Errores en el sistema',
           detail: lastSystemError,
-          possible: 'Posible causa: fallo en consulta principal de usuarios o conectividad con Supabase.',
+          possible: 'Posible causa: fallo en la consulta principal de usuarios o conectividad con el servidor base.',
         });
       }
 
@@ -880,37 +760,7 @@ export default function AdminDashboardScreen({ navigation }) {
           possible: 'Posible causa: tabla faltante, permisos de lectura o nombre de columna incorrecto.',
         });
       }
-
-      const { data: activityData, error: activityError } = await supabase
-        .from('actividad_usuarios')
-        .select('consultas_realizadas, consulta, accion, activity')
-        .limit(120);
-
-      if (activityError) {
-        rows.push({
-          id: 'activity-read-fail',
-          level: 'media',
-          title: 'Fallos en carga de datos',
-          detail: activityError.message || 'No se pudo leer actividad_usuarios.',
-          possible: 'Posible causa: la tabla actividad_usuarios no existe o la política RLS bloquea lectura.',
-        });
-      } else {
-        const riskCount = (activityData || []).filter((a) => {
-          const text = `${a.consultas_realizadas || ''} ${a.consulta || ''} ${a.accion || ''} ${a.activity || ''}`.toLowerCase();
-          return text.includes('alto riesgo') || text.includes('riesgo alto') || text.includes('high risk');
-        }).length;
-
-        if (riskCount >= 5) {
-          rows.push({
-            id: 'high-risk-cases',
-            level: 'alta',
-            title: 'Muchos casos de alto riesgo detectados',
-            detail: `Se detectaron ${riskCount} eventos con referencia a alto riesgo en actividad de usuarios.`,
-            possible: 'Posible causa: incremento real de casos críticos o reglas de clasificación demasiado sensibles.',
-          });
-        }
-      }
-
+      
       const incompleteUsers = (usuarios || []).filter((u) => !u.email || !u.nombre).length;
       if (incompleteUsers > 0) {
         rows.push({
@@ -945,122 +795,6 @@ export default function AdminDashboardScreen({ navigation }) {
       ]);
     } finally {
       setLoadingAlerts(false);
-    }
-  };
-
-  const loadCitasRows = async () => {
-    setLoadingCitasRows(true);
-    try {
-      const { data, error } = await supabase
-        .from('citas')
-        .select('*')
-        .order('id', { ascending: false })
-        .limit(80);
-
-      if (error || !Array.isArray(data)) {
-        setCitasRows([]);
-        return;
-      }
-
-      const mapped = data.map((row, idx) => ({
-        id: row.id || row.id_cita || idx,
-        rowId: row.id || row.id_cita || null,
-        rowIdField: row.id ? 'id' : (row.id_cita ? 'id_cita' : null),
-        paciente: row.paciente || row.nombre_paciente || row.usuario || row.email || 'Sin datos',
-        email: row.email || row.correo || row.mail || 'Sin datos',
-        celular: row.celular || row.telefono || row.telefono_celular || 'Sin datos',
-        celularFamiliar: row.telefono_familiar || row.celular_familiar || row.telefono_contacto || 'Sin datos',
-        fecha: row.fecha || row.fecha_cita || row.created_at || 'Sin datos',
-        hora: row.hora || row.hora_cita || row.time || 'Sin datos',
-        estado: (row.estado || row.status || 'pendiente').toString().toLowerCase(),
-      }));
-
-      setCitasRows(mapped);
-    } catch {
-      setCitasRows([]);
-    } finally {
-      setLoadingCitasRows(false);
-    }
-  };
-
-  const handleUpdateCitaEstado = async (cita, nuevoEstado) => {
-    if (!cita?.rowId || !cita?.rowIdField) {
-      Alert.alert('No disponible', 'No se pudo identificar esta cita para actualizar su estado.');
-      return;
-    }
-
-    let query = supabase.from('citas').update({ estado: nuevoEstado });
-    query = query.eq(cita.rowIdField, cita.rowId);
-
-    const { error } = await query;
-    if (error) {
-      Alert.alert('Error', error.message || 'No se pudo actualizar el estado de la cita.');
-      return;
-    }
-
-    await loadCitasRows();
-    Alert.alert('Estado actualizado', `La cita quedó en estado ${nuevoEstado}.`);
-  };
-
-  const handleCreateAgendaCita = async () => {
-    if (savingAgendaCita) return;
-
-    if (
-      !agendaPaciente.trim() ||
-      !agendaEmail.trim() ||
-      !agendaCelular.trim() ||
-      !agendaFamiliar.trim() ||
-      !agendaHora.trim() ||
-      !agendaDoctor.trim()
-    ) {
-      Alert.alert('Datos incompletos', 'Completa paciente, email, celular, contacto familiar, hora y doctor.');
-      return;
-    }
-
-    setSavingAgendaCita(true);
-    try {
-      const payload = {
-        paciente: agendaPaciente.trim(),
-        email: agendaEmail.trim().toLowerCase(),
-        celular: agendaCelular.trim(),
-        telefono_familiar: agendaFamiliar.trim(),
-        fecha: agendaFecha.toISOString().slice(0, 10),
-        hora: agendaHora.trim(),
-        doctor: agendaDoctor.trim(),
-        estado: 'pendiente',
-      };
-
-      let { error } = await supabase.from('citas').insert(payload);
-
-      // Compatibilidad: si la tabla aun no tiene columnas de contacto, guarda la cita con esquema base.
-      if (error && /column .* does not exist/i.test(error.message || '')) {
-        const fallbackPayload = {
-          paciente: agendaPaciente.trim(),
-          fecha: agendaFecha.toISOString().slice(0, 10),
-          hora: agendaHora.trim(),
-          doctor: agendaDoctor.trim(),
-          estado: 'pendiente',
-        };
-
-        const fallbackResult = await supabase.from('citas').insert(fallbackPayload);
-        error = fallbackResult.error;
-      }
-
-      if (error) {
-        Alert.alert('Error', error.message || 'No se pudo agendar la cita.');
-        return;
-      }
-
-      setAgendaPaciente('');
-      setAgendaEmail('');
-      setAgendaCelular('');
-      setAgendaFamiliar('');
-      setAgendaHora('');
-      setAgendaDoctor('');
-      await loadCitasRows();
-      Alert.alert('Éxito', 'Cita agendada correctamente.');
-    } finally {
-      setSavingAgendaCita(false);
     }
   };
 
@@ -1138,24 +872,7 @@ export default function AdminDashboardScreen({ navigation }) {
         setSelectedUsuario(null);
       }
 
-      try {
-        const { count: citasCount, error: citasError } = await supabase
-          .from('citas')
-          .select('id', { count: 'exact', head: true });
-
-        if (!citasError && typeof citasCount === 'number') {
-          setCitasHoy(citasCount);
-          setLastDataLoadError('');
-        } else {
-          setCitasHoy(null);
-          if (citasError?.message) {
-            setLastDataLoadError(citasError.message);
-          }
-        }
-      } catch {
-        setCitasHoy(null);
-        setLastDataLoadError('No se pudo consultar la tabla de citas.');
-      }
+      setLastDataLoadError('');
     } finally {
       setLoadingUsuarios(false);
     }
@@ -1182,8 +899,62 @@ export default function AdminDashboardScreen({ navigation }) {
     loadSigner();
   }, []);
 
+  const handleOpenMyProfile = async () => {
+    const user = await storageService.getUser();
+    setProfileNombre(user?.nombre || user?.name || '');
+    setProfileEmail(user?.email || '');
+    setProfileUsuario(user?.usuario || user?.username || '');
+    setShowMyProfileModal(true);
+  };
+
+  const handleSaveMyProfile = async () => {
+    if (!profileNombre.trim() || !profileEmail.trim()) {
+      Alert.alert('Incompleto', 'El nombre y correo son obligatorios.');
+      return;
+    }
+    setSavingProfile(true);
+    try {
+      const user = await storageService.getUser();
+      
+      const payload = {
+        id_usuario: user?.id_usuario || user?.id,
+        nombre: profileNombre,
+        email: profileEmail,
+        usuario: profileUsuario,
+        rol: user?.rol || 'administrador',
+        telefono: user?.telefono || ''
+      };
+
+      const res = await fetch(`${getApiUrl()}/admin/update-user`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      const data = await res.json();
+      
+      if (!res.ok || !data.success) {
+         throw new Error(data.message || 'Fallo actualizando administrador');
+      }
+
+      await storageService.saveUser({ ...user, nombre: profileNombre, email: profileEmail, usuario: profileUsuario });
+      setShowMyProfileModal(false);
+      Alert.alert('Actualizado', 'Tu perfil se actualizó correctamente en la base de datos.');
+      await loadDashboardData();
+    } catch (e) {
+      Alert.alert('Error', e.message);
+    } finally {
+      setSavingProfile(false);
+    }
+  };
+
   const handleCreateUser = async () => {
     if (creatingUser) return;
+    
+    const me = await storageService.getUser();
+    if (me?.puede_gestionar_usuarios === 0 || me?.puede_gestionar_usuarios === false) {
+      Alert.alert('Acceso Denegado', 'No puedes añadir nuevos usuarios al sistema porque tus privilegios han sido restringidos temporalmente.');
+      return;
+    }
 
     if (!newNombre.trim() || !newEmail.trim() || !newUsuario.trim() || !newPassword.trim()) {
       Alert.alert('Datos incompletos', 'Completa nombre, correo, usuario y contraseña.');
@@ -1209,7 +980,7 @@ export default function AdminDashboardScreen({ navigation }) {
       setActiveTab('pacientes');
       setShowCreateModal(false);
       resetCreateForm();
-      Alert.alert('Éxito', 'Usuario creado y guardado en Supabase.');
+      Alert.alert('Éxito', 'Usuario creado y guardado exitosamente.');
     } finally {
       setCreatingUser(false);
     }
@@ -1226,10 +997,6 @@ export default function AdminDashboardScreen({ navigation }) {
         <View style={styles.statCard}>
           <Text style={styles.statLabel}>Usuarios activos</Text>
           <Text style={styles.statValue}>{loadingUsuarios ? '...' : usuariosRegistrados}</Text>
-        </View>
-        <View style={styles.statCard}>
-          <Text style={styles.statLabel}>Citas hoy</Text>
-          <Text style={styles.statValue}>{loadingUsuarios ? '...' : (citasHoy ?? 'Sin datos')}</Text>
         </View>
       </View>
 
@@ -1396,71 +1163,42 @@ export default function AdminDashboardScreen({ navigation }) {
     </View>
   );
 
-  const renderCitas = () => (
-    <View style={styles.actionsCard}>
-      <Text style={styles.sectionTitle}>Módulo de citas</Text>
-      <Text style={styles.moduleDescription}>Coordina agenda médica, disponibilidad y turnos para optimizar la atención.</Text>
-      <View style={styles.moduleList}>
-        <TouchableOpacity
-          style={styles.moduleItem}
-          activeOpacity={0.85}
-          onPress={async () => {
-            setCitasModalType('agenda');
-            setAgendaFecha(new Date());
-            setShowAgendaDatePicker(false);
-            setAgendaPaciente('');
-            setAgendaEmail('');
-            setAgendaCelular('');
-            setAgendaFamiliar('');
-            setAgendaHora('');
-            setAgendaDoctor('');
-            setShowCitasModal(true);
-            await loadCitasRows();
-          }}
-        >
-          <Ionicons name="calendar-number-outline" size={18} color="#2f7a96" />
-          <Text style={styles.moduleItemText}>Agenda diaria y semanal</Text>
-          <Ionicons name="chevron-forward-outline" size={18} color="#7da6b7" />
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={styles.moduleItem}
-          activeOpacity={0.85}
-          onPress={async () => {
-            setCitasModalType('estados');
-            setShowCitasModal(true);
-            await loadCitasRows();
-          }}
-        >
-          <Ionicons name="checkmark-done-outline" size={18} color="#2f7a96" />
-          <Text style={styles.moduleItemText}>Confirmación de citas y estados</Text>
-          <Ionicons name="chevron-forward-outline" size={18} color="#7da6b7" />
-        </TouchableOpacity>
-      </View>
-    </View>
-  );
-
   const renderAjustes = () => (
     <View style={styles.actionsCard}>
-      <Text style={styles.sectionTitle}>Ajustes del sistema</Text>
-      <Text style={styles.moduleDescription}>Configura parámetros técnicos y pruebas operativas del entorno Supabase.</Text>
+      <Text style={styles.sectionTitle}>Entorno Personal y Seguridad</Text>
+      <Text style={styles.moduleDescription}>Personaliza tu interfaz, maneja la confidencialidad de tu sesión administrativa y establece tus reglas operativas internas.</Text>
       <View style={styles.settingsActions}>
-        <TouchableOpacity
-          style={styles.settingsButton}
-          activeOpacity={0.85}
-          onPress={() => navigation.navigate('TestConnection')}
+        <Pressable
+          style={({ pressed }) => [styles.settingsButton, { backgroundColor: pressed ? '#24586d' : '#2f7a96' }]}
+          onPress={handleOpenMyProfile}
         >
-          <Ionicons name="cloud-done-outline" size={18} color="#ffffff" />
-          <Text style={styles.settingsButtonText}>Probar conexión</Text>
-        </TouchableOpacity>
+          <Ionicons name="id-card-outline" size={18} color="#ffffff" />
+          <Text style={styles.settingsButtonText}>Editar mi perfil</Text>
+        </Pressable>
 
-        <TouchableOpacity
-          style={[styles.settingsButton, styles.settingsButtonSecondary]}
-          activeOpacity={0.85}
-          onPress={() => navigation.navigate('TestSupabase')}
+        <Pressable
+          style={({ pressed }) => [styles.settingsButton, { backgroundColor: pressed ? '#c8dfe9' : '#eef6f8', borderWidth: 1, borderColor: '#d4e7ee' }]}
+          onPress={() => Alert.alert('Seguridad', 'El cambio de contraseña y 2FA estarán habilitados en la próxima actualización.')}
         >
-          <Ionicons name="construct-outline" size={18} color="#2f7a96" />
-          <Text style={styles.settingsButtonSecondaryText}>Validar servicios</Text>
-        </TouchableOpacity>
+          <Ionicons name="shield-checkmark-outline" size={18} color="#2f7a96" />
+          <Text style={[styles.settingsButtonText, { color: '#2f7a96' }]}>Privacidad y Seguridad</Text>
+        </Pressable>
+
+        <Pressable
+          style={({ pressed }) => [styles.settingsButton, { backgroundColor: pressed ? '#c8dfe9' : '#eef6f8', borderWidth: 1, borderColor: '#d4e7ee' }]}
+          onPress={() => Alert.alert('Notificaciones', 'El módulo de reglas de alertas está en desarrollo.')}
+        >
+          <Ionicons name="notifications-outline" size={18} color="#2f7a96" />
+          <Text style={[styles.settingsButtonText, { color: '#2f7a96' }]}>Reglas de Notificación</Text>
+        </Pressable>
+
+        <Pressable
+          style={({ pressed }) => [styles.settingsButton, { backgroundColor: pressed ? '#ead1d0' : '#fcf4f4', borderWidth: 1, borderColor: '#f2d7d5' }]}
+          onPress={() => Alert.alert('Soporte', 'Generando ticket de asistencia remota...')}
+        >
+          <Ionicons name="help-buoy-outline" size={18} color="#c0392b" />
+          <Text style={[styles.settingsButtonText, { color: '#c0392b' }]}>Soporte Técnico de Lumex</Text>
+        </Pressable>
       </View>
     </View>
   );
@@ -1468,7 +1206,6 @@ export default function AdminDashboardScreen({ navigation }) {
   const renderActiveModule = () => {
     if (activeTab === 'pacientes') return renderPacientes();
     if (activeTab === 'pagos') return renderPagos();
-    if (activeTab === 'citas') return renderCitas();
     if (activeTab === 'ajustes') return renderAjustes();
     return renderInicio();
   };
@@ -1479,8 +1216,8 @@ export default function AdminDashboardScreen({ navigation }) {
 
       <View style={styles.header}>
         <View>
-          <Text style={styles.headerEyebrow}>Panel administrativo</Text>
-          <Text style={styles.headerTitle}>Gestión clínica</Text>
+          <Text style={styles.headerEyebrow}>Hola, {reportSigner?.name || 'Administrador'}</Text>
+          <Text style={styles.headerTitle}>Supervisión General</Text>
         </View>
 
         <TouchableOpacity
@@ -1513,7 +1250,7 @@ export default function AdminDashboardScreen({ navigation }) {
         <View style={styles.modalOverlay}>
           <View style={styles.modalCard}>
             <Text style={styles.modalTitle}>Nuevo usuario</Text>
-            <Text style={styles.modalSubTitle}>Este registro se guardará en Supabase.</Text>
+            <Text style={styles.modalSubTitle}>Este registro operará en toda la plataforma.</Text>
 
             <TextInput
               style={styles.modalInput}
@@ -2049,12 +1786,25 @@ export default function AdminDashboardScreen({ navigation }) {
                 )}
               </View>
 
-              <Text style={styles.activityResultCount}>
-                {selectedReportUser
-                  ? `Reportes de ${selectedReportUserLabel || 'Usuario'} (ID ${selectedReportUser}): ${selectedReportRows.length}`
-                  : `Usuarios encontrados: ${filteredReportUsers.length}`}
-              </Text>
-
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+                <Text style={[styles.activityResultCount, { marginBottom: 0 }]}>
+                  {selectedReportUser
+                    ? `Reportes de ${selectedReportUserLabel || 'Usuario'} (ID ${selectedReportUser}): ${selectedReportRows.length}`
+                    : `Usuarios encontrados: ${filteredReportUsers.length}`}
+                </Text>
+                {selectedReportUser ? (
+                  <TouchableOpacity
+                    style={{ padding: 4, backgroundColor: '#c8dfe9', borderRadius: 20 }}
+                    onPress={() => {
+                        setSelectedReportUser('');
+                        setSelectedReportId(null);
+                        setLoadedReportId(null);
+                    }}
+                  >
+                    <Ionicons name="close" size={16} color="#173746" />
+                  </TouchableOpacity>
+                ) : null}
+              </View>
               <ScrollView style={styles.activityUsersList} showsVerticalScrollIndicator={false} contentContainerStyle={styles.activityUsersListContent}>
                 {filteredReportUsers.length === 0 ? (
                   <Text style={styles.activityHint}>No hay usuarios que coincidan con el filtro.</Text>
@@ -2595,181 +2345,7 @@ export default function AdminDashboardScreen({ navigation }) {
         </View>
       </Modal>
 
-      <Modal
-        visible={showCitasModal}
-        animationType="slide"
-        transparent
-        onRequestClose={() => setShowCitasModal(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalLargeCard}>
-            <View style={styles.modalHeaderRow}>
-              <Text style={styles.modalTitle}>Gestión de citas</Text>
-              <TouchableOpacity onPress={() => setShowCitasModal(false)} activeOpacity={0.85}>
-                <Ionicons name="close-outline" size={24} color="#2f7a96" />
-              </TouchableOpacity>
-            </View>
-
-            <Text style={styles.modalSubTitle}>
-              {citasModalType === 'agenda'
-                ? 'Agenda diaria y semanal del servicio clínico.'
-                : 'Seguimiento de confirmaciones y estado de citas.'}
-            </Text>
-
-            <>
-              {citasModalType === 'agenda' && (
-                <View style={styles.agendaFormCard}>
-                  <TouchableOpacity
-                    style={styles.agendaDateBtn}
-                    activeOpacity={0.85}
-                    onPress={() => setShowAgendaDatePicker(true)}
-                  >
-                    <Ionicons name="calendar-clear-outline" size={18} color="#2f7a96" />
-                    <Text style={styles.agendaDateBtnLabel}>Fecha de la cita</Text>
-                    <Text style={styles.agendaDateBtnValue}>{formatDate(agendaFecha)}</Text>
-                  </TouchableOpacity>
-
-                  {showAgendaDatePicker && (
-                    <DateTimePicker
-                      value={agendaFecha}
-                      mode="date"
-                      display="default"
-                      onChange={(event, selectedDate) => {
-                        setShowAgendaDatePicker(false);
-                        if (selectedDate) setAgendaFecha(selectedDate);
-                      }}
-                    />
-                  )}
-
-                  <TextInput
-                    style={styles.agendaInput}
-                    placeholder="Usuario o persona que agenda la cita"
-                    placeholderTextColor="#8aaab6"
-                    value={agendaPaciente}
-                    onChangeText={setAgendaPaciente}
-                  />
-                  <TextInput
-                    style={styles.agendaInput}
-                    placeholder="Email"
-                    placeholderTextColor="#8aaab6"
-                    value={agendaEmail}
-                    onChangeText={setAgendaEmail}
-                    keyboardType="email-address"
-                    autoCapitalize="none"
-                  />
-                  <TextInput
-                    style={styles.agendaInput}
-                    placeholder="Número de celular"
-                    placeholderTextColor="#8aaab6"
-                    value={agendaCelular}
-                    onChangeText={setAgendaCelular}
-                    keyboardType="phone-pad"
-                  />
-                  <TextInput
-                    style={styles.agendaInput}
-                    placeholder="Número de otro familiar"
-                    placeholderTextColor="#8aaab6"
-                    value={agendaFamiliar}
-                    onChangeText={setAgendaFamiliar}
-                    keyboardType="phone-pad"
-                  />
-                  <TextInput
-                    style={styles.agendaInput}
-                    placeholder="Hora (ejemplo: 09:30)"
-                    placeholderTextColor="#8aaab6"
-                    value={agendaHora}
-                    onChangeText={setAgendaHora}
-                  />
-                  <TextInput
-                    style={styles.agendaInput}
-                    placeholder="Doctor que realizará la consulta"
-                    placeholderTextColor="#8aaab6"
-                    value={agendaDoctor}
-                    onChangeText={setAgendaDoctor}
-                  />
-
-                  <TouchableOpacity
-                    style={[styles.agendaSaveBtn, savingAgendaCita && styles.reportGenBtnDisabled]}
-                    activeOpacity={0.85}
-                    onPress={handleCreateAgendaCita}
-                    disabled={savingAgendaCita}
-                  >
-                    <Ionicons name="save-outline" size={16} color="#ffffff" />
-                    <Text style={styles.agendaSaveBtnText}>{savingAgendaCita ? 'Guardando...' : 'Agendar cita'}</Text>
-                  </TouchableOpacity>
-                </View>
-              )}
-
-              <ScrollView style={styles.modalListArea} showsVerticalScrollIndicator={false}>
-                {loadingCitasRows ? (
-                  <Text style={styles.emptyText}>Cargando citas...</Text>
-                ) : (
-                  <View style={styles.citasRowsWrap}>
-                    {(citasRows.length > 0
-                      ? citasRows.slice(0, 20)
-                      : citasModalType === 'estados'
-                      ? [{
-                          id: 'cita-estado-empty',
-                          paciente: 'Sin datos',
-                          email: 'Sin datos',
-                          celular: 'Sin datos',
-                          celularFamiliar: 'Sin datos',
-                          fecha: 'Sin datos',
-                          hora: 'Sin datos',
-                          estado: 'pendiente',
-                        }]
-                      : []).map((c) => (
-                      <View key={`cita-${c.id}`} style={styles.citaRowCard}>
-                        <View style={styles.citaRowTop}>
-                          <Text style={styles.citaPaciente}>{c.paciente}</Text>
-                          <Text style={styles.citaEstado}>{c.estado}</Text>
-                        </View>
-                        <Text style={styles.citaMeta}>Fecha: {String(c.fecha)}</Text>
-                        <Text style={styles.citaMeta}>Hora: {String(c.hora)}</Text>
-
-                        {citasModalType === 'estados' && (
-                          <>
-                            <View style={styles.citaInfoDivider} />
-                            <Text style={styles.citaMeta}><Text style={styles.citaMetaStrong}>Email:</Text> {c.email}</Text>
-                            <Text style={styles.citaMeta}><Text style={styles.citaMetaStrong}>Núm. celular:</Text> {c.celular}</Text>
-                            <Text style={styles.citaMeta}><Text style={styles.citaMetaStrong}>Núm. familiar:</Text> {c.celularFamiliar}</Text>
-
-                            <View style={styles.citaActionsRow}>
-                              <TouchableOpacity
-                                style={[styles.citaActionBtn, styles.citaActionContinue, c.id === 'cita-estado-empty' && styles.citaActionBtnDisabled]}
-                                activeOpacity={0.85}
-                                onPress={() => handleUpdateCitaEstado(c, 'confirmada')}
-                                disabled={c.id === 'cita-estado-empty'}
-                              >
-                                <Ionicons name="checkmark-circle-outline" size={14} color="#2f9b6f" />
-                                <Text style={styles.citaActionContinueText}>Sigue con cita</Text>
-                              </TouchableOpacity>
-
-                              <TouchableOpacity
-                                style={[styles.citaActionBtn, styles.citaActionCancel, c.id === 'cita-estado-empty' && styles.citaActionBtnDisabled]}
-                                activeOpacity={0.85}
-                                onPress={() => handleUpdateCitaEstado(c, 'cancelada')}
-                                disabled={c.id === 'cita-estado-empty'}
-                              >
-                                <Ionicons name="close-circle-outline" size={14} color="#b85a5a" />
-                                <Text style={styles.citaActionCancelText}>Cancelar cita</Text>
-                              </TouchableOpacity>
-                            </View>
-                          </>
-                        )}
-                      </View>
-                    ))}
-
-                    {citasRows.length === 0 && citasModalType !== 'estados' && (
-                      <Text style={styles.emptyText}>Sin datos de citas.</Text>
-                    )}
-                  </View>
-                )}
-              </ScrollView>
-            </>
-          </View>
-        </View>
-      </Modal>
+      {/* Módulo de citas removido por limpieza de Supabase */}
 
       <Modal
         visible={showEditModal}
@@ -2897,6 +2473,64 @@ export default function AdminDashboardScreen({ navigation }) {
                   </View>
               ))}
             </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
+        visible={showMyProfileModal}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setShowMyProfileModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>Mi Perfil</Text>
+            <Text style={styles.modalSubTitle}>Actualiza la información de tu cuenta administrativa.</Text>
+
+            <TextInput
+              style={styles.modalInput}
+              placeholder="Nombre completo"
+              placeholderTextColor="#7a9aa8"
+              value={profileNombre}
+              onChangeText={setProfileNombre}
+            />
+            <TextInput
+              style={styles.modalInput}
+              placeholder="Nombre de usuario"
+              placeholderTextColor="#7a9aa8"
+              value={profileUsuario}
+              onChangeText={setProfileUsuario}
+            />
+            <TextInput
+              style={styles.modalInput}
+              placeholder="Correo electrónico"
+              placeholderTextColor="#7a9aa8"
+              keyboardType="email-address"
+              autoCapitalize="none"
+              value={profileEmail}
+              onChangeText={setProfileEmail}
+            />
+
+            <View style={styles.modalActions}>
+              <TouchableOpacity
+                style={[styles.modalButton, styles.modalButtonSecondary]}
+                onPress={() => setShowMyProfileModal(false)}
+                activeOpacity={0.85}
+                disabled={savingProfile}
+              >
+                <Text style={styles.modalButtonSecondaryText}>Cancelar</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.modalButton, savingProfile && styles.modalButtonDisabled]}
+                onPress={handleSaveMyProfile}
+                activeOpacity={0.85}
+                disabled={savingProfile}
+              >
+                <Text style={styles.modalButtonText}>{savingProfile ? 'Guardando...' : 'Guardar Perfil'}</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
       </Modal>

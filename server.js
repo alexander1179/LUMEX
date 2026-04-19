@@ -474,8 +474,27 @@ app.post('/api/analysis/history', async (req, res) => {
 // Admin endpoints
 app.get('/api/admin/users', async (req, res) => {
   try {
-    const [rows] = await pool.query("SELECT id_usuario, nombre, email, usuario, rol, estado, fecha_registro FROM usuarios WHERE rol NOT IN ('admin', 'administrador', 'superadmin', 'superadministrador') ORDER BY fecha_registro DESC");
+    const [rows] = await pool.query("SELECT id_usuario, nombre, email, usuario, rol, estado, fecha_registro, puede_gestionar_usuarios FROM usuarios WHERE rol NOT IN ('admin', 'administrador', 'superadmin', 'superadministrador') ORDER BY fecha_registro DESC");
     res.json({ success: true, users: rows });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+app.get('/api/superadmin/users', async (req, res) => {
+  try {
+    const [rows] = await pool.query("SELECT id_usuario, nombre, email, usuario, rol, estado, fecha_registro, puede_gestionar_usuarios FROM usuarios ORDER BY fecha_registro DESC");
+    res.json({ success: true, users: rows });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+app.post('/api/superadmin/toggle-admin-permission', async (req, res) => {
+  const { id_usuario, puede_gestionar_usuarios } = req.body;
+  try {
+    await pool.query('UPDATE usuarios SET puede_gestionar_usuarios = ? WHERE id_usuario = ?', [puede_gestionar_usuarios, id_usuario]);
+    res.json({ success: true, message: 'Permiso actualizado' });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }

@@ -101,12 +101,12 @@ export default function SuperAdminDashboardScreen({ navigation }) {
     finally { setSavingProfile(false); }
   };
 
-  const handleToggleAdminPermission = async (adminId, newValue) => {
+  const handleToggleAdminPermission = async (adminId, field, newValue) => {
     try {
-      const mapped = allUsers.map(u => u.id_usuario === adminId ? { ...u, puede_gestionar_usuarios: newValue ? 1 : 0 } : u);
+      const mapped = allUsers.map(u => u.id_usuario === adminId ? { ...u, [field]: newValue ? 1 : 0 } : u);
       setAllUsers(mapped);
       
-      const res = await updateAdminPermission(adminId, newValue ? 1 : 0);
+      const res = await updateAdminPermission(adminId, field, newValue ? 1 : 0);
       if(!res) {
          Alert.alert('Error', 'No se guardó el permiso en el DB.');
          loadUsers();
@@ -268,25 +268,92 @@ export default function SuperAdminDashboardScreen({ navigation }) {
               <Text style={styles.modalHeaderTitle}>Administradores Regulares</Text>
               <TouchableOpacity onPress={() => setShowPermissionsModal(false)}><Ionicons name="close-circle" size={30} color="#ccc" /></TouchableOpacity>
             </View>
-            <Text style={{color: '#666', marginBottom: 15, fontSize: 13}}>Desactiva el permiso para bloquear que interactúen (editar, bloquear, añadir) con los registros de pacientes y usuarios.</Text>
+            <Text style={{color: '#666', marginBottom: 15, fontSize: 13}}>Define qué acciones específicas puede realizar cada administrador sobre los registros del sistema.</Text>
             <FlatList 
-              data={allUsers.filter(u => u.rol === 'administrador')}
+              data={allUsers.filter(u => ['admin', 'administrador'].includes(String(u.rol).toLowerCase()))}
               keyExtractor={(i) => String(i.id_usuario)}
               renderItem={({ item }) => (
-                <View style={[styles.userListItem, {justifyContent: 'space-between'}]}>
-                    <View style={{flexDirection: 'row', alignItems: 'center'}}>
-                        <View style={[styles.userListAvatar, {backgroundColor: '#e67e22'}]}><Text style={styles.userListAvatarText}>{(item.nombre || 'A')[0].toUpperCase()}</Text></View>
+                <View style={[styles.whiteCard, {marginBottom: 15, padding: 15, borderLeftWidth: 4, borderLeftColor: '#e67e22'}]}>
+                    <View style={{flexDirection: 'row', alignItems: 'center', marginBottom: 12}}>
+                        <View style={[styles.userListAvatar, {backgroundColor: '#e67e22', width: 35, height: 35}]}><Text style={[styles.userListAvatarText, {fontSize: 14}]}>{(item.nombre || 'A')[0].toUpperCase()}</Text></View>
                         <View style={{ marginLeft: 10 }}>
-                            <Text style={styles.userListName}>{item.nombre}</Text>
-                            <Text style={styles.userListEmail}>{item.email}</Text>
+                            <Text style={[styles.userListName, {fontSize: 14}]}>{item.nombre || item.usuario}</Text>
                         </View>
                     </View>
-                    <Switch
-                        value={item.puede_gestionar_usuarios === 1 || item.puede_gestionar_usuarios === true}
-                        onValueChange={(val) => handleToggleAdminPermission(item.id_usuario, val)}
-                        trackColor={{ false: "#d9dbda", true: "#e67e22" }}
-                        thumbColor="#fff"
-                    />
+
+                    <View style={{gap: 12}}>
+                        <Text style={{fontSize: 11, fontWeight: '800', color: '#888', textTransform: 'uppercase', marginBottom: 4}}>Acciones sobre Datos</Text>
+                        <View style={styles.permissionToggleRow}>
+                            <Text style={styles.permissionToggleLabel}>Permitir Edición / Creación</Text>
+                            <Switch
+                                value={item.permiso_editar === 1 || item.permiso_editar === true}
+                                onValueChange={(val) => handleToggleAdminPermission(item.id_usuario, 'permiso_editar', val)}
+                                trackColor={{ false: "#d9dbda", true: "#2b7896" }}
+                                thumbColor="#fff"
+                            />
+                        </View>
+                        <View style={styles.permissionToggleRow}>
+                            <Text style={styles.permissionToggleLabel}>Permitir Bloqueo / Borrado</Text>
+                            <Switch
+                                value={item.permiso_bloquear === 1 || item.permiso_bloquear === true}
+                                onValueChange={(val) => handleToggleAdminPermission(item.id_usuario, 'permiso_bloquear', val)}
+                                trackColor={{ false: "#d9dbda", true: "#b85a5a" }}
+                                thumbColor="#fff"
+                            />
+                        </View>
+
+                        <Text style={{fontSize: 11, fontWeight: '800', color: '#888', textTransform: 'uppercase', marginTop: 8, marginBottom: 4}}>Acceso a Módulos funcionales</Text>
+                        
+                        <View style={styles.permissionToggleRow}>
+                            <Text style={styles.permissionToggleLabel}>Módulo "Nuevo Paciente"</Text>
+                            <Switch
+                                value={item.mod_nuevo_paciente === 1 || item.mod_nuevo_paciente === true}
+                                onValueChange={(val) => handleToggleAdminPermission(item.id_usuario, 'mod_nuevo_paciente', val)}
+                                trackColor={{ false: "#d9dbda", true: "#0f6d78" }}
+                                thumbColor="#fff"
+                            />
+                        </View>
+
+                        <View style={styles.permissionToggleRow}>
+                            <Text style={styles.permissionToggleLabel}>Módulo "Gestión de Usuarios"</Text>
+                            <Switch
+                                value={item.mod_gestion_usuarios === 1 || item.mod_gestion_usuarios === true}
+                                onValueChange={(val) => handleToggleAdminPermission(item.id_usuario, 'mod_gestion_usuarios', val)}
+                                trackColor={{ false: "#d9dbda", true: "#0f6d78" }}
+                                thumbColor="#fff"
+                            />
+                        </View>
+
+                        <View style={styles.permissionToggleRow}>
+                            <Text style={styles.permissionToggleLabel}>Módulo "Reportes"</Text>
+                            <Switch
+                                value={item.mod_reportes === 1 || item.mod_reportes === true}
+                                onValueChange={(val) => handleToggleAdminPermission(item.id_usuario, 'mod_reportes', val)}
+                                trackColor={{ false: "#d9dbda", true: "#0f6d78" }}
+                                thumbColor="#fff"
+                            />
+                        </View>
+
+                        <View style={styles.permissionToggleRow}>
+                            <Text style={styles.permissionToggleLabel}>Módulo "Actividad"</Text>
+                            <Switch
+                                value={item.mod_actividad === 1 || item.mod_actividad === true}
+                                onValueChange={(val) => handleToggleAdminPermission(item.id_usuario, 'mod_actividad', val)}
+                                trackColor={{ false: "#d9dbda", true: "#0f6d78" }}
+                                thumbColor="#fff"
+                            />
+                        </View>
+
+                        <View style={styles.permissionToggleRow}>
+                            <Text style={styles.permissionToggleLabel}>Módulo "Alertas"</Text>
+                            <Switch
+                                value={item.mod_alertas === 1 || item.mod_alertas === true}
+                                onValueChange={(val) => handleToggleAdminPermission(item.id_usuario, 'mod_alertas', val)}
+                                trackColor={{ false: "#d9dbda", true: "#0f6d78" }}
+                                thumbColor="#fff"
+                            />
+                        </View>
+                    </View>
                 </View>
               )}
             />
@@ -380,4 +447,15 @@ const styles = StyleSheet.create({
   btnDeleteText: { color: '#ff3b3b', fontWeight: 'bold', marginLeft: 5 },
   btnSave: { backgroundColor: '#0f6d78', paddingHorizontal: 20, paddingVertical: 12, borderRadius: 12 },
   btnSaveText: { color: '#fff', fontWeight: 'bold' },
+  permissionToggleRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 4,
+  },
+  permissionToggleLabel: {
+    fontSize: 12,
+    color: '#444',
+    fontWeight: '600',
+  },
 });

@@ -62,6 +62,7 @@ const genBtnStyles = {
 
 export default function AdminDashboardScreen({ navigation }) {
   const [activeTab, setActiveTab] = useState('inicio');
+  const [me, setMe] = useState(null);
   const [usuariosRegistrados, setUsuariosRegistrados] = useState(0);
   const [usuarios, setUsuarios] = useState([]);
   const [loadingUsuarios, setLoadingUsuarios] = useState(true);
@@ -71,6 +72,7 @@ export default function AdminDashboardScreen({ navigation }) {
   const [showUserAdminModal, setShowUserAdminModal] = useState(false);
   const [showActivityModal, setShowActivityModal] = useState(false);
   const [showPickUserModal, setShowPickUserModal] = useState(false);
+  const [buscarUsuario, setBuscarUsuario] = useState('');
   const [showAlertsModal, setShowAlertsModal] = useState(false);
   const [alertRows, setAlertRows] = useState([]);
   const [loadingAlerts, setLoadingAlerts] = useState(false);
@@ -455,8 +457,8 @@ export default function AdminDashboardScreen({ navigation }) {
 
   const handleSaveUserEdit = async () => {
     const me = await storageService.getUser();
-    if (me?.puede_gestionar_usuarios === 0 || me?.puede_gestionar_usuarios === false) {
-      Alert.alert('Acceso Denegado', 'Privilegio inhabilitado. El Superadministrador ha restringido tus permisos para editar o boquear usuarios y pacientes.');
+    if (me?.permiso_editar === 0 || me?.permiso_editar === false) {
+      Alert.alert('Acceso Denegado', 'No tienes permisos para editar la información de los usuarios.');
       return;
     }
     if (!editingUser || savingEdit) return;
@@ -504,8 +506,8 @@ export default function AdminDashboardScreen({ navigation }) {
 
   const handleDeleteUser = async (user) => {
     const me = await storageService.getUser();
-    if (me?.puede_gestionar_usuarios === 0 || me?.puede_gestionar_usuarios === false) {
-      Alert.alert('Acceso Denegado', 'Privilegio inhabilitado. No puedes eliminar registros.');
+    if (me?.permiso_bloquear === 0 || me?.permiso_bloquear === false) {
+      Alert.alert('Acceso Denegado', 'No tienes permisos para eliminar registros del sistema.');
       return;
     }
     Alert.alert(
@@ -550,6 +552,11 @@ export default function AdminDashboardScreen({ navigation }) {
     const userId = getUserId(user);
     if (userId === null) return;
 
+    const me = await storageService.getUser();
+    if (me?.permiso_bloquear === 0 || me?.permiso_bloquear === false) {
+      Alert.alert('Acceso Denegado', 'Tu cuenta no tiene autorización para bloquear o desbloquear accesos.');
+      return;
+    }
     const currentBlocked = getBlockedValueFromStateOrRow(user);
     const nextValue = !currentBlocked;
 
@@ -883,17 +890,33 @@ export default function AdminDashboardScreen({ navigation }) {
     loadPaymentsData();
 
     const loadSigner = async () => {
-      const currentUser = await storageService.getUser();
-      const signerName =
-        currentUser?.nombre ||
-        currentUser?.name ||
-        currentUser?.usuario ||
-        currentUser?.username ||
-        currentUser?.email ||
-        'Juan';
-
-      const signerRole = formatRoleLabel(currentUser?.rol || currentUser?.role, 'Administrador');
-      setReportSigner({ name: formatUserDisplayLabel(signerName, 'Juan'), role: signerRole });
+      try {
+        const storedUser = await storageService.getUser();
+        if (storedUser?.id_usuario) {
+          // Consultar datos frescos del servidor para reflejar cambios de permisos en tiempo real
+          const response = await fetch(`${getApiUrl()}/auth/get-user`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ userId: storedUser.id_usuario })
+          });
+          const json = await response.json();
+          if (json.success && json.user) {
+            await storageService.saveUser(json.user);
+            setMe(json.user);
+            const signerName = json.user.nombre || json.user.name || json.user.usuario || 'Administrador';
+            const signerRole = formatRoleLabel(json.user.rol || json.user.role, 'Administrador');
+            setReportSigner({ name: formatUserDisplayLabel(signerName, 'Juan'), role: signerRole });
+            return;
+          }
+        }
+        // Fallback a datos locales si el servidor falla o no hay id
+        setMe(storedUser);
+        const signerName = storedUser?.nombre || storedUser?.name || storedUser?.usuario || 'Administrador';
+        const signerRole = formatRoleLabel(storedUser?.rol || storedUser?.role, 'Administrador');
+        setReportSigner({ name: formatUserDisplayLabel(signerName, 'Juan'), role: signerRole });
+      } catch (err) {
+        console.log('Error sincronizando permisos:', err.message);
+      }
     };
 
     loadSigner();
@@ -951,8 +974,8 @@ export default function AdminDashboardScreen({ navigation }) {
     if (creatingUser) return;
     
     const me = await storageService.getUser();
-    if (me?.puede_gestionar_usuarios === 0 || me?.puede_gestionar_usuarios === false) {
-      Alert.alert('Acceso Denegado', 'No puedes añadir nuevos usuarios al sistema porque tus privilegios han sido restringidos temporalmente.');
+    if (me?.permiso_editar === 0 || me?.permiso_editar === false) {
+      Alert.alert('Acceso Denegado', 'No tienes permisos para añadir nuevos usuarios al sistema.');
       return;
     }
 
@@ -1004,25 +1027,41 @@ export default function AdminDashboardScreen({ navigation }) {
         <Text style={styles.sectionTitle}>Accesos rápidos</Text>
         <View style={styles.quickGrid}>
           <TouchableOpacity
-            style={styles.quickItem}
+            style={[styles.quickItem, (me?.mod_nuevo_paciente === 0) && styles.quickItemDisabled]}
             activeOpacity={0.85}
-            onPress={() => setShowCreateModal(true)}
+            onPress={() => {
+              if (me?.mod_nuevo_paciente === 0) {
+                Alert.alert('Acceso Restringido', 'El Superadministrador ha bloqueado el acceso al módulo de Nuevo Paciente.');
+                return;
+              }
+              setShowCreateModal(true);
+            }}
           >
-            <Ionicons name="person-add-outline" size={20} color="#2f7a96" />
-            <Text style={styles.quickText}>Nuevo paciente</Text>
+            <Ionicons name="person-add-outline" size={20} color={me?.mod_nuevo_paciente === 0 ? "#aaa" : "#2f7a96"} />
+            <Text style={[styles.quickText, (me?.mod_nuevo_paciente === 0) && styles.quickTextDisabled]}>Nuevo paciente</Text>
           </TouchableOpacity>
           <TouchableOpacity
-            style={styles.quickItem}
+            style={[styles.quickItem, (me?.mod_gestion_usuarios === 0) && styles.quickItemDisabled]}
             activeOpacity={0.85}
-            onPress={() => setShowUserAdminModal(true)}
+            onPress={() => {
+              if (me?.mod_gestion_usuarios === 0) {
+                Alert.alert('Acceso Restringido', 'No tienes permisos para acceder a la Administración de Usuarios.');
+                return;
+              }
+              setShowUserAdminModal(true);
+            }}
           >
-            <Ionicons name="people-circle-outline" size={20} color="#2f7a96" />
-            <Text style={styles.quickText}>Administración usuarios</Text>
+            <Ionicons name="people-circle-outline" size={20} color={me?.mod_gestion_usuarios === 0 ? "#aaa" : "#2f7a96"} />
+            <Text style={[styles.quickText, (me?.mod_gestion_usuarios === 0) && styles.quickTextDisabled]}>Administración usuarios</Text>
           </TouchableOpacity>
           <TouchableOpacity
-            style={styles.quickItem}
+            style={[styles.quickItem, (me?.mod_reportes === 0) && styles.quickItemDisabled]}
             activeOpacity={0.85}
             onPress={async () => {
+              if (me?.mod_reportes === 0) {
+                Alert.alert('Acceso Restringido', 'El módulo de Reportes no está disponible para tu cuenta.');
+                return;
+              }
               setReporteTipo(null);
               setReporteFormato(null);
               setReporteUsuario(null);
@@ -1042,13 +1081,17 @@ export default function AdminDashboardScreen({ navigation }) {
               await loadUserActivity();
             }}
           >
-            <Ionicons name="document-text-outline" size={20} color="#2f7a96" />
-            <Text style={styles.quickText}>Reportes</Text>
+            <Ionicons name="document-text-outline" size={20} color={me?.mod_reportes === 0 ? "#aaa" : "#2f7a96"} />
+            <Text style={[styles.quickText, (me?.mod_reportes === 0) && styles.quickTextDisabled]}>Reportes</Text>
           </TouchableOpacity>
           <TouchableOpacity
-            style={styles.quickItem}
+            style={[styles.quickItem, (me?.mod_actividad === 0) && styles.quickItemDisabled]}
             activeOpacity={0.85}
             onPress={async () => {
+              if (me?.mod_actividad === 0) {
+                Alert.alert('Acceso Restringido', 'No tienes autorización para ver la Actividad de Usuarios.');
+                return;
+              }
               setActivityUserFilter('');
               setSelectedActivityUser('');
               setSelectedActivityReportId(null);
@@ -1057,19 +1100,23 @@ export default function AdminDashboardScreen({ navigation }) {
               await loadUserActivity();
             }}
           >
-            <Ionicons name="reader-outline" size={20} color="#2f7a96" />
-            <Text style={styles.quickText}>Actividad de Usuarios</Text>
+            <Ionicons name="reader-outline" size={20} color={me?.mod_actividad === 0 ? "#aaa" : "#2f7a96"} />
+            <Text style={[styles.quickText, (me?.mod_actividad === 0) && styles.quickTextDisabled]}>Actividad de Usuarios</Text>
           </TouchableOpacity>
           <TouchableOpacity
-            style={styles.quickItem}
+            style={[styles.quickItem, (me?.mod_alertas === 0) && styles.quickItemDisabled]}
             activeOpacity={0.85}
             onPress={async () => {
+              if (me?.mod_alertas === 0) {
+                Alert.alert('Acceso Restringido', 'El módulo de Alertas ha sido desactivado para tu perfil.');
+                return;
+              }
               setShowAlertsModal(true);
               await loadSystemAlerts();
             }}
           >
-            <Ionicons name="notifications-outline" size={20} color="#2f7a96" />
-            <Text style={styles.quickText}>Alertas</Text>
+            <Ionicons name="notifications-outline" size={20} color={me?.mod_alertas === 0 ? "#aaa" : "#2f7a96"} />
+            <Text style={[styles.quickText, (me?.mod_alertas === 0) && styles.quickTextDisabled]}>Alertas</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -2930,7 +2977,10 @@ const styles = StyleSheet.create({
     color: '#1b4f61',
     fontSize: 12,
     fontWeight: '700',
-    marginBottom: 6,
+    marginTop: 2,
+  },
+  quickTextDisabled: {
+    color: '#999',
   },
   activityLoadedReportText: {
     color: '#315b6c',
@@ -3470,8 +3520,13 @@ const styles = StyleSheet.create({
   },
   pickUserEmpty: {
     alignItems: 'center',
-    paddingVertical: 28,
+    paddingVertical: 12,
     gap: 8,
+  },
+  quickItemDisabled: {
+    backgroundColor: '#f5f5f5',
+    borderColor: '#eee',
+    opacity: 0.5,
   },
   pickUserEmptyText: {
     color: '#8aaab6',

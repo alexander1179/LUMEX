@@ -25,6 +25,7 @@ import { storageService } from '../services/storage/storageService';
 const TABS = [
   { key: 'inicio', label: 'Inicio', icon: 'home-outline' },
   { key: 'pacientes', label: 'Pacientes', icon: 'people-outline' },
+  { key: 'pagos', label: 'Pagos', icon: 'card-outline' },
   { key: 'ajustes', label: 'Ajustes', icon: 'settings-outline' },
 ];
 
@@ -102,6 +103,10 @@ export default function AdminDashboardScreen({ navigation }) {
   const [editRol, setEditRol] = useState('usuario');
   const [savingEdit, setSavingEdit] = useState(false);
   const [activityRows, setActivityRows] = useState([]);
+  const [paymentsRows, setPaymentsRows] = useState([]);
+  const [loadingPayments, setLoadingPayments] = useState(false);
+  const [showPagosDetailModal, setShowPagosDetailModal] = useState(false);
+  const [selectedPagosUser, setSelectedPagosUser] = useState(null);
   const [loadingActivity, setLoadingActivity] = useState(false);
   const [activityUserFilter, setActivityUserFilter] = useState('');
   const [selectedActivityUser, setSelectedActivityUser] = useState('');
@@ -517,17 +522,20 @@ export default function AdminDashboardScreen({ navigation }) {
         return;
       }
 
-      const { error } = await supabase
-        .from('usuarios')
-        .update({
+      const response = await fetch(`${getApiUrl()}/admin/update-user`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id_usuario: userId,
           nombre: editNombre.trim(),
           email: editEmail.trim().toLowerCase(),
           rol: editRol.trim().toLowerCase(),
         })
-        .eq(idField, userId);
+      });
+      const data = await response.json().catch(() => ({}));
 
-      if (error) {
-        Alert.alert('Error', error.message || 'No se pudo actualizar el usuario.');
+      if (!response.ok || !data.success) {
+        Alert.alert('Error', data.message || 'No se pudo actualizar el usuario en MySQL.');
         return;
       }
 
@@ -667,10 +675,20 @@ export default function AdminDashboardScreen({ navigation }) {
     // Refleja el cambio de inmediato en UI.
     setBlockedUsers((prev) => ({ ...prev, [userId]: nextValue }));
 
-    const persistResult = await tryPersistBlockedStatus(user, nextValue);
-    if (!persistResult.success) {
+    try {
+      const response = await fetch(`${getApiUrl()}/admin/block-user`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id_usuario: userId, blocked: nextValue })
+      });
+      const data = await response.json().catch(() => ({}));
+      
+      if (!response.ok || !data.success) {
+        throw new Error(data.message || 'Fallo de red');
+      }
+    } catch (err) {
       setBlockedUsers((prev) => ({ ...prev, [userId]: currentBlocked }));
-      Alert.alert('No se pudo actualizar', persistResult.message || 'No se logró actualizar el estado de acceso.');
+      Alert.alert('No se pudo actualizar', err.message || 'No se logró actualizar el estado de acceso.');
       return;
     }
 
@@ -681,24 +699,24 @@ export default function AdminDashboardScreen({ navigation }) {
   const loadUserActivity = async () => {
     setLoadingActivity(true);
     try {
-      const { data: usersData } = await supabase
-        .from('usuarios')
-        .select('id_usuario, id, uuid, user_id, nombre, usuario, email')
-        .limit(500);
+      const response = await fetch(`${getApiUrl()}/admin/activity`);
+      const json = await response.json();
+      
+      if (!response.ok || !json.success) {
+        throw new Error(json.message || 'Error al conectar activity');
+      }
+      
+      const { activity } = json;
 
       const userById = new Map();
-      for (const user of usersData || []) {
-        const label = formatUserDisplayLabel(user?.nombre || user?.usuario || user?.email, 'Usuario');
-        const ids = [user?.id_usuario, user?.id, user?.uuid, user?.user_id];
-        for (const id of ids) {
-          const key = normalizeUserKey(id);
-          if (key) {
-            userById.set(key, label);
-          }
+      for (const row of activity || []) {
+        const key = normalizeUserKey(row?.id_usuario);
+        if (key) {
+           const labelName = row.usuario_nombre || row.usuario_username || row.usuario_email || 'Usuario';
+           userById.set(key, formatUserDisplayLabel(labelName, 'Usuario'));
         }
       }
 
-      // Fallback con usuarios ya cargados en el panel para evitar casos "Usuario ID X" cuando sí existe nombre.
       for (const user of usuarios || []) {
         const label = formatUserDisplayLabel(user?.nombre || user?.usuario || user?.email, 'Usuario');
         const key = normalizeUserKey(getUserId(user));
@@ -707,33 +725,12 @@ export default function AdminDashboardScreen({ navigation }) {
         }
       }
 
-      let analysisResult = await supabase
-        .from('analisis')
-        .select('id_analisis, id_usuario, id_dataset, fecha_analisis, total_registros, total_anomalias, datasets(nombre_archivo), modelos(tipo_modelo,descripcion,nombre_modelo)')
-        .order('fecha_analisis', { ascending: false })
-        .limit(40);
-
-      if (analysisResult.error) {
-        analysisResult = await supabase
-          .from('analisis')
-          .select('id_analisis, id_usuario, id_dataset, fecha_analisis, total_registros, total_anomalias')
-          .order('fecha_analisis', { ascending: false })
-          .limit(40);
-      }
-
-      const { data, error } = analysisResult;
-
-      if (error || !Array.isArray(data)) {
-        setActivityRows([]);
-        return;
-      }
-
-      const mapped = data.map((row, idx) => {
+      const mapped = (activity || []).map((row, idx) => {
         const totalRegistros = Number(row?.total_registros || 0);
         const totalAnomalias = Number(row?.total_anomalias || 0);
         const tasa = totalRegistros > 0 ? `${((totalAnomalias / totalRegistros) * 100).toFixed(1)}%` : '0.0%';
-        const datasetName = row?.datasets?.nombre_archivo || `dataset_${row?.id_dataset || row?.id_analisis || idx}`;
-        const analysisLabel = resolveAnalysisTypeLabel(row?.modelos);
+        const datasetName = row?.dataset_nombre || `dataset_${row?.id_dataset || row?.id_analisis || idx}`;
+        const analysisLabel = resolveAnalysisTypeLabel(row);
         const userKey = normalizeUserKey(row?.id_usuario);
         const userLabel = userById.get(userKey) || `Usuario ID ${row?.id_usuario || 'N/D'}`;
 
@@ -760,6 +757,24 @@ export default function AdminDashboardScreen({ navigation }) {
       setActivityRows([]);
     } finally {
       setLoadingActivity(false);
+    }
+  };
+
+  const loadPaymentsData = async () => {
+    setLoadingPayments(true);
+    try {
+      const response = await fetch(`${getApiUrl()}/admin/payments`);
+      const json = await response.json();
+      
+      if (!response.ok || !json.success) {
+        throw new Error(json.message);
+      }
+      setPaymentsRows(Array.isArray(json.payments) ? json.payments : []);
+    } catch (e) {
+      console.log('Error payments', e);
+      setPaymentsRows([]);
+    } finally {
+      setLoadingPayments(false);
     }
   };
 
@@ -1052,31 +1067,19 @@ export default function AdminDashboardScreen({ navigation }) {
   const loadDashboardData = async () => {
     setLoadingUsuarios(true);
     try {
-      let queryResult = await supabase
-        .from('usuarios')
-        .select('*', { count: 'exact' })
-        .order('id_usuario', { ascending: false });
+      let data = [];
+      let error = null;
 
-      // Fallbacks para esquemas con columnas distintas.
-      if (queryResult.error) {
-        queryResult = await supabase
-          .from('usuarios')
-          .select('*', { count: 'exact' })
-          .order('id', { ascending: false });
+      try {
+        const response = await fetch(`${getApiUrl()}/admin/users`);
+        const json = await response.json();
+        if (!response.ok || !json.success) {
+          throw new Error(json.message || 'Error al conectar con MySQL');
+        }
+        data = json.users;
+      } catch (e) {
+        error = { message: e.message };
       }
-      if (queryResult.error) {
-        queryResult = await supabase
-          .from('usuarios')
-          .select('*', { count: 'exact' })
-          .order('created_at', { ascending: false });
-      }
-      if (queryResult.error) {
-        queryResult = await supabase
-          .from('usuarios')
-          .select('*', { count: 'exact' });
-      }
-
-      const { data, error, count } = queryResult;
 
       if (error) {
         console.log('Error cargando usuarios admin:', error.message);
@@ -1091,7 +1094,7 @@ export default function AdminDashboardScreen({ navigation }) {
       const rows = Array.isArray(data) ? data : [];
       const nonAdminRows = rows.filter((u) => {
         const normalizedRole = String(u?.rol || u?.role || '').trim().toLowerCase();
-        return normalizedRole !== 'admin' && normalizedRole !== 'administrador';
+        return normalizedRole !== 'admin' && normalizedRole !== 'administrador' && normalizedRole !== 'superadmin' && normalizedRole !== 'superadministrador';
       });
 
       const list = nonAdminRows.map((u, idx) => {
@@ -1160,6 +1163,7 @@ export default function AdminDashboardScreen({ navigation }) {
 
   useEffect(() => {
     loadDashboardData();
+    loadPaymentsData();
 
     const loadSigner = async () => {
       const currentUser = await storageService.getUser();
@@ -1304,6 +1308,55 @@ export default function AdminDashboardScreen({ navigation }) {
       </View>
     </>
   );
+  const renderPagos = () => {
+    const uniqueUsersMap = new Map();
+    paymentsRows.forEach((p) => {
+      if (!uniqueUsersMap.has(p.id_usuario)) {
+        uniqueUsersMap.set(p.id_usuario, {
+          id_usuario: p.id_usuario,
+          nombre: p.usuario_nombre || p.usuario_username || p.usuario_email || `Usuario ${p.id_usuario}`,
+          email: p.usuario_email || '',
+        });
+      }
+    });
+    const groupedUsers = Array.from(uniqueUsersMap.values());
+
+    return (
+      <View style={styles.actionsCard}>
+        <Text style={styles.sectionTitle}>Módulo de Pagos</Text>
+        <Text style={styles.moduleDescription}>Toca un usuario para ver su historial completo de facturación y pagos.</Text>
+
+        {loadingPayments ? (
+          <Text style={styles.emptyText}>Cargando pagos...</Text>
+        ) : groupedUsers.length === 0 ? (
+          <Text style={styles.emptyText}>No hay pagos registrados.</Text>
+        ) : (
+          <View style={styles.usersList}>
+            {groupedUsers.map((u) => {
+              const active = selectedPagosUser === u.id_usuario;
+              return (
+                <TouchableOpacity
+                  key={`pago-user-${u.id_usuario}`}
+                  style={[styles.userRow, active && styles.userRowActive]}
+                  onPress={() => {
+                    setSelectedPagosUser(u.id_usuario);
+                    setShowPagosDetailModal(true);
+                  }}
+                  activeOpacity={0.85}
+                >
+                  <Ionicons name="card" size={22} color={active ? '#ffffff' : '#2f7a96'} />
+                  <View style={styles.userTextWrap}>
+                    <Text style={[styles.userName, active && styles.userNameActive]}>{u.nombre}</Text>
+                    <Text style={[styles.userEmail, active && styles.userEmailActive]}>{u.email}</Text>
+                  </View>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        )}
+      </View>
+    );
+  };
 
   const renderPacientes = () => (
     <View style={styles.actionsCard}>
@@ -1414,6 +1467,7 @@ export default function AdminDashboardScreen({ navigation }) {
 
   const renderActiveModule = () => {
     if (activeTab === 'pacientes') return renderPacientes();
+    if (activeTab === 'pagos') return renderPagos();
     if (activeTab === 'citas') return renderCitas();
     if (activeTab === 'ajustes') return renderAjustes();
     return renderInicio();
@@ -2748,7 +2802,7 @@ export default function AdminDashboardScreen({ navigation }) {
 
             <Text style={styles.modalRoleLabel}>Rol</Text>
             <View style={styles.rolesRow}>
-              {['admin', 'medico', 'usuario'].map((rolOpt) => {
+              {['enfermero', 'doctor', 'usuario'].map((rolOpt) => {
                 const active = editRol === rolOpt;
                 return (
                   <TouchableOpacity
@@ -2784,6 +2838,65 @@ export default function AdminDashboardScreen({ navigation }) {
                 <Text style={styles.modalButtonText}>{savingEdit ? 'Guardando...' : 'Guardar cambios'}</Text>
               </TouchableOpacity>
             </View>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
+        visible={showPagosDetailModal}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setShowPagosDetailModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalLargeCard}>
+            <View style={styles.modalHeaderRow}>
+              <Text style={styles.modalTitle}>Historial de Pagos</Text>
+              <TouchableOpacity onPress={() => setShowPagosDetailModal(false)} activeOpacity={0.85}>
+                <Ionicons name="close-outline" size={24} color="#2f7a96" />
+              </TouchableOpacity>
+            </View>
+            <ScrollView showsVerticalScrollIndicator={false} style={styles.modalListArea}>
+              {paymentsRows
+                .filter((p) => p.id_usuario === selectedPagosUser)
+                .map((p, idx) => (
+                  <View key={`hist-pago-${idx}`} style={styles.reportCard}>
+                    <View style={styles.reportHeader}>
+                      <Ionicons name="cash-outline" size={16} color="#2f7a96" />
+                      <Text style={styles.reportDate}>{formatDateTime(p.created_at)}</Text>
+                    </View>
+                    <View style={styles.reportBodyFlex}>
+                      <View style={styles.reportDataRow}>
+                         <Text style={styles.reportTitleLabel}>Monto</Text>
+                         <Text style={styles.reportValueText}>{p.monto ? `$${p.monto}` : 'N/D'}</Text>
+                      </View>
+                      <View style={styles.reportDataRow}>
+                         <Text style={styles.reportTitleLabel}>Método</Text>
+                         <Text style={styles.reportValueText}>{p.metodo_pago || 'MercadoPago'}</Text>
+                      </View>
+                      <View style={styles.reportDataRow}>
+                         <Text style={styles.reportTitleLabel}>Estado</Text>
+                         <Text style={styles.reportValueText}>{p.mp_status || p.estado || 'Desconocido'}</Text>
+                      </View>
+                      {(() => {
+                        const desc = String(p.descripcion || '').toLowerCase();
+                        let numCreditos = 'N/D';
+                        const numMatch = desc.match(/\d+/);
+                        if (numMatch) {
+                          numCreditos = numMatch[0];
+                        }
+                        
+                        return (
+                          <View style={styles.reportDataRow}>
+                             <Text style={styles.reportTitleLabel}>Créditos</Text>
+                             <Text style={styles.reportValueText}>{numCreditos}</Text>
+                          </View>
+                        );
+                      })()}
+                    </View>
+                  </View>
+              ))}
+            </ScrollView>
           </View>
         </View>
       </Modal>
@@ -4326,5 +4439,45 @@ const styles = StyleSheet.create({
     color: '#2f7a96',
     fontWeight: '700',
     fontSize: 14,
+  },
+  reportCard: {
+    backgroundColor: '#f8fcfd',
+    borderWidth: 1,
+    borderColor: '#deedf3',
+    borderRadius: 8,
+    padding: 10,
+    marginBottom: 8,
+  },
+  reportHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 6,
+    gap: 4,
+    borderBottomWidth: 1,
+    borderBottomColor: '#deedf3',
+    paddingBottom: 6,
+  },
+  reportDate: {
+    color: '#2f7a96',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  reportBodyFlex: {
+    gap: 4,
+  },
+  reportDataRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  reportTitleLabel: {
+    color: '#587886',
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  reportValueText: {
+    color: '#173746',
+    fontSize: 12,
+    fontWeight: '700',
   },
 });

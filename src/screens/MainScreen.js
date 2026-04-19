@@ -35,7 +35,7 @@ import {
 } from '../services/api/datasetAnalysisService';
 import { 
   registerPayment, 
-  consumePaymentCredit 
+  consumeAnalysisCredit 
 } from '../services/api/paymentService';
 import { 
   fetchLatestUserData 
@@ -933,7 +933,7 @@ export default function MainScreen({ navigation }) {
       });
 
       // DESCONTAR CRÉDITO EXITOSAMENTE
-      await consumePaymentCredit(currentUserId);
+      await consumeAnalysisCredit(currentUserId);
       setAvailableCredits(prev => Math.max(0, prev - 1));
 
       await loadHistory(currentUserId);

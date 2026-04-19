@@ -2,7 +2,7 @@ import { Platform } from 'react-native';
 import Constants from 'expo-constants';
 
 // IP local de la máquina de desarrollo — actualizar si cambia la red
-const LOCAL_IP = '192.168.20.141';
+const LOCAL_IP = '192.168.20.142';
 
 const TIMEOUT_MS = 10000; // 10 segundos máximo de espera
 

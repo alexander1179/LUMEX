@@ -5,14 +5,19 @@ import {
   TextInput,
   TouchableOpacity,
   Alert,
-  StyleSheet
+  StyleSheet,
+  Dimensions,
+  Animated
 } from 'react-native';
 import { useTranslation } from 'react-i18next';
+import { Ionicons } from '@expo/vector-icons';
 import { forgotPassword } from '../services/api/authService';
+
 import { colors } from '../styles/colors';
 import { CustomButton } from '../components/common/CustomButton';
-import { LanguageSelector } from '../components/common/LanguageSelector';
 import { AccessQuickNav } from '../components/common/AccessQuickNav';
+
+const { width } = Dimensions.get('window');
 
 export default function ForgotPasswordScreen({ navigation }) {
   const { t } = useTranslation();
@@ -20,6 +25,27 @@ export default function ForgotPasswordScreen({ navigation }) {
   const [loading, setLoading] = useState(false);
   const [countdown, setCountdown] = useState(0);
   const timerRef = useRef(null);
+
+  const theme = {
+    background: '#eaf6f5',
+    card: 'rgba(255,255,255,0.86)',
+    cardBorder: 'rgba(15,109,120,0.22)',
+    input: '#f4fbfb',
+    inputText: '#15333d',
+    mutedText: '#4f666c',
+    title: '#15333d',
+    accent: '#0f6d78',
+  };
+
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    Animated.timing(fadeAnim, {
+      toValue: 1,
+      duration: 500,
+      useNativeDriver: true,
+    }).start();
+  }, [fadeAnim]);
 
   const startCountdown = (seconds) => {
     setCountdown(seconds);
@@ -49,7 +75,7 @@ export default function ForgotPasswordScreen({ navigation }) {
       const result = await forgotPassword(normalizedEmail);
 
       if (result.success) {
-          startCountdown(60);
+        startCountdown(60);
         Alert.alert(
           "Código enviado",
           "Ingresa el código que recibiste en tu correo.",
@@ -79,52 +105,54 @@ export default function ForgotPasswordScreen({ navigation }) {
   };
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { backgroundColor: theme.background }]}>
       <View style={styles.header}>
         <TouchableOpacity 
-          style={styles.backButton}
+          style={[styles.backButton, { backgroundColor: 'rgba(15,109,120,0.1)' }]}
           onPress={() => navigation.goBack()}
         >
-          <Text style={styles.backButtonText}>←</Text>
+          <Ionicons name="chevron-back" size={24} color={theme.accent} />
         </TouchableOpacity>
-        <LanguageSelector />
       </View>
 
-      <Text style={styles.title}>
-        Recuperar Contraseña
-      </Text>
-
-      <View style={styles.card}>
-        <Text style={styles.description}>
-          Ingresa tu correo electrónico para recibir un código de recuperación. Luego regresa a la app para ingresarlo.
+      <Animated.View style={[styles.content, { opacity: fadeAnim }]}>
+        <Text style={[styles.title, { color: theme.title }]}>
+          Recuperar Contraseña
         </Text>
 
-        <TextInput
-          placeholder="Correo electrónico"
-          placeholderTextColor="#aaa"
-          style={styles.input}
-          value={email}
-          onChangeText={setEmail}
-          autoCapitalize="none"
-          keyboardType="email-address"
-        />
-
-        <CustomButton
-          title={loading ? "Enviando..." : countdown > 0 ? `Reenviar en ${countdown}s` : "Enviar código"}
-          onPress={solicitarRecuperacion}
-          loading={loading}
-          disabled={loading || countdown > 0}
-        />
-
-        <TouchableOpacity 
-          style={styles.backToLogin}
-          onPress={() => navigation.replace("Login")}
-        >
-          <Text style={styles.backToLoginText}>
-            Volver al inicio de sesión
+        <View style={[styles.card, { backgroundColor: theme.card, borderColor: theme.cardBorder }]}>
+          <Text style={[styles.description, { color: theme.mutedText }]}>
+            Ingresa tu correo electrónico para recibir un código de recuperación. Luego regresa a la app para ingresarlo.
           </Text>
-        </TouchableOpacity>
-      </View>
+
+          <TextInput
+            placeholder="Correo electrónico"
+            placeholderTextColor="#aaa"
+            style={[styles.input, { backgroundColor: theme.input, color: theme.inputText }]}
+            value={email}
+            onChangeText={setEmail}
+            autoCapitalize="none"
+            keyboardType="email-address"
+          />
+
+          <CustomButton
+            title={loading ? "Enviando..." : countdown > 0 ? `Reenviar en ${countdown}s` : "Enviar código"}
+            onPress={solicitarRecuperacion}
+            loading={loading}
+            disabled={loading || countdown > 0}
+            backgroundColor={theme.accent}
+          />
+
+          <TouchableOpacity 
+            style={styles.backToLogin}
+            onPress={() => navigation.replace("Login")}
+          >
+            <Text style={[styles.backToLoginText, { color: theme.accent }]}>
+              Volver al inicio de sesión
+            </Text>
+          </TouchableOpacity>
+        </View>
+      </Animated.View>
 
       <AccessQuickNav navigation={navigation} current="usuario" />
     </View>
@@ -134,70 +162,65 @@ export default function ForgotPasswordScreen({ navigation }) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.primary,
     alignItems: "center",
-    paddingTop: 60,
-    paddingBottom: 100,
   },
   header: {
-    position: 'absolute',
-    top: 50,
-    left: 0,
-    right: 0,
+    width: '100%',
+    paddingTop: 50,
+    paddingHorizontal: 20,
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 15,
+    justifyContent: 'flex-start',
     zIndex: 10,
   },
   backButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    width: 45,
+    height: 45,
+    borderRadius: 15,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  backButtonText: {
-    color: 'white',
-    fontSize: 24,
-    fontWeight: 'bold',
+  content: {
+    width: '100%',
+    alignItems: 'center',
+    marginTop: 40,
   },
   title: {
-    fontSize: 22,
-    fontWeight: "bold",
-    color: "white",
-    marginTop: 100,
+    fontSize: 26,
+    fontWeight: "800",
     marginBottom: 30,
+    textAlign: 'center',
   },
   card: {
     width: "90%",
-    backgroundColor: "#1c1c1c",
-    borderRadius: 25,
-    padding: 20,
-    elevation: 5,
+    borderRadius: 30,
+    padding: 25,
+    borderWidth: 1,
+    elevation: 4,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 10,
   },
   description: {
-    color: '#ccc',
-    fontSize: 14,
+    fontSize: 15,
     textAlign: 'center',
-    marginBottom: 20,
+    marginBottom: 25,
+    lineHeight: 22,
   },
   input: {
-    backgroundColor: "#333",
-    padding: 15,
-    borderRadius: 20,
-    marginBottom: 15,
-    color: "white",
+    padding: 16,
+    borderRadius: 15,
+    marginBottom: 20,
     fontSize: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.05)',
   },
   backToLogin: {
-    marginTop: 15,
+    marginTop: 20,
   },
   backToLoginText: {
-    color: colors.primary,
     textAlign: "center",
-    fontSize: 16,
-    fontWeight: "bold"
+    fontSize: 15,
+    fontWeight: "700"
   },
 });

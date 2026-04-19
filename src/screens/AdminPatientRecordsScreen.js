@@ -3,6 +3,7 @@ import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Modal, Image, Act
 import { Ionicons } from '@expo/vector-icons';
 import { fetchAnalysisHistoryByUser } from '../services/api/datasetAnalysisService';
 
+
 const ANALYSIS_TYPES = [
   { value: 'anomalias', label: 'Deteccion de anomalias', icon: 'alert-circle-outline' },
   { value: 'clasificacion', label: 'Clasificacion', icon: 'git-branch-outline' },

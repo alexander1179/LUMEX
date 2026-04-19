@@ -1,7 +1,6 @@
 // src/navigation/AppNavigator.js
 import React from 'react';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import RoleSelectScreen from '../screens/RoleSelectScreen';
 import WelcomeScreen from '../screens/WelcomeScreen';
 import PrivacyScreen from '../screens/PrivacyScreen';
 import GraciasScreen from '../screens/GraciasScreen';
@@ -12,6 +11,7 @@ import AdminDashboardScreen from '../screens/AdminDashboardScreen';
 import AdminPatientRecordsScreen from '../screens/AdminPatientRecordsScreen';
 import AdminPatientTrackingScreen from '../screens/AdminPatientTrackingScreen';
 import AdminPatientAccessScreen from '../screens/AdminPatientAccessScreen';
+import SuperAdminDashboardScreen from '../screens/SuperAdminDashboardScreen';
 import PaymentScreen from '../screens/PaymentScreen';
 import ForgotPasswordScreen from '../screens/ForgotPasswordScreen';
 import VerifyTokenScreen from '../screens/VerifyTokenScreen';
@@ -23,7 +23,7 @@ const Stack = createNativeStackNavigator();
 export default function AppNavigator() {
   return (
     <Stack.Navigator 
-      initialRouteName="RoleSelect"
+      initialRouteName="Login"
       screenOptions={{
         headerStyle: {
           backgroundColor: '#d32f2f',
@@ -37,11 +37,7 @@ export default function AppNavigator() {
         animation: 'slide_from_right',
       }}
     >
-      <Stack.Screen 
-        name="RoleSelect" 
-        component={RoleSelectScreen} 
-        options={{ headerShown: false }}
-      />
+
       <Stack.Screen 
         name="Welcome" 
         component={WelcomeScreen} 
@@ -75,6 +71,11 @@ export default function AppNavigator() {
       <Stack.Screen
         name="AdminDashboard"
         component={AdminDashboardScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="SuperAdminDashboard"
+        component={SuperAdminDashboardScreen}
         options={{ headerShown: false }}
       />
       <Stack.Screen
@@ -117,11 +118,7 @@ export default function AppNavigator() {
         component={ResetPasswordScreen} 
         options={{ headerShown: false }}
       />
-
-
-
-
     </Stack.Navigator>
     
   );
-}
+}

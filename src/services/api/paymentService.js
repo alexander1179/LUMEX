@@ -1,17 +1,24 @@
 import { getApiClient } from './apiClient';
 
-export const registerPayment = async (userId, amount, description, creditsToAdd) => {
+export const registerPayment = async (userId, amount, monto, metodoPago, description, creditsToAdd) => {
   try {
     const { data: resData, ok } = await getApiClient('/api/payments/register', {
       method: 'POST',
-      body: JSON.stringify({ userId, amount, description, creditsToAdd }),
+      body: JSON.stringify({ 
+        userId, 
+        amount, 
+        monto, 
+        metodoPago, 
+        description, 
+        creditsToAdd 
+      }),
     });
 
     if (!ok || !resData?.success) {
       return { success: false, message: resData?.message || 'Error registrando pago' };
     }
 
-    return { success: true, payment: resData.payment };
+    return { success: true, message: resData.message };
   } catch (error) {
     return { success: false, message: error.message };
   }

@@ -1,16 +1,12 @@
 require('dotenv').config();
-
 const express = require('express');
 const cors = require('cors');
-const nodemailer = require('nodemailer');
 const mysql = require('mysql2/promise');
+const nodemailer = require('nodemailer');
 const crypto = require('crypto');
 
 const app = express();
-const PORT = Number(process.env.PORT || 3000);
-const OTP_EXPIRY_MINUTES = Number(process.env.OTP_EXPIRY_MINUTES || 15);
-const RESULTS_BATCH_SIZE = 1000;
-const RESULTS_BATCH_CONCURRENCY = 3;
+const PORT = process.env.PORT || 3000;
 
 // ===== MySQL Pool Configuration =====
 const pool = mysql.createPool({
@@ -33,6 +29,10 @@ pool.getConnection()
   .catch(err => {
     console.error('❌ Error conectando a MySQL:', err.message);
   });
+
+pool.on('error', (err) => {
+  console.error('[DB ERROR]', err);
+});
 
 // ===== SMTP Configuration =====
 const smtpConfigured = [
@@ -60,30 +60,33 @@ if (!smtpConfigured) {
 }
 
 app.use(cors());
-app.use(express.json({ limit: '10mb' }));
+app.use(express.json());
+
+// Middleware para ver qué llega al servidor
+app.use((req, res, next) => {
+  console.log(`[${new Date().toLocaleTimeString()}] ${req.method} ${req.url}`);
+  next();
+});
 
 const normalizeEmail = (email = '') => email.trim().toLowerCase();
 
-// En memoria cache para OTPs (Email -> { otp, expiresAt })
+// En memoria cache para OTPs (Email -> { otp, expiresAt, verified })
 const otpMemCache = new Map();
+const OTP_EXPIRY_MINUTES = 15;
 
 const generateOtp = () => Math.floor(100000 + Math.random() * 900000).toString();
 
-const hashPasswordSha256 = (password) => {
-  return crypto.createHash('sha256').update(String(password)).digest('hex');
-};
-
 const buildOtpEmailHtml = (otp) => `
   <div style="font-family: Arial, sans-serif; max-width: 560px; margin: 0 auto; padding: 24px; color: #1f2937;">
-    <h2 style="margin: 0 0 16px; color: #111827;">Recuperacion de contrasena</h2>
+    <h2 style="margin: 0 0 16px; color: #111827;">Recuperación de contraseña</h2>
     <p style="font-size: 16px; line-height: 1.5; margin: 0 0 16px;">
-      Usa este codigo de 6 digitos en la app de Lumex para cambiar tu contrasena.
+      Usa este código de 6 dígitos en la app de Lumex para cambiar tu contraseña.
     </p>
     <div style="margin: 24px 0; padding: 18px; background: #f3f4f6; border-radius: 12px; text-align: center;">
       <div style="font-size: 32px; font-weight: 700; letter-spacing: 8px; color: #d32f2f;">${otp}</div>
     </div>
     <p style="font-size: 14px; line-height: 1.5; margin: 0 0 12px; color: #4b5563;">
-      El codigo expira en ${OTP_EXPIRY_MINUTES} minutos.
+      El código expira en ${OTP_EXPIRY_MINUTES} minutos.
     </p>
   </div>
 `;
@@ -101,7 +104,7 @@ app.get('/health', async (_req, res) => {
 });
 
 // ==========================================
-// AUTH & USERS (Ex-Supabase Auth & Usuarios)
+// AUTH & USERS
 // ==========================================
 app.post('/api/auth/register', async (req, res) => {
   let { email, username, name, phone, passwordHash } = req.body;
@@ -114,13 +117,11 @@ app.post('/api/auth/register', async (req, res) => {
     }
 
     const [result] = await pool.query(
-      'INSERT INTO usuarios (nombre, email, usuario, rol, contrasena, telefono, fecha_registro) VALUES (?, ?, ?, ?, ?, ?, ?)',
-      [name, email, username, 'usuario', passwordHash, phone, new Date()]
+      'INSERT INTO usuarios (nombre, email, usuario, rol, contrasena, telefono, fecha_registro) VALUES (?, ?, ?, ?, ?, ?, NOW())',
+      [name, email || null, username || null, 'usuario', passwordHash, phone || null]
     );
     
-    // Fetch inserted user
     const [newUser] = await pool.query('SELECT * FROM usuarios WHERE id_usuario = ?', [result.insertId]);
-
     return res.json({ success: true, user: newUser[0], message: 'Usuario registrado correctamente' });
   } catch (err) {
     console.error(err);
@@ -136,32 +137,18 @@ app.post('/api/auth/login', async (req, res) => {
 
     const user = rows[0];
 
-    const isAdmin = ['admin', 'administrador'].includes(String(user.rol).trim().toLowerCase());
+    const isAdmin = ['admin', 'administrador', 'superadmin'].includes(String(user.rol).trim().toLowerCase());
     if (requiredRole === 'admin' && !isAdmin) {
       return res.status(403).json({ success: false, message: 'Solo administradores.' });
     }
-    if (requiredRole === 'usuario' && isAdmin) {
-      return res.status(403).json({ success: false, message: 'Este acceso es solo para usuarios.' });
-    }
-
-    // Checking blocks logic
-    const blockedFields = [user.bloqueado, user.blocked, user.acceso_bloqueado, user.esta_bloqueado, user.inactivo];
-    const isBlocked = blockedFields.some(v => v === 1 || String(v).toLowerCase() === 'true');
-    if (isBlocked) return res.status(403).json({ success: false, message: 'Tu cuenta está bloqueada.' });
-
-    if (user.contrasena !== passwordHash && user.contrasena !== 'managed_by_supabase_auth') {
+    
+    if (user.contrasena !== passwordHash) {
       return res.status(401).json({ success: false, message: 'Contraseña incorrecta' });
     }
 
-    if (user.contrasena === 'managed_by_supabase_auth') {
-      await pool.query('UPDATE usuarios SET contrasena = ? WHERE id_usuario = ?', [passwordHash, user.id_usuario]);
-      user.contrasena = passwordHash;
-    }
-
-    // terms info
     const termsAccepted = !!user.acepta_terminos;
-
-    return res.json({ success: true, user, termsAccepted });
+    const { contrasena, ...safeUser } = user;
+    return res.json({ success: true, user: safeUser, termsAccepted });
   } catch (err) {
     console.error(err);
     res.status(500).json({ success: false, message: 'Error interno en login.' });
@@ -173,7 +160,8 @@ app.post('/api/auth/get-user', async (req, res) => {
   try {
     const [rows] = await pool.query('SELECT * FROM usuarios WHERE id_usuario = ? LIMIT 1', [userId]);
     if (rows.length === 0) return res.status(404).json({ success: false, message: 'Usuario no encontrado' });
-    return res.json({ success: true, user: rows[0] });
+    const { contrasena, ...safeUser } = rows[0];
+    return res.json({ success: true, user: safeUser });
   } catch (err) {
     res.status(500).json({ success: false, message: 'Error al obtener usuario.' });
   }
@@ -189,46 +177,36 @@ app.post('/api/auth/accept-terms', async (req, res) => {
   }
 });
 
-app.post('/api/auth/check-terms', async (req, res) => {
-  const { userId } = req.body;
-  try {
-    const [rows] = await pool.query('SELECT acepta_terminos, fecha_aceptacion_terminos FROM usuarios WHERE id_usuario = ? LIMIT 1', [userId]);
-    if (rows.length === 0) return res.json({ success: false, accepted: false });
-    return res.json({ success: true, accepted: !!rows[0].acepta_terminos, acceptanceDate: rows[0].fecha_aceptacion_terminos });
-  } catch (err) {
-    res.json({ success: true, accepted: false }); // Fallback on error to unblock
-  }
-});
-
-app.post('/forgot-password', async (req, res) => {
-  if (!transporter) {
-    return res.status(503).json({ success: false, message: 'SMTP no configurado en el servidor.' });
-  }
+// Recuperar contraseña
+app.post('/api/auth/forgot-password', async (req, res) => {
   const email = normalizeEmail(req.body?.email);
   if (!email) return res.status(400).json({ success: false, message: 'El correo es requerido' });
 
   try {
     const [rows] = await pool.query('SELECT id_usuario FROM usuarios WHERE email = ? LIMIT 1', [email]);
     if (rows.length === 0) {
-      return res.json({ success: true, message: 'Si el correo existe, recibirás un código de recuperación.' });
+      return res.status(404).json({ success: false, message: 'Correo no registrado' });
     }
 
     const otp = generateOtp();
     const expiresAt = Date.now() + OTP_EXPIRY_MINUTES * 60000;
     otpMemCache.set(email, { otp, expiresAt });
 
-    await transporter.sendMail({
-      from: process.env.SMTP_FROM,
-      to: email,
-      subject: 'Codigo de recuperacion - Lumex',
-      text: `Tu codigo es: ${otp}\nExpira en ${OTP_EXPIRY_MINUTES} minutos.`,
-      html: buildOtpEmailHtml(otp),
-    });
+    if (transporter) {
+      await transporter.sendMail({
+        from: process.env.SMTP_FROM,
+        to: email,
+        subject: 'Código de recuperación - Lumex',
+        text: `Tu código es: ${otp}\nExpira en ${OTP_EXPIRY_MINUTES} minutos.`,
+        html: buildOtpEmailHtml(otp),
+      });
+    }
 
-    return res.json({ success: true, message: 'Si el correo existe, recibirás un código de recuperación.', email });
-  } catch (error) {
-    console.error('Error en /forgot-password:', error.message);
-    return res.status(500).json({ success: false, message: 'No se pudo enviar el código de recuperación' });
+    console.log(`🔑 OTP para ${email}: ${otp}`);
+    return res.json({ success: true, message: 'Código enviado correctamente' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false, message: 'Error enviando código' });
   }
 });
 
@@ -237,7 +215,7 @@ app.post('/api/auth/verify-token', (req, res) => {
   const normalizedEmail = normalizeEmail(email);
   const cacheObj = otpMemCache.get(normalizedEmail);
   
-  if (!cacheObj) return res.status(400).json({ success: false, message: 'No hay código pendiente para este correo o expiró.' });
+  if (!cacheObj) return res.status(400).json({ success: false, message: 'No hay código pendiente o expiró.' });
   if (Date.now() > cacheObj.expiresAt) {
     otpMemCache.delete(normalizedEmail);
     return res.status(400).json({ success: false, message: 'El código ha expirado.' });
@@ -246,7 +224,6 @@ app.post('/api/auth/verify-token', (req, res) => {
     return res.status(400).json({ success: false, message: 'Código inválido.' });
   }
 
-  // Marcar token como verificado
   otpMemCache.set(normalizedEmail, { ...cacheObj, verified: true });
   return res.json({ success: true, message: 'Código verificado correctamente.' });
 });
@@ -256,69 +233,89 @@ app.post('/api/auth/reset-password', async (req, res) => {
   const normalizedEmail = normalizeEmail(email);
   const cacheObj = otpMemCache.get(normalizedEmail);
 
-  if (!cacheObj || !cacheObj.verified) return res.status(400).json({ success: false, message: 'Debes verificar el código antes de cambiar la contraseña.' });
+  if (!cacheObj || !cacheObj.verified) return res.status(400).json({ success: false, message: 'Verifica el código antes.' });
 
   try {
     await pool.query('UPDATE usuarios SET contrasena = ? WHERE email = ?', [passwordHash, normalizedEmail]);
-    otpMemCache.delete(normalizedEmail); // Limpiar caché
-    return res.json({ success: true, message: 'Contraseña actualizada correctamente.' });
+    otpMemCache.delete(normalizedEmail);
+    return res.json({ success: true, message: 'Contraseña actualizada' });
   } catch (err) {
-    return res.status(500).json({ success: false, message: 'Error interno cambiando la contraseña.' });
+    return res.status(500).json({ success: false, message: 'Error interno.' });
   }
 });
 
 // ==========================================
-// PAYMENTS
+// PAYMENTS & CREDITS
 // ==========================================
+
+// Registrar Pago y añadir créditos (Unificado)
 app.post('/api/payments/register', async (req, res) => {
-  const { userId, amount, description, creditsToAdd } = req.body;
+  const { userId, amount, monto, metodoPago, descripcion, creditsToAdd } = req.body;
+  
+  const safeUserId = Number(userId);
+  const safeCredits = Number(creditsToAdd || amount || 0);
+  const safeMonto = Number(monto || amount || 0);
+
   const conn = await pool.getConnection();
   try {
     await conn.beginTransaction();
 
-    const [user] = await conn.query('SELECT analisis_disponibles FROM usuarios WHERE id_usuario = ?', [userId]);
+    const [user] = await conn.query('SELECT id_usuario, analisis_disponibles FROM usuarios WHERE id_usuario = ?', [safeUserId]);
     if (user.length === 0) throw new Error('Usuario no encontrado');
 
-    const [paymentResult] = await conn.query(
-      'INSERT INTO pagos (id_usuario, monto, moneda, descripcion, estado, metodo_pago, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, NOW(), NOW())',
-      [userId, amount, 'USD', description, 'completado', 'tarjeta']
-    );
-
-    const idPago = paymentResult.insertId;
-
+    const idPago = crypto.randomUUID();
     await conn.query(
-      'INSERT INTO pagos_eventos (id_pago, tipo_evento, data, created_at) VALUES (?, ?, ?, NOW())',
-      [idPago, 'pago_exitoso_creditado', JSON.stringify({ credits_added: creditsToAdd })]
+      'INSERT INTO pagos (id_pago, id_usuario, monto, moneda, descripcion, metodo_pago, estado, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, NOW())',
+      [idPago, safeUserId, safeMonto, 'USD', descripcion || `Compra de ${safeCredits} créditos`, metodoPago || 'Tarjeta', 'completado']
     );
 
     const currentCredits = user[0].analisis_disponibles || 0;
-    await conn.query('UPDATE usuarios SET analisis_disponibles = ? WHERE id_usuario = ?', [currentCredits + creditsToAdd, userId]);
+    await conn.query('UPDATE usuarios SET analisis_disponibles = ? WHERE id_usuario = ?', [currentCredits + safeCredits, safeUserId]);
 
     await conn.commit();
-    
-    const [newPayment] = await conn.query('SELECT * FROM pagos WHERE id_pago = ?', [idPago]);
-    return res.json({ success: true, payment: newPayment[0] });
+    res.json({ success: true, message: `Se han añadido ${safeCredits} créditos correctamente` });
   } catch (err) {
     await conn.rollback();
-    return res.status(500).json({ success: false, message: err.message });
+    res.status(500).json({ success: false, message: err.message });
   } finally {
     conn.release();
   }
 });
 
+// Alias compatible para retrocompatibilidad inmediata o uso específico
+app.post('/api/auth/add-credits', async (req, res) => {
+  // Simplemente redirigir al de pagos unificado
+  return app._router.handle({ method: 'POST', url: '/api/payments/register', body: req.body }, res);
+});
+
 app.post('/api/payments/consume', async (req, res) => {
+  const { userId } = req.body;
+  try {
+    const [user] = await pool.query('SELECT id_usuario, analisis_disponibles FROM usuarios WHERE id_usuario = ?', [userId]);
+    if (user.length === 0) return res.status(404).json({ success: false, message: 'Usuario no encontrado' });
+
+    if ((user[0].analisis_disponibles || 0) <= 0) {
+      return res.status(403).json({ success: false, message: 'No tienes créditos suficientes' });
+    }
+
+    await pool.query('UPDATE usuarios SET analisis_disponibles = analisis_disponibles - 1 WHERE id_usuario = ?', [userId]);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// Alias compatible
+app.post('/api/auth/deduct-credit', async (req, res) => {
   const { userId } = req.body;
   try {
     const [user] = await pool.query('SELECT analisis_disponibles FROM usuarios WHERE id_usuario = ?', [userId]);
     if (user.length === 0) return res.status(404).json({ success: false, message: 'Usuario no encontrado' });
-
-    const currentCredits = user[0].analisis_disponibles || 0;
-    if (currentCredits <= 0) return res.status(403).json({ success: false, message: 'No tienes créditos suficientes' });
-
-    await pool.query('UPDATE usuarios SET analisis_disponibles = ? WHERE id_usuario = ?', [currentCredits - 1, userId]);
-    return res.json({ success: true });
+    if (user[0].analisis_disponibles <= 0) return res.status(400).json({ success: false, message: 'Créditos agotados' });
+    await pool.query('UPDATE usuarios SET analisis_disponibles = analisis_disponibles - 1 WHERE id_usuario = ?', [userId]);
+    res.json({ success: true });
   } catch (err) {
-    return res.status(500).json({ success: false, message: err.message });
+    res.status(500).json({ success: false, message: err.message });
   }
 });
 
@@ -327,17 +324,14 @@ app.get('/api/payments/all', async (req, res) => {
     const query = `
       SELECT p.*, u.nombre as usuarios_nombre, u.email as usuarios_email
       FROM pagos p
-      JOIN usuarios u ON p.id_usuario = u.id_usuario
+      LEFT JOIN usuarios u ON p.id_usuario = u.id_usuario
       ORDER BY p.created_at DESC
     `;
     const [rows] = await pool.query(query);
-    
-    // Transform specifically mimicking supabase nested "usuarios" object
     const data = rows.map(r => ({
       ...r,
       usuarios: { nombre: r.usuarios_nombre, email: r.usuarios_email }
     }));
-
     return res.json({ success: true, data });
   } catch (err) {
     return res.status(500).json({ success: false, message: err.message });
@@ -347,7 +341,6 @@ app.get('/api/payments/all', async (req, res) => {
 // ==========================================
 // ANALYSIS
 // ==========================================
-// Functions buildResultsWithNsp, buildResultsWithZScore, buildResults, etc..
 const toNumberOrNull = (value) => {
   if (value === null || value === undefined) return null;
   const normalized = String(value).replace(',', '.').trim();
@@ -362,157 +355,87 @@ const buildResultsWithNsp = (rows, nspKey) => {
     const normalizedNsp = nspValue === null ? 1 : Math.round(nspValue);
     const isAnomaly = normalizedNsp !== 1;
     const reconstructionError = nspValue === null ? 0 : Math.min(1, Math.max(0, Math.abs(nspValue - 1) / 2));
-
-    return {
-      id_analisis: null,
-      indice_registro: index,
-      error_reconstruccion: Number(reconstructionError.toFixed(6)),
-      es_anomalia: isAnomaly,
-    };
+    return { id_analisis: null, indice_registro: index, error_reconstruccion: Number(reconstructionError.toFixed(6)), es_anomalia: isAnomaly };
   });
 };
 
 const buildResultsWithZScore = (rows, headers) => {
   const numericHeaders = headers.filter((header) => rows.some((row) => toNumberOrNull(row?.[header]) !== null));
-
   if (numericHeaders.length === 0) {
-    return rows.map((_, index) => ({
-      id_analisis: null,
-      indice_registro: index,
-      error_reconstruccion: 0,
-      es_anomalia: false,
-    }));
+    return rows.map((_, index) => ({ id_analisis: null, indice_registro: index, error_reconstruccion: 0, es_anomalia: false }));
   }
-
   const stats = numericHeaders.map((header) => {
-    const values = rows.map((row) => toNumberOrNull(row?.[header])).filter((value) => value !== null);
-    if(values.length===0) return {header, mean:0, std:1};
-    const mean = values.reduce((sum, value) => sum + value, 0) / values.length;
-    const variance = values.reduce((sum, value) => sum + ((value - mean) ** 2), 0) / values.length;
-    const std = Math.sqrt(variance) || 1;
+    const values = rows.map((row) => toNumberOrNull(row?.[header])).filter((v) => v !== null);
+    const mean = values.reduce((s, v) => s + v, 0) / values.length;
+    const std = Math.sqrt(values.reduce((s, v) => s + ((v - mean) ** 2), 0) / values.length) || 1;
     return { header, mean, std };
   });
-
   return rows.map((row, index) => {
-    const scores = stats.map(({ header, mean, std }) => {
-      const value = toNumberOrNull(row?.[header]);
-      if (value === null) return 0;
-      return Math.abs((value - mean) / std);
-    });
-
-    const avgZScore = scores.reduce((sum, value) => sum + value, 0) / scores.length;
-    const reconstructionError = Math.min(1, avgZScore / 4);
-    const isAnomaly = avgZScore >= 2;
-
-    return {
-      id_analisis: null,
-      indice_registro: index,
-      error_reconstruccion: Number(reconstructionError.toFixed(6)),
-      es_anomalia: isAnomaly,
-    };
+    const scores = stats.map(({ header, mean, std }) => Math.abs((toNumberOrNull(row?.[header]) || 0 - mean) / std));
+    const avgZScore = scores.reduce((s, v) => s + v, 0) / scores.length;
+    return { id_analisis: null, indice_registro: index, error_reconstruccion: Number(Math.min(1, avgZScore / 4).toFixed(6)), es_anomalia: avgZScore >= 2 };
   });
 };
 
 const buildResults = ({ rows, headers }) => {
-  const nspKey = headers.find((header) => String(header || '').trim().toLowerCase() === 'nsp');
+  const nspKey = headers.find((h) => String(h || '').trim().toLowerCase() === 'nsp');
   return nspKey ? buildResultsWithNsp(rows, nspKey) : buildResultsWithZScore(rows, headers);
 };
 
+const RESULTS_BATCH_SIZE = 500;
 const insertResultadosInBatches = async (resultados, analisisId, connection) => {
-  const values = resultados.map(r => [
-    analisisId, r.indice_registro, r.error_reconstruccion, (r.es_anomalia ? 1 : 0)
-  ]);
-  
-  // mysql2 execute batch
   const sql = 'INSERT INTO resultados (id_analisis, indice_registro, error_reconstruccion, es_anomalia) VALUES ?';
-  
+  const values = resultados.map(r => [analisisId, r.indice_registro, r.error_reconstruccion, r.es_anomalia ? 1 : 0]);
   for (let i = 0; i < values.length; i += RESULTS_BATCH_SIZE) {
-    const chunk = values.slice(i, i + RESULTS_BATCH_SIZE);
-    await connection.query(sql, [chunk]);
+    await connection.query(sql, [values.slice(i, i + RESULTS_BATCH_SIZE)]);
   }
 };
 
 const MODEL_BY_ANALYSIS = {
-  anomalias: { nombre: 'RandomForestClassifier', descripcion: 'Modelo de deteccion de anomalias', tipo: 'clasificacion' },
-  clasificacion: { nombre: 'RandomForestClassifier', descripcion: 'Modelo de clasificacion', tipo: 'clasificacion' },
-  regresion: { nombre: 'RandomForestRegressor', descripcion: 'Modelo de regresion', tipo: 'regresion' },
-  clustering: { nombre: 'KMeans', descripcion: 'Modelo de clustering', tipo: 'clustering' },
+  anomalias: { nombre: 'RandomForestClassifier', descripcion: 'Detección de anomalías', tipo: 'clasificacion' },
+  clasificacion: { nombre: 'RandomForestClassifier', descripcion: 'Clasificación', tipo: 'clasificacion' },
+  regresion: { nombre: 'RandomForestRegressor', descripcion: 'Regresión', tipo: 'regresion' },
+  clustering: { nombre: 'KMeans', descripcion: 'Clustering', tipo: 'clustering' },
 };
 
 app.post('/analysis/save', async (req, res) => {
   try {
-    const startedAt = Date.now();
     const { userId, analysisType, datasetName, datasetPath, parsedDataset, analysisSummary } = req.body || {};
-
     const numericUserId = Number(userId);
-    if (!Number.isInteger(numericUserId)) return res.status(400).json({ success: false, message: 'userId inválido.' });
 
     const headers = Array.isArray(parsedDataset?.headers) ? parsedDataset.headers : [];
     const rows = Array.isArray(parsedDataset?.rows) ? parsedDataset.rows : [];
-    const summaryTotalRegistros = Number(analysisSummary?.totalRegistros);
-    const summaryTotalAnomalias = Number(analysisSummary?.totalAnomalias);
-    const hasSummary = Number.isFinite(summaryTotalRegistros) && summaryTotalRegistros > 0 && Number.isFinite(summaryTotalAnomalias);
-
-    if (!hasSummary && (headers.length === 0 || rows.length === 0)) {
-      return res.status(400).json({ success: false, message: 'Dataset sin encabezados o filas para análisis.' });
-    }
+    const hasSummary = !!analysisSummary?.totalRegistros;
 
     const conn = await pool.getConnection();
-
     try {
       await conn.beginTransaction();
 
       const modelConfig = MODEL_BY_ANALYSIS[analysisType] || MODEL_BY_ANALYSIS.anomalias;
-      const [modelInsert] = await conn.query(
-        'INSERT INTO modelos (nombre_modelo, descripcion, tipo_modelo, fecha_creacion) VALUES (?, ?, ?, NOW())',
-        [modelConfig.nombre, modelConfig.descripcion, modelConfig.tipo]
-      );
-      const idModelo = modelInsert.insertId;
-
-      const [datasetInsert] = await conn.query(
-        'INSERT INTO datasets (id_usuario, nombre_archivo, ruta_archivo, fecha_subida) VALUES (?, ?, ?, NOW())',
-        [numericUserId, String(datasetName || 'dataset.csv'), String(datasetPath || 'movil://dataset')]
-      );
-      const idDataset = datasetInsert.insertId;
-
+      const [modelInsert] = await conn.query('INSERT INTO modelos (nombre_modelo, descripcion, tipo_modelo, fecha_creacion) VALUES (?, ?, ?, NOW())', [modelConfig.nombre, modelConfig.descripcion, modelConfig.tipo]);
+      const [datasetInsert] = await conn.query('INSERT INTO datasets (id_usuario, nombre_archivo, ruta_archivo, fecha_subida) VALUES (?, ?, ?, NOW())', [numericUserId, datasetName || 'dataset.csv', datasetPath || 'movil://dataset']);
+      
       const resultados = hasSummary ? [] : buildResults({ rows, headers });
-      const totalRegistros = hasSummary ? Math.max(0, Math.floor(summaryTotalRegistros)) : rows.length;
-      const totalAnomalias = hasSummary
-        ? Math.max(0, Math.min(totalRegistros, Math.floor(summaryTotalAnomalias)))
-        : resultados.reduce((sum, row) => sum + (row.es_anomalia ? 1 : 0), 0);
+      const totalRegistros = hasSummary ? Number(analysisSummary.totalRegistros) : rows.length;
+      const totalAnomalias = hasSummary ? Number(analysisSummary.totalAnomalias) : resultados.reduce((s, r) => s + (r.es_anomalia ? 1 : 0), 0);
 
-      const [analisisInsert] = await conn.query(
-        'INSERT INTO analisis (id_usuario, id_dataset, id_modelo, fecha_analisis, total_registros, total_anomalias) VALUES (?, ?, ?, NOW(), ?, ?)',
-        [numericUserId, idDataset, idModelo, totalRegistros, totalAnomalias]
-      );
-      const idAnalisis = analisisInsert.insertId;
-
+      const [analisisInsert] = await conn.query('INSERT INTO analisis (id_usuario, id_dataset, id_modelo, fecha_analisis, total_registros, total_anomalias) VALUES (?, ?, ?, NOW(), ?, ?)', [numericUserId, datasetInsert.insertId, modelInsert.insertId, totalRegistros, totalAnomalias]);
+      
       if (!hasSummary && resultados.length > 0) {
-        await insertResultadosInBatches(resultados, idAnalisis, conn);
+        await insertResultadosInBatches(resultados, analisisInsert.insertId, conn);
       }
 
       await conn.commit();
-
-      return res.json({
-        success: true,
-        idModelo: idModelo,
-        idDataset: idDataset,
-        idAnalisis: idAnalisis,
-        totalRegistros,
-        totalAnomalias,
-        savedBy: 'server',
-        savedResultadosDetalle: !hasSummary,
-      });
-
-    } catch (dbErr) {
+      res.json({ success: true, idAnalisis: analisisInsert.insertId, totalRegistros, totalAnomalias });
+    } catch (err) {
       await conn.rollback();
-      throw dbErr;
+      throw err;
     } finally {
       conn.release();
     }
   } catch (error) {
-    console.error('Error en /analysis/save:', error.message);
-    return res.status(500).json({ success: false, message: error.message || 'Error inesperado guardando análisis.' });
+    console.error(error);
+    res.status(500).json({ success: false, message: error.message });
   }
 });
 
@@ -527,12 +450,9 @@ app.post('/api/analysis/history', async (req, res) => {
       JOIN datasets d ON a.id_dataset = d.id_dataset
       JOIN modelos m ON a.id_modelo = m.id_modelo
       WHERE a.id_usuario = ?
-      ORDER BY a.fecha_analisis DESC
-      LIMIT 50
+      ORDER BY a.fecha_analisis DESC LIMIT 50
     `;
     const [rows] = await pool.query(query, [userId]);
-    
-    // Transform to match shape expected by datasetAnalysisService
     const mapped = rows.map(item => ({
       id_analisis: item.id_analisis,
       fecha_analisis: item.fecha_analisis,
@@ -541,22 +461,53 @@ app.post('/api/analysis/history', async (req, res) => {
       datasets: { nombre_archivo: item.nombre_archivo, ruta_archivo: item.ruta_archivo },
       modelos: { tipo_modelo: item.tipo_modelo, descripcion: item.descripcion, nombre_modelo: item.nombre_modelo }
     }));
-    
     return res.json({ success: true, data: mapped });
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message });
   }
 });
 
-
-app.post('/admin/delete-user', async (req, res) => {
-  res.json({ success: false, message: 'Por implementar borrado en MySQL.' });
+// Admin endpoints
+app.get('/api/admin/users', async (req, res) => {
+  try {
+    const [rows] = await pool.query('SELECT id_usuario, nombre, email, usuario, rol, fecha_registro FROM usuarios ORDER BY fecha_registro DESC');
+    res.json({ success: true, users: rows });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
 });
 
+app.post('/api/admin/update-user', async (req, res) => {
+  const { id_usuario, nombre, email, usuario, rol, telefono } = req.body;
+  try {
+    await pool.query('UPDATE usuarios SET nombre = ?, email = ?, usuario = ?, rol = ?, telefono = ? WHERE id_usuario = ?', [nombre, email, usuario, rol, telefono, id_usuario]);
+    res.json({ success: true, message: 'Usuario actualizado' });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+app.delete('/api/admin/user/:id', async (req, res) => {
+  try {
+    await pool.query('DELETE FROM usuarios WHERE id_usuario = ?', [req.params.id]);
+    res.json({ success: true, message: 'Usuario eliminado' });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// 404 — Ruta no encontrada
 app.use((req, res) => {
-  res.status(404).json({ success: false, message: 'Ruta no encontrada' });
+  res.status(404).json({ success: false, message: `Ruta no encontrada: ${req.method} ${req.url}` });
 });
 
-app.listen(PORT, () => {
-  console.log(`Servidor escuchando en puerto ${PORT} usando DB MySQL`);
+// 500 — Error global (4 parámetros obligatorios para que Express lo reconozca como error handler)
+// eslint-disable-next-line no-unused-vars
+app.use((err, req, res, next) => {
+  console.error('[SERVER ERROR]', err?.message || err);
+  res.status(500).json({ success: false, message: err?.message || 'Error interno del servidor' });
+});
+
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`🚀 Servidor MySQL corriendo en puerto ${PORT}`);
 });

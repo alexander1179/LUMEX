@@ -1,5 +1,5 @@
 // src/services/email/emailService.js
-import { getApiUrlCandidates, endpoints } from '../services/api/apiConfig';
+import { getApiUrlCandidates, endpoints } from '../services/lumex';
 
 /**
  * Servicio de envío de notificaciones por correo electrónico a través del backend de Lumex.

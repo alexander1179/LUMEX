@@ -185,6 +185,10 @@ export const saveAnalysisInSupabase = async ({
   };
 };
 
+// Alias para compatibilidad con imports que usan saveAnalysis
+export const saveAnalysis = saveAnalysisInSupabase;
+
+
 export const fetchAnalysisHistoryByUser = async (userId) => {
   const numericUserId = Number(userId);
   if (!Number.isInteger(numericUserId)) return [];

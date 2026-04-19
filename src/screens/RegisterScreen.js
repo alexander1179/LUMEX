@@ -12,6 +12,7 @@ import {
   Image,
 } from 'react-native';
 import { useTranslation } from 'react-i18next';
+import Checkbox from "expo-checkbox";
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../styles/colors';
 import { validators } from '../utils/validators';
@@ -21,10 +22,11 @@ import { LanguageSelector } from '../components/common/LanguageSelector';
 import { AccessQuickNav } from '../components/common/AccessQuickNav';
 import { registerUser } from '../services/api/authService';
 
+
 const { width, height } = Dimensions.get('window');
 const icon = require('../../assets/lumex.jpeg');
 
-export default function RegisterScreen({ navigation }) {
+export default function RegisterScreen({ navigation, route }) {
   const { t } = useTranslation();
   const [nombre, setNombre] = useState("");
   const [email, setEmail] = useState("");
@@ -35,6 +37,7 @@ export default function RegisterScreen({ navigation }) {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [acepta, setAcepta] = useState(false);
   const [passwordReqs, setPasswordReqs] = useState({
     length: false, uppercase: false, lowercase: false, number: false
   });
@@ -65,6 +68,24 @@ export default function RegisterScreen({ navigation }) {
     ]).start();
   }, [fadeAnim, logoScaleAnim, cardSlideAnim]);
 
+  // Restaurar estado si viene de la pantalla de Privacidad
+  useEffect(() => {
+    if (route.params?.formData) {
+      const { name, email: savedEmail, phone, username, password: savedPassword } = route.params.formData;
+      if (name) setNombre(name);
+      if (savedEmail) setEmail(savedEmail);
+      if (phone) setTelefono(phone);
+      if (username) setUsuario(username);
+      if (savedPassword) {
+        setPassword(savedPassword);
+        validatePassword(savedPassword);
+      }
+    }
+    if (route.params?.accepted) {
+      setAcepta(true);
+    }
+  }, [route.params]);
+
   const theme = {
     background: '#eaf6f5',
     card: 'rgba(255,255,255,0.86)',
@@ -91,6 +112,11 @@ export default function RegisterScreen({ navigation }) {
     
     if (!nombre || !email || !usuario || !password) {
       Alert.alert(t('common.error'), t('errors.requiredFields'));
+      return;
+    }
+
+    if (!acepta) {
+      Alert.alert('Atención', 'Debes aceptar las políticas de seguridad para registrarte.');
       return;
     }
     
@@ -162,9 +188,6 @@ export default function RegisterScreen({ navigation }) {
         >
           <Ionicons name="chevron-back-outline" size={22} color={theme.accent} />
         </TouchableOpacity>
-        <View style={styles.languageWrapTop}>
-          <LanguageSelector style={styles.languageSelectorButton} />
-        </View>
       </View>
 
       <View style={styles.scrollContent}>
@@ -298,6 +321,34 @@ export default function RegisterScreen({ navigation }) {
             </TouchableOpacity>
           </View>
 
+          <View style={styles.checkboxRow}>
+            <Checkbox
+              value={acepta}
+              onValueChange={setAcepta}
+              color={acepta ? theme.accent : undefined}
+            />
+            <View style={styles.termsTextWrap}>
+              <Text style={[styles.checkboxText, { color: theme.mutedText }]}>Acepto las </Text>
+              <TouchableOpacity onPress={() => {
+                const formData = {
+                  name: nombre,
+                  email: email,
+                  phone: telefono,
+                  username: usuario,
+                  password: password
+                };
+                navigation.navigate('Privacy', { formData });
+              }}>
+                <Text style={{
+                  color: theme.accent, 
+                  fontSize: 13, 
+                  fontWeight: '700',
+                  textDecorationLine: 'underline'
+                }}>Politicas de Seguridad</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+
           <CustomButton 
             title={loading ? t('common.loading') : t('register.registerButton')}
             onPress={handleRegister}
@@ -317,7 +368,6 @@ export default function RegisterScreen({ navigation }) {
           </TouchableOpacity>
         </Animated.View>
       </View>
-      <AccessQuickNav navigation={navigation} current="usuario" />
     </View>
   );
 }
@@ -493,5 +543,22 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     fontSize: 13,
     fontWeight: '700',
+  },
+  checkboxRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 20,
+    marginTop: 10,
+    width: '100%',
+    justifyContent: 'center',
+    paddingHorizontal: 20
+  },
+  termsTextWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginLeft: 10,
+  },
+  checkboxText: {
+    fontSize: 13,
   },
 });

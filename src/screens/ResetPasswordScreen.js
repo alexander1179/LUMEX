@@ -5,20 +5,24 @@ import {
   TextInput,
   TouchableOpacity,
   Alert,
-  StyleSheet
+  StyleSheet,
+  Dimensions
 } from 'react-native';
 import { useTranslation } from 'react-i18next';
+import { Ionicons } from '@expo/vector-icons';
 import { resetPassword } from '../services/api/authService';
+
 import { colors } from '../styles/colors';
 import { validators } from '../utils/validators';
 import { CustomButton } from '../components/common/CustomButton';
 import { PasswordRequirements } from '../components/auth/PasswordRequirements';
-import { LanguageSelector } from '../components/common/LanguageSelector';
 import { AccessQuickNav } from '../components/common/AccessQuickNav';
+
+const { width } = Dimensions.get('window');
 
 export default function ResetPasswordScreen({ route, navigation }) {
   const { t } = useTranslation();
-  const { metodo = 'email' } = route.params || {};
+  const { email, metodo = 'email' } = route.params || {};
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -28,6 +32,17 @@ export default function ResetPasswordScreen({ route, navigation }) {
     lowercase: false,
     number: false
   });
+
+  const theme = {
+    background: '#eaf6f5',
+    card: 'rgba(255,255,255,0.86)',
+    cardBorder: 'rgba(15,109,120,0.22)',
+    input: '#f4fbfb',
+    inputText: '#15333d',
+    mutedText: '#4f666c',
+    title: '#15333d',
+    accent: '#0f6d78',
+  };
 
   const validatePassword = (pass) => {
     const validation = validators.validatePassword(pass);
@@ -41,6 +56,11 @@ export default function ResetPasswordScreen({ route, navigation }) {
 
   const handleResetPassword = async () => {
     if (loading) return;
+
+    if (!email) {
+      Alert.alert("Error", "No se encontró el correo electrónico del usuario.");
+      return;
+    }
 
     const passwordValidation = validators.validatePassword(newPassword);
     if (!passwordValidation.isValid) {
@@ -56,7 +76,7 @@ export default function ResetPasswordScreen({ route, navigation }) {
     setLoading(true);
 
     try {
-      const result = await resetPassword(newPassword);
+      const result = await resetPassword(email, newPassword);
 
       if (result.success) {
         Alert.alert(
@@ -75,51 +95,57 @@ export default function ResetPasswordScreen({ route, navigation }) {
   };
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { backgroundColor: theme.background }]}>
       <View style={styles.header}>
         <TouchableOpacity 
-          style={styles.backButton}
+          style={[styles.backButton, { backgroundColor: 'rgba(15,109,120,0.1)' }]}
           onPress={() => navigation.goBack()}
         >
-          <Text style={styles.backButtonText}>←</Text>
+          <Ionicons name="chevron-back" size={24} color={theme.accent} />
         </TouchableOpacity>
-        <LanguageSelector />
       </View>
 
-      <Text style={styles.title}>
-        Nueva Contraseña
-      </Text>
+      <View style={styles.content}>
+        <Text style={[styles.title, { color: theme.title }]}>
+          Nueva Contraseña
+        </Text>
 
-      <View style={styles.card}>
-        <TextInput
-          placeholder="Nueva contraseña"
-          placeholderTextColor="#aaa"
-          secureTextEntry
-          style={styles.input}
-          value={newPassword}
-          onChangeText={(text) => {
-            setNewPassword(text);
-            validatePassword(text);
-          }}
-        />
+        <View style={[styles.card, { backgroundColor: theme.card, borderColor: theme.cardBorder }]}>
+          <Text style={[styles.subtitle, { color: theme.mutedText }]}>
+            Establece tu nueva clave de acceso para {email}
+          </Text>
 
-        <PasswordRequirements requirements={passwordReqs} />
+          <TextInput
+            placeholder="Nueva contraseña"
+            placeholderTextColor="#aaa"
+            secureTextEntry
+            style={[styles.input, { backgroundColor: theme.input, color: theme.inputText, borderColor: 'rgba(15,109,120,0.1)' }]}
+            value={newPassword}
+            onChangeText={(text) => {
+              setNewPassword(text);
+              validatePassword(text);
+            }}
+          />
 
-        <TextInput
-          placeholder="Confirmar contraseña"
-          placeholderTextColor="#aaa"
-          secureTextEntry
-          style={styles.input}
-          value={confirmPassword}
-          onChangeText={setConfirmPassword}
-        />
+          <PasswordRequirements requirements={passwordReqs} />
 
-        <CustomButton
-          title={loading ? "Actualizando..." : "Cambiar contraseña"}
-          onPress={handleResetPassword}
-          loading={loading}
-          disabled={loading}
-        />
+          <TextInput
+            placeholder="Confirmar contraseña"
+            placeholderTextColor="#aaa"
+            secureTextEntry
+            style={[styles.input, { backgroundColor: theme.input, color: theme.inputText, borderColor: 'rgba(15,109,120,0.1)' }]}
+            value={confirmPassword}
+            onChangeText={setConfirmPassword}
+          />
+
+          <CustomButton
+            title={loading ? "Actualizando..." : "Cambiar contraseña"}
+            onPress={handleResetPassword}
+            loading={loading}
+            disabled={loading}
+            backgroundColor={theme.accent}
+          />
+        </View>
       </View>
 
       <AccessQuickNav navigation={navigation} current="usuario" />
@@ -130,55 +156,54 @@ export default function ResetPasswordScreen({ route, navigation }) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.primary,
     alignItems: "center",
-    paddingTop: 60,
-    paddingBottom: 100,
   },
   header: {
-    position: 'absolute',
-    top: 50,
-    left: 0,
-    right: 0,
+    width: '100%',
+    paddingTop: 50,
+    paddingHorizontal: 20,
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 15,
     zIndex: 10,
   },
   backButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    width: 45,
+    height: 45,
+    borderRadius: 15,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  backButtonText: {
-    color: 'white',
-    fontSize: 24,
-    fontWeight: 'bold',
+  content: {
+    width: '100%',
+    alignItems: 'center',
+    marginTop: 40,
   },
   title: {
-    fontSize: 22,
-    fontWeight: "bold",
-    color: "white",
-    marginTop: 100,
-    marginBottom: 30,
+    fontSize: 26,
+    fontWeight: "800",
+    marginBottom: 10,
+  },
+  subtitle: {
+    fontSize: 14,
+    textAlign: 'center',
+    marginBottom: 25,
+    paddingHorizontal: 10,
   },
   card: {
     width: "90%",
-    backgroundColor: "#1c1c1c",
-    borderRadius: 25,
-    padding: 20,
-    elevation: 5,
+    borderRadius: 30,
+    padding: 25,
+    borderWidth: 1,
+    elevation: 4,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 10,
   },
   input: {
-    backgroundColor: "#333",
     padding: 15,
-    borderRadius: 20,
+    borderRadius: 15,
     marginBottom: 15,
-    color: "white",
     fontSize: 16,
+    borderWidth: 1,
   },
 });

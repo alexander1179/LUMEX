@@ -158,7 +158,7 @@ app.post('/api/auth/register', async (req, res) => {
     }
 
     const [result] = await pool.query(
-      'INSERT INTO usuarios (nombre, email, usuario, rol, contrasena, telefono, fecha_registro) VALUES (?, ?, ?, ?, ?, ?, NOW())',
+      'INSERT INTO usuarios (nombre, email, usuario, rol, contrasena, telefono, fecha_registro, terminos_aceptados) VALUES (?, ?, ?, ?, ?, ?, NOW(), 1)',
       [name, email || null, username || null, finalRole, passwordHash, phone || null]
     );
     
@@ -533,7 +533,7 @@ app.get('/api/admin/users', async (req, res) => {
 app.get('/api/superadmin/users', async (req, res) => {
   try {
     const query = `
-      SELECT id_usuario, nombre, email, usuario, rol, estado, fecha_registro, 
+      SELECT id_usuario, nombre, email, usuario, rol, estado, fecha_registro, telefono,
              puede_gestionar_usuarios, permiso_editar, permiso_bloquear,
              mod_nuevo_paciente, mod_gestion_usuarios, mod_reportes, mod_actividad, mod_alertas
       FROM usuarios 
@@ -568,10 +568,31 @@ app.post('/api/superadmin/toggle-admin-permission', async (req, res) => {
 });
 
 app.post('/api/admin/update-user', async (req, res) => {
-  const { id_usuario, nombre, email, usuario, rol, telefono } = req.body;
+  const { id_usuario, nombre, email, usuario, rol, telefono, passwordHash } = req.body;
   try {
-    await pool.query('UPDATE usuarios SET nombre = ?, email = ?, usuario = ?, rol = ?, telefono = ? WHERE id_usuario = ?', [nombre, email, usuario, rol, telefono, id_usuario]);
-    res.json({ success: true, message: 'Usuario actualizado' });
+    if (passwordHash) {
+      await pool.query(
+        'UPDATE usuarios SET nombre = ?, email = ?, usuario = ?, rol = ?, telefono = ?, contrasena = ? WHERE id_usuario = ?', 
+        [nombre, email || null, usuario, rol, telefono || null, passwordHash, id_usuario]
+      );
+    } else {
+      await pool.query(
+        'UPDATE usuarios SET nombre = ?, email = ?, usuario = ?, rol = ?, telefono = ? WHERE id_usuario = ?', 
+        [nombre, email || null, usuario, rol, telefono || null, id_usuario]
+      );
+    }
+    res.json({ success: true, message: 'Cambios guardados correctamente' });
+  } catch (error) {
+    console.error('Error DB Update:', error.message);
+    res.status(500).json({ success: false, message: `Error en base de datos: ${error.message}` });
+  }
+});
+
+app.delete('/api/admin/user/:userId', async (req, res) => {
+  const { userId } = req.params;
+  try {
+    await pool.query('DELETE FROM usuarios WHERE id_usuario = ?', [userId]);
+    res.json({ success: true, message: 'Usuario eliminado' });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }

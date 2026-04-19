@@ -144,9 +144,13 @@ app.get('/health', async (_req, res) => {
 // AUTH & USERS
 // ==========================================
 app.post('/api/auth/register', async (req, res) => {
-  let { email, username, name, phone, passwordHash } = req.body;
+  let { email, username, name, phone, passwordHash, rol } = req.body;
   if (!email && !username) return res.status(400).json({ success: false, message: 'Faltan datos de usuario.' });
   
+  // Validar rol permitido, si no viene o no es válido, se pone 'usuario' por defecto
+  const validRoles = ['usuario', 'administrador', 'enfermero', 'doctor'];
+  const finalRole = validRoles.includes(String(rol).toLowerCase()) ? String(rol).toLowerCase() : 'usuario';
+
   try {
     const [existing] = await pool.query('SELECT id_usuario FROM usuarios WHERE email = ? OR usuario = ? LIMIT 1', [email, username]);
     if (existing.length > 0) {
@@ -155,7 +159,7 @@ app.post('/api/auth/register', async (req, res) => {
 
     const [result] = await pool.query(
       'INSERT INTO usuarios (nombre, email, usuario, rol, contrasena, telefono, fecha_registro) VALUES (?, ?, ?, ?, ?, ?, NOW())',
-      [name, email || null, username || null, 'usuario', passwordHash, phone || null]
+      [name, email || null, username || null, finalRole, passwordHash, phone || null]
     );
     
     const [newUser] = await pool.query('SELECT * FROM usuarios WHERE id_usuario = ?', [result.insertId]);

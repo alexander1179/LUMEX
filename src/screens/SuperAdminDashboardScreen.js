@@ -9,9 +9,15 @@ import { storageService } from '../services/storage/storageService';
 import { getApiUrl } from '../services/api/apiConfig';
 
 const ROLES = [
-  { id: 'usuario', label: 'Usuarios', icon: 'people-outline', color: '#0f6d78', description: 'Pacientes y usuarios del sistema' },
-  { id: 'administrador', label: 'Administradores', icon: 'shield-checkmark-outline', color: '#1a7da2', description: 'Gestores de clínicas y pacientes' },
-  { id: 'superadministrador', label: 'Superadmins', icon: 'key-outline', color: '#051821', description: 'Control total de la plataforma' },
+  { id: 'gestion_personas', label: 'Gestión de Personas', icon: 'people-outline', color: '#0f6d78', description: 'Administración de Usuarios y Personal del Sistema' },
+  { id: 'alta_cuenta', label: 'Registro de Personal y Usuarios', icon: 'person-add-outline', color: '#1a7da2', description: 'Alta de nuevas credenciales con asignación de rol jerárquico' },
+];
+
+const ROLE_MODULES = [
+  { id: 'administrador', label: 'Administradores', icon: 'shield-checkmark-outline', color: '#1a7da2', description: 'Gestión de perfiles administrativos' },
+  { id: 'doctor', label: 'Doctores', icon: 'medical-outline', color: '#2b7896', description: 'Gestión de personal médico' },
+  { id: 'enfermero', label: 'Enfermeros', icon: 'heart-outline', color: '#10ac84', description: 'Gestión de personal de enfermería' },
+  { id: 'usuario', label: 'Usuarios', icon: 'people-outline', color: '#0f6d78', description: 'Pacientes y usuarios finales' },
 ];
 
 const TABS = [
@@ -26,12 +32,17 @@ export default function SuperAdminDashboardScreen({ navigation }) {
   const [loading, setLoading] = useState(true);
   const [selectedRole, setSelectedRole] = useState(null);
   const [activeTab, setActiveTab] = useState('inicio');
+  const [currentSubView, setCurrentSubView] = useState('main'); // 'main' o 'role_selection'
   
   // Modales
   const [showListModal, setShowListModal] = useState(false);
   const [showDetailModal, setShowDetailModal] = useState(false);
   const [showMyProfileModal, setShowMyProfileModal] = useState(false);
   const [showPermissionsModal, setShowPermissionsModal] = useState(false);
+  const [showRegisterModal, setShowRegisterModal] = useState(false);
+  
+  const [registerFormData, setRegisterFormData] = useState({ nombre: '', usuario: '', email: '', telefono: '', password: '', rol: 'usuario' });
+  const [isRegistering, setIsRegistering] = useState(false);
 
   // Perfil
   const [profileNombre, setProfileNombre] = useState('');
@@ -120,7 +131,23 @@ export default function SuperAdminDashboardScreen({ navigation }) {
   const isMaster = currentUser?.usuario === 'superadmin01' || currentUser?.id_usuario === 1;
 
   const handleSelectRole = (roleId) => {
-    const list = allUsers.filter(u => String(u.rol).toLowerCase() === roleId.toLowerCase() && u.id_usuario !== currentUser?.id_usuario);
+    if (roleId === 'alta_cuenta') {
+      setRegisterFormData({ nombre: '', usuario: '', email: '', telefono: '', password: '', rol: 'usuario' });
+      setShowRegisterModal(true);
+      return;
+    }
+
+    if (roleId === 'gestion_personas') {
+      setCurrentSubView('role_selection');
+      return;
+    }
+    
+    // Si llegamos aquí es porque seleccionamos un rol específico desde la sub-vista
+    const list = allUsers.filter(u => {
+      const r = String(u.rol || '').toLowerCase();
+      return r === roleId.toLowerCase() && u.id_usuario !== currentUser?.id_usuario;
+    });
+    
     setFilteredUsers(list);
     setSelectedRole(roleId);
     setShowListModal(true);
@@ -163,6 +190,49 @@ export default function SuperAdminDashboardScreen({ navigation }) {
     ]);
   };
 
+  const handleRegister = async () => {
+    const { nombre, usuario, email, password, rol } = registerFormData;
+    if (!nombre.trim() || !usuario.trim() || !password.trim()) {
+      Alert.alert('Incompleto', 'Nombre, Usuario y Contraseña son obligatorios.');
+      return;
+    }
+    
+    setIsRegistering(true);
+    try {
+      // Reutilizamos el servicio de registro pasando el rol
+      const res = await (async (payload) => {
+          try {
+              const r = await fetch(`${getApiUrl()}/auth/register`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                      name: payload.nombre,
+                      username: payload.usuario,
+                      email: payload.email,
+                      phone: payload.telefono,
+                      passwordHash: payload.password, // el servicio ya lo hashea si usamos registerUser
+                      rol: payload.rol
+                  })
+              });
+              return await r.json();
+          } catch (e) { return { success: false, message: e.message }; }
+      })(registerFormData);
+
+      if (res.success) {
+        Alert.alert('Éxito', `Cuenta creada para: ${nombre} (${rol})`);
+        setShowRegisterModal(false);
+        setRegisterFormData({ nombre: '', usuario: '', email: '', telefono: '', password: '', rol: 'usuario' });
+        await loadUsers();
+      } else {
+        Alert.alert('Error', res.message || 'No se pudo crear la cuenta.');
+      }
+    } catch (e) {
+      Alert.alert('Falla', e.message);
+    } finally {
+      setIsRegistering(false);
+    }
+  };
+
   const renderRoleCard = ({ item }) => (
     <TouchableOpacity style={styles.roleCard} onPress={() => handleSelectRole(item.id)} activeOpacity={0.8}>
       <View style={[styles.roleIconBox, { backgroundColor: item.color + '20' }]}><Ionicons name={item.icon} size={30} color={item.color} /></View>
@@ -171,13 +241,37 @@ export default function SuperAdminDashboardScreen({ navigation }) {
     </TouchableOpacity>
   );
 
-  const renderInicio = () => (
-    <View style={{flex:1}}>
-      <Text style={styles.sectionTitle}>Selecciona un rol para gestionar</Text>
-      {ROLES.map((role) => (<View key={role.id}>{renderRoleCard({ item: role })}</View>))}
-      {loading && <ActivityIndicator color="#0f6d78" size="large" style={{ marginTop: 20 }} />}
-    </View>
-  );
+  const renderInicio = () => {
+    if (currentSubView === 'role_selection') {
+      return (
+        <View style={{flex: 1}}>
+          <View style={{flexDirection: 'row', alignItems: 'center', marginBottom: 20}}>
+            <TouchableOpacity onPress={() => setCurrentSubView('main')} style={{marginRight: 15, padding: 5}}>
+              <Ionicons name="arrow-back" size={24} color="#0f6d78" />
+            </TouchableOpacity>
+            <Text style={[styles.sectionTitle, {marginBottom: 0, textAlign: 'left'}]}>Selecciona categoría</Text>
+          </View>
+          <View style={{flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between'}}>
+             {ROLE_MODULES.map(role => (
+                <TouchableOpacity key={role.id} style={[styles.roleCard, {width: '48%', flexDirection: 'column', height: 160, padding: 15}]} onPress={() => handleSelectRole(role.id)}>
+                   <View style={[styles.roleIconBox, { backgroundColor: role.color + '20', marginBottom: 12 }]}><Ionicons name={role.icon} size={28} color={role.color} /></View>
+                   <Text style={[styles.roleLabel, {fontSize: 14, textAlign: 'center'}]}>{role.label}</Text>
+                   <Text style={[styles.roleDescription, {textAlign: 'center', fontSize: 10}]}>{role.description}</Text>
+                </TouchableOpacity>
+             ))}
+          </View>
+        </View>
+      );
+    }
+
+    return (
+      <View style={{flex:1}}>
+        <Text style={styles.sectionTitle}>Panel de Administración Global</Text>
+        {ROLES.map((role) => (<View key={role.id}>{renderRoleCard({ item: role })}</View>))}
+        {loading && <ActivityIndicator color="#0f6d78" size="large" style={{ marginTop: 20 }} />}
+      </View>
+    );
+  };
 
   const renderAjustes = () => (
     <View style={{flex:1}}>
@@ -228,7 +322,7 @@ export default function SuperAdminDashboardScreen({ navigation }) {
         {TABS.map((tab) => {
           const active = activeTab === tab.key;
           return (
-            <TouchableOpacity key={tab.key} style={[styles.tabButton, active && styles.tabButtonActive]} onPress={() => setActiveTab(tab.key)}>
+            <TouchableOpacity key={tab.key} style={[styles.tabButton, active && styles.tabButtonActive]} onPress={() => { setActiveTab(tab.key); setCurrentSubView('main'); }}>
               <Ionicons name={tab.icon} size={24} color={active ? '#2b7896' : '#a2becb'} />
               <Text style={[styles.tabText, active && styles.tabTextActive]}>{tab.label}</Text>
             </TouchableOpacity>
@@ -241,21 +335,28 @@ export default function SuperAdminDashboardScreen({ navigation }) {
         <View style={styles.modalOverlay}>
           <View style={styles.modalContainer}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalHeaderTitle}>Personas: {selectedRole}</Text>
-              <TouchableOpacity onPress={() => setShowListModal(false)}>
-                <Ionicons name="close-circle" size={30} color="#ccc" />
-              </TouchableOpacity>
+              <Text style={styles.modalHeaderTitle}>{selectedRole}</Text>
             </View>
             <FlatList data={filteredUsers} keyExtractor={(item) => String(item.id_usuario)}
               renderItem={({ item }) => (
                 <TouchableOpacity style={styles.userListItem} onPress={() => handleSelectUser(item)}>
                   <View style={styles.userListAvatar}><Text style={styles.userListAvatarText}>{(item.nombre || 'U')[0].toUpperCase()}</Text></View>
-                  <View style={{ flex: 1 }}><Text style={styles.userListName}>{item.nombre || item.usuario}</Text><Text style={styles.userListEmail}>{item.email}</Text></View>
+                  <View style={{ flex: 1 }}>
+                        <Text style={styles.userListName}>{item.nombre || item.usuario}</Text>
+                        <View style={{backgroundColor: '#e8f4f9', alignSelf: 'flex-start', paddingHorizontal: 6, paddingVertical: 1, borderRadius: 4, marginTop: 2}}>
+                            <Text style={{fontSize: 9, color: '#0f6d78', fontWeight: 'bold', textTransform: 'uppercase'}}>{item.rol}</Text>
+                        </View>
+                   </View>
                   <Ionicons name="eye-outline" size={20} color="#0f6d78" />
                 </TouchableOpacity>
               )}
-              ListEmptyComponent={<Text style={styles.emptyText}>No hay personas</Text>}
+              ListEmptyComponent={<Text style={styles.emptyText}>No hay personas registradas</Text>}
             />
+            <View style={{marginTop: 15, borderTopWidth: 1, borderTopColor: '#f0f0f0', paddingTop: 15, alignItems: 'center'}}>
+                <TouchableOpacity style={[styles.btnSave, {backgroundColor: '#5d7f8d', paddingHorizontal: 40, paddingVertical: 10, minWidth: 120, justifyContent: 'center', alignItems: 'center'}]} onPress={() => setShowListModal(false)}>
+                    <Text style={styles.btnSaveText}>Salir</Text>
+                </TouchableOpacity>
+             </View>
           </View>
         </View>
       </Modal>
@@ -265,7 +366,7 @@ export default function SuperAdminDashboardScreen({ navigation }) {
         <View style={styles.modalOverlay}>
           <View style={[styles.modalContainer, {height: '90%'}]}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalHeaderTitle}>Administradores Regulares</Text>
+              <Text style={styles.modalHeaderTitle}>Administradores</Text>
               <TouchableOpacity onPress={() => setShowPermissionsModal(false)}><Ionicons name="close-circle" size={30} color="#ccc" /></TouchableOpacity>
             </View>
             <Text style={{color: '#666', marginBottom: 15, fontSize: 13}}>Define qué acciones específicas puede realizar cada administrador sobre los registros del sistema.</Text>
@@ -282,27 +383,7 @@ export default function SuperAdminDashboardScreen({ navigation }) {
                     </View>
 
                     <View style={{gap: 12}}>
-                        <Text style={{fontSize: 11, fontWeight: '800', color: '#888', textTransform: 'uppercase', marginBottom: 4}}>Acciones sobre Datos</Text>
-                        <View style={styles.permissionToggleRow}>
-                            <Text style={styles.permissionToggleLabel}>Permitir Edición / Creación</Text>
-                            <Switch
-                                value={item.permiso_editar === 1 || item.permiso_editar === true}
-                                onValueChange={(val) => handleToggleAdminPermission(item.id_usuario, 'permiso_editar', val)}
-                                trackColor={{ false: "#d9dbda", true: "#2b7896" }}
-                                thumbColor="#fff"
-                            />
-                        </View>
-                        <View style={styles.permissionToggleRow}>
-                            <Text style={styles.permissionToggleLabel}>Permitir Bloqueo / Borrado</Text>
-                            <Switch
-                                value={item.permiso_bloquear === 1 || item.permiso_bloquear === true}
-                                onValueChange={(val) => handleToggleAdminPermission(item.id_usuario, 'permiso_bloquear', val)}
-                                trackColor={{ false: "#d9dbda", true: "#b85a5a" }}
-                                thumbColor="#fff"
-                            />
-                        </View>
-
-                        <Text style={{fontSize: 11, fontWeight: '800', color: '#888', textTransform: 'uppercase', marginTop: 8, marginBottom: 4}}>Acceso a Módulos funcionales</Text>
+                        <Text style={{fontSize: 11, fontWeight: '800', color: '#888', textTransform: 'uppercase', marginTop: 0, marginBottom: 4}}>Acceso a Módulos funcionales</Text>
                         
                         <View style={styles.permissionToggleRow}>
                             <Text style={styles.permissionToggleLabel}>Módulo "Nuevo Paciente"</Text>
@@ -390,7 +471,55 @@ export default function SuperAdminDashboardScreen({ navigation }) {
                  <View style={styles.roleSelector}>{['usuario', 'administrador', 'superadministrador'].map((r) => (<TouchableOpacity key={r} style={[styles.roleMiniBtn, localFormData.rol === r && styles.roleMiniBtnActive]} onPress={() => setLocalFormData({...localFormData, rol: r})}><Text style={[styles.roleMiniText, localFormData.rol === r && styles.roleMiniTextActive]}>{r[0].toUpperCase()}</Text></TouchableOpacity>))}</View>
               </View>)}
             </ScrollView>
-            <View style={styles.detailFooter}><TouchableOpacity style={styles.btnDelete} onPress={handleDelete}><Ionicons name="trash-outline" size={20} color="#ff3b3b" /><Text style={styles.btnDeleteText}>Eliminar</Text></TouchableOpacity><TouchableOpacity style={styles.btnSave} onPress={handleSave}><Text style={styles.btnSaveText}>Guardar</Text></TouchableOpacity></View>
+             <View style={styles.detailFooter}><TouchableOpacity style={styles.btnDelete} onPress={handleDelete}><Ionicons name="trash-outline" size={20} color="#ff3b3b" /><Text style={styles.btnDeleteText}>Eliminar</Text></TouchableOpacity><TouchableOpacity style={styles.btnSave} onPress={handleSave}><Text style={styles.btnSaveText}>Guardar</Text></TouchableOpacity></View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Modal Registro de Nueva Cuenta */}
+      <Modal visible={showRegisterModal} animationType="slide" transparent={true}>
+        <View style={styles.modalOverlayDark}>
+          <View style={styles.detailCard}>
+             <View style={styles.detailHeader}>
+                <Text style={styles.detailTitle}>Nueva Cuenta</Text>
+                <TouchableOpacity onPress={() => setShowRegisterModal(false)}><Ionicons name="close" size={24} color="#666" /></TouchableOpacity>
+             </View>
+             <ScrollView style={styles.detailForm}>
+                <Text style={styles.inputLabel}>Nombre completo</Text>
+                <TextInput style={styles.input} placeholder="P. ej. Juan Pérez" value={registerFormData.nombre} onChangeText={t => setRegisterFormData({...registerFormData, nombre: t})} />
+                
+                <Text style={styles.inputLabel}>Usuario (Login)</Text>
+                <TextInput style={styles.input} placeholder="usuario123" autoCapitalize="none" value={registerFormData.usuario} onChangeText={t => setRegisterFormData({...registerFormData, usuario: t})} />
+                
+                <Text style={styles.inputLabel}>Correo electrónico</Text>
+                <TextInput style={styles.input} placeholder="correo@ejemplo.com" keyboardType="email-address" autoCapitalize="none" value={registerFormData.email} onChangeText={t => setRegisterFormData({...registerFormData, email: t})} />
+                
+                <Text style={styles.inputLabel}>Contraseña</Text>
+                <TextInput style={styles.input} placeholder="********" secureTextEntry value={registerFormData.password} onChangeText={t => setRegisterFormData({...registerFormData, password: t})} />
+                
+                <Text style={styles.inputLabel}>Rol de Sistema</Text>
+                <View style={[styles.roleSelector, {flexWrap: 'wrap'}]}>
+                    {['usuario', 'administrador', 'enfermero', 'doctor'].map(r => (
+                        <TouchableOpacity 
+                            key={r} 
+                            style={[styles.roleChip, registerFormData.rol === r && styles.roleChipActive, {marginBottom: 8}]} 
+                            onPress={() => setRegisterFormData({...registerFormData, rol: r})}
+                        >
+                            <Text style={[styles.roleChipText, registerFormData.rol === r && styles.roleChipTextActive]}>
+                                {r.toUpperCase()}
+                            </Text>
+                        </TouchableOpacity>
+                    ))}
+                </View>
+             </ScrollView>
+             <View style={styles.detailFooter}>
+                <TouchableOpacity style={styles.btnDelete} onPress={() => setShowRegisterModal(false)}>
+                    <Text style={{color: '#666'}}>Cancelar</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.btnSave} onPress={handleRegister} disabled={isRegistering}>
+                    <Text style={styles.btnSaveText}>{isRegistering ? 'Creando...' : 'Crear Cuenta'}</Text>
+                </TouchableOpacity>
+             </View>
           </View>
         </View>
       </Modal>
@@ -457,5 +586,25 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#444',
     fontWeight: '600',
+  },
+  roleChip: {
+    borderWidth: 1,
+    borderColor: '#c8dfe9',
+    borderRadius: 999,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    backgroundColor: '#f4fbfd',
+  },
+  roleChipActive: {
+    backgroundColor: '#2f7a96',
+    borderColor: '#2f7a96',
+  },
+  roleChipText: {
+    color: '#2f7a96',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  roleChipTextActive: {
+    color: '#ffffff',
   },
 });

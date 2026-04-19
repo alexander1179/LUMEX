@@ -26,10 +26,11 @@ export const registerUser = async (userData) => {
     const phone = (userData.phone || userData.telefono || '').trim() || null;
 
     const passwordHash = await hashPassword(userData.password);
+    const rol = (userData.rol || 'usuario').toLowerCase();
 
     const { data: resData, ok } = await getApiClient('/api/auth/register', {
       method: 'POST',
-      body: JSON.stringify({ email, username, name, phone, passwordHash }),
+      body: JSON.stringify({ email, username, name, phone, passwordHash, rol }),
     });
 
     if (!ok || !resData?.success) {

@@ -110,10 +110,15 @@ export const verifyToken = async (email, token) => {
   }
 };
 
-export const resetPassword = async (newPassword) => {
+export const resetPassword = async (email, newPassword) => {
   try {
+    // Si solo llega un argumento por compatibilidad, asumimos que es newPassword
+    if (!newPassword) {
+      newPassword = email;
+      email = await AsyncStorage.getItem('recovery_email');
+    }
+    
     const passwordHash = await hashPassword(newPassword);
-    const email = await AsyncStorage.getItem('recovery_email');
     if (!email) throw new Error('No hay sesión de recuperación pendiente.');
 
     const { data: resData, ok } = await getApiClient('/api/auth/reset-password', {

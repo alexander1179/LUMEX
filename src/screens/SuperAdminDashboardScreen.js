@@ -4,7 +4,7 @@ import {
   ActivityIndicator, TextInput, ScrollView, StatusBar, Switch
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { fetchAllUsers, updateUser, deleteUser, updateAdminPermission } from '../services/lumex/authService';
+import { fetchAllUsers, updateUser, deleteUser, updateAdminPermission, hashPassword, registerUser } from '../services/lumex/authService';
 import { storageService } from '../services/storage/storageService';
 import { getApiUrl } from '../services/api/apiConfig';
 
@@ -37,9 +37,13 @@ export default function SuperAdminDashboardScreen({ navigation }) {
   // Modales
   const [showListModal, setShowListModal] = useState(false);
   const [showDetailModal, setShowDetailModal] = useState(false);
-  const [showMyProfileModal, setShowMyProfileModal] = useState(false);
-  const [showPermissionsModal, setShowPermissionsModal] = useState(false);
   const [showRegisterModal, setShowRegisterModal] = useState(false);
+  const [showPermissionsModal, setShowPermissionsModal] = useState(false);
+  const [showMyProfileModal, setShowMyProfileModal] = useState(false);
+  
+  // Visibilidad de claves
+  const [seeNuevaPass, setSeeNuevaPass] = useState(false);
+  const [seeRegisterPass, setSeeRegisterPass] = useState(false);
   
   const [registerFormData, setRegisterFormData] = useState({ nombre: '', usuario: '', email: '', telefono: '', password: '', rol: 'usuario' });
   const [isRegistering, setIsRegistering] = useState(false);
@@ -165,14 +169,28 @@ export default function SuperAdminDashboardScreen({ navigation }) {
   const handleSave = async () => {
     try {
       setLoading(true);
-      const success = await updateUser(localFormData);
-      if (success) {
-        Alert.alert('Éxito', 'Información actualizada');
+      let payload = { ...localFormData };
+      
+      // Si el superadmin escribió una nueva clave, la hasheamos antes de enviar
+      if (localFormData.nuevaPassword?.trim()) {
+        payload.passwordHash = await hashPassword(localFormData.nuevaPassword);
+      }
+
+      const result = await updateUser(payload);
+      if (result.success) {
+        Alert.alert('Éxito', result.message);
         setShowDetailModal(false);
         const updatedUsers = await fetchAllUsers();
         setAllUsers(updatedUsers);
-        setFilteredUsers(updatedUsers.filter(u => String(u.rol).toLowerCase() === selectedRole.toLowerCase()));
-      } else { Alert.alert('Error', 'No se guardó'); }
+        // Usamos una comparación segura por si seleccionRole es null
+        setFilteredUsers(updatedUsers.filter(u => {
+           if (!selectedRole || selectedRole === 'Usuarios y Administradores') {
+              const r = String(u.rol || '').toLowerCase();
+              return r !== 'superadmin' && r !== 'superadministrador';
+           }
+           return String(u.rol).toLowerCase() === selectedRole.toLowerCase();
+        }));
+      } else { Alert.alert('Error de Guardado', result.message); }
     } catch (err) { Alert.alert('Error', err.message); } 
     finally { setLoading(false); }
   };
@@ -199,35 +217,26 @@ export default function SuperAdminDashboardScreen({ navigation }) {
     
     setIsRegistering(true);
     try {
-      // Reutilizamos el servicio de registro pasando el rol
-      const res = await (async (payload) => {
-          try {
-              const r = await fetch(`${getApiUrl()}/auth/register`, {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({
-                      name: payload.nombre,
-                      username: payload.usuario,
-                      email: payload.email,
-                      phone: payload.telefono,
-                      passwordHash: payload.password, // el servicio ya lo hashea si usamos registerUser
-                      rol: payload.rol
-                  })
-              });
-              return await r.json();
-          } catch (e) { return { success: false, message: e.message }; }
-      })(registerFormData);
+      // Usamos el servicio oficial que ya maneja el hashing
+      const result = await registerUser({
+          name: nombre,
+          username: usuario,
+          email: email,
+          phone: registerFormData.telefono,
+          password: password,
+          rol: rol
+      });
 
-      if (res.success) {
-        Alert.alert('Éxito', `Cuenta creada para: ${nombre} (${rol})`);
+      if (result.success) {
+        Alert.alert('Éxito', 'Cuenta creada correctamente');
         setShowRegisterModal(false);
         setRegisterFormData({ nombre: '', usuario: '', email: '', telefono: '', password: '', rol: 'usuario' });
-        await loadUsers();
+        loadUsers();
       } else {
-        Alert.alert('Error', res.message || 'No se pudo crear la cuenta.');
+        Alert.alert('Fallo en Registro', result.message);
       }
-    } catch (e) {
-      Alert.alert('Falla', e.message);
+    } catch (err) {
+      Alert.alert('Error', err.message);
     } finally {
       setIsRegistering(false);
     }
@@ -465,6 +474,23 @@ export default function SuperAdminDashboardScreen({ navigation }) {
               <Text style={styles.inputLabel}>Usuario</Text><TextInput style={styles.input} value={localFormData.usuario} onChangeText={(t) => setLocalFormData({...localFormData, usuario: t})} />
               <Text style={styles.inputLabel}>Correo</Text><TextInput style={styles.input} value={localFormData.email} autoCapitalize="none" keyboardType="email-address" onChangeText={(t) => setLocalFormData({...localFormData, email: t})} />
               <Text style={styles.inputLabel}>Teléfono</Text><TextInput style={styles.input} value={localFormData.telefono} keyboardType="phone-pad" onChangeText={(t) => setLocalFormData({...localFormData, telefono: t})} />
+              
+              <View style={{marginTop: 10, borderTopWidth: 1, borderTopColor: '#f0f0f0', paddingTop: 15}}>
+                <Text style={[styles.inputLabel, {color: '#d35400'}]}>Nueva Contraseña (Dejar vacío para no cambiar)</Text>
+                <View style={[styles.input, {flexDirection: 'row', alignItems: 'center', paddingRight: 10, borderColor: '#e67e2220'}]}>
+                    <TextInput 
+                        style={{flex: 1, paddingVertical: 10}} 
+                        placeholder="Escribe la nueva clave aquí..." 
+                        secureTextEntry={!seeNuevaPass} 
+                        value={localFormData.nuevaPassword || ''} 
+                        onChangeText={(t) => setLocalFormData({...localFormData, nuevaPassword: t})} 
+                    />
+                    <TouchableOpacity onPress={() => setSeeNuevaPass(!seeNuevaPass)}>
+                        <Ionicons name={seeNuevaPass ? "eye-off-outline" : "eye-outline"} size={20} color="#0f6d78" />
+                    </TouchableOpacity>
+                </View>
+              </View>
+
               {isMaster && (
               <View>
                  <Text style={styles.inputLabel}>Rol del sistema</Text>
@@ -495,7 +521,18 @@ export default function SuperAdminDashboardScreen({ navigation }) {
                 <TextInput style={styles.input} placeholder="correo@ejemplo.com" keyboardType="email-address" autoCapitalize="none" value={registerFormData.email} onChangeText={t => setRegisterFormData({...registerFormData, email: t})} />
                 
                 <Text style={styles.inputLabel}>Contraseña</Text>
-                <TextInput style={styles.input} placeholder="********" secureTextEntry value={registerFormData.password} onChangeText={t => setRegisterFormData({...registerFormData, password: t})} />
+                <View style={[styles.input, {flexDirection: 'row', alignItems: 'center', paddingRight: 10}]}>
+                    <TextInput 
+                        style={{flex: 1, paddingVertical: 10}} 
+                        placeholder="********" 
+                        secureTextEntry={!seeRegisterPass} 
+                        value={registerFormData.password} 
+                        onChangeText={t => setRegisterFormData({...registerFormData, password: t})} 
+                    />
+                    <TouchableOpacity onPress={() => setSeeRegisterPass(!seeRegisterPass)}>
+                        <Ionicons name={seeRegisterPass ? "eye-off-outline" : "eye-outline"} size={20} color="#0f6d78" />
+                    </TouchableOpacity>
+                </View>
                 
                 <Text style={styles.inputLabel}>Rol de Sistema</Text>
                 <View style={[styles.roleSelector, {flexWrap: 'wrap'}]}>

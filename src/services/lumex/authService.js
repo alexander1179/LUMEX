@@ -4,7 +4,7 @@ import { getApiClient } from './apiClient';
 const SESSION_KEY = 'lumex_user_session';
 
 // Hash SHA-256 (igual al que usaba antes para mantener compatibilidad de hashes en DB)
-const hashPassword = async (password) => {
+export const hashPassword = async (password) => {
   try {
     const encoder = new TextEncoder();
     const buf = encoder.encode(String(password));
@@ -174,7 +174,7 @@ export const resetPassword = async (email, newPassword) => {
     const passwordHash = await hashPassword(newPassword);
     const { data, ok } = await getApiClient('/api/auth/reset-password', {
       method: 'POST',
-      body: JSON.stringify({ email, newPassword: passwordHash }),
+      body: JSON.stringify({ email, passwordHash }),
     });
     return ok ? { success: true, message: data.message } : { success: false, message: data?.message };
   } catch (error) {
@@ -205,11 +205,18 @@ export const updateUserRole = async (userId, newRole) => {
 };
 
 export const updateUser = async (userData) => {
-  const { data, ok } = await getApiClient('/api/admin/update-user', {
-    method: 'POST',
-    body: JSON.stringify(userData),
-  });
-  return ok;
+  try {
+    const { data, ok } = await getApiClient('/api/admin/update-user', {
+      method: 'POST',
+      body: JSON.stringify(userData),
+    });
+    return { 
+      success: ok, 
+      message: data?.message || (ok ? 'Actualización exitosa' : 'Error al conectar con servidor') 
+    };
+  } catch (error) {
+    return { success: false, message: error.message };
+  }
 };
 
 export const deleteUser = async (userId) => {

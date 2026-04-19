@@ -142,6 +142,10 @@ app.post('/api/auth/login', async (req, res) => {
       return res.status(403).json({ success: false, message: 'Solo administradores.' });
     }
     
+    if (user.estado === 'bloqueado') {
+      return res.status(403).json({ success: false, message: 'Tu cuenta ha sido bloqueada. Contacta al soporte.' });
+    }
+    
     if (user.contrasena !== passwordHash) {
       return res.status(401).json({ success: false, message: 'Contraseña incorrecta' });
     }
@@ -470,7 +474,7 @@ app.post('/api/analysis/history', async (req, res) => {
 // Admin endpoints
 app.get('/api/admin/users', async (req, res) => {
   try {
-    const [rows] = await pool.query('SELECT id_usuario, nombre, email, usuario, rol, fecha_registro FROM usuarios ORDER BY fecha_registro DESC');
+    const [rows] = await pool.query("SELECT id_usuario, nombre, email, usuario, rol, estado, fecha_registro FROM usuarios WHERE rol NOT IN ('admin', 'administrador', 'superadmin', 'superadministrador') ORDER BY fecha_registro DESC");
     res.json({ success: true, users: rows });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
@@ -487,10 +491,57 @@ app.post('/api/admin/update-user', async (req, res) => {
   }
 });
 
+app.post('/api/admin/block-user', async (req, res) => {
+  const { id_usuario, blocked } = req.body;
+  try {
+    const estadoStr = blocked ? 'bloqueado' : 'activo';
+    await pool.query('UPDATE usuarios SET estado = ? WHERE id_usuario = ?', [estadoStr, id_usuario]);
+    res.json({ success: true, message: 'Estado actualizado' });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
 app.delete('/api/admin/user/:id', async (req, res) => {
   try {
     await pool.query('DELETE FROM usuarios WHERE id_usuario = ?', [req.params.id]);
     res.json({ success: true, message: 'Usuario eliminado' });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+app.get('/api/admin/activity', async (req, res) => {
+  try {
+    const query = `
+      SELECT a.id_analisis, a.id_usuario, a.id_dataset, a.id_modelo, a.fecha_analisis, a.total_registros, a.total_anomalias,
+             u.nombre AS usuario_nombre, u.usuario AS usuario_username, u.email AS usuario_email,
+             d.nombre_archivo AS dataset_nombre,
+             m.tipo_modelo, m.descripcion, m.nombre_modelo
+      FROM analisis a
+      LEFT JOIN usuarios u ON a.id_usuario = u.id_usuario
+      LEFT JOIN datasets d ON a.id_dataset = d.id_dataset
+      LEFT JOIN modelos m ON a.id_modelo = m.id_modelo
+      ORDER BY a.fecha_analisis DESC
+      LIMIT 1000
+    `;
+    const [rows] = await pool.query(query);
+    res.json({ success: true, activity: rows });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+app.get('/api/admin/payments', async (req, res) => {
+  try {
+    const query = `
+      SELECT p.*, u.nombre AS usuario_nombre, u.usuario AS usuario_username, u.email AS usuario_email
+      FROM pagos p
+      LEFT JOIN usuarios u ON p.id_usuario = u.id_usuario
+      ORDER BY p.created_at DESC
+    `;
+    const [rows] = await pool.query(query);
+    res.json({ success: true, payments: rows });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }

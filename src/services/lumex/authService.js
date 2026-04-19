@@ -188,10 +188,10 @@ export const fetchAllUsers = async () => {
   return ok ? data.users : [];
 };
 
-export const updateAdminPermission = async (userId, puede_gestionar) => {
+export const updateAdminPermission = async (userId, field, value) => {
   const { data, ok } = await getApiClient('/api/superadmin/toggle-admin-permission', {
     method: 'POST',
-    body: JSON.stringify({ id_usuario: userId, puede_gestionar_usuarios: puede_gestionar }),
+    body: JSON.stringify({ id_usuario: userId, field, value: value ? 1 : 0 }),
   });
   return ok;
 };

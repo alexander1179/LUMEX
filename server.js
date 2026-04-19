@@ -34,6 +34,43 @@ pool.on('error', (err) => {
   console.error('[DB ERROR]', err);
 });
 
+// ===== Auto Migration =====
+const runMigrations = async () => {
+  try {
+    console.log('🔍 Verificando estructura de base de datos...');
+    const [columns] = await pool.query('SHOW COLUMNS FROM usuarios');
+    const names = columns.map(c => c.Field);
+
+    if (!names.includes('permiso_editar')) {
+      await pool.query('ALTER TABLE usuarios ADD COLUMN permiso_editar TINYINT DEFAULT 1');
+      console.log('➕ Columna permiso_editar añadida');
+    }
+    if (!names.includes('permiso_bloquear')) {
+      await pool.query('ALTER TABLE usuarios ADD COLUMN permiso_bloquear TINYINT DEFAULT 1');
+      console.log('➕ Columna permiso_bloquear añadida');
+    }
+    
+    // Nuevos permisos de módulos
+    const moduleCols = [
+      'mod_nuevo_paciente',
+      'mod_gestion_usuarios',
+      'mod_reportes',
+      'mod_actividad',
+      'mod_alertas'
+    ];
+    for (const col of moduleCols) {
+      if (!names.includes(col)) {
+        await pool.query(`ALTER TABLE usuarios ADD COLUMN ${col} TINYINT DEFAULT 1`);
+        console.log(`➕ Columna ${col} añadida`);
+      }
+    }
+    console.log('✅ Migraciones completadas.');
+  } catch (error) {
+    console.error('❌ Error en migraciones:', error.message);
+  }
+};
+runMigrations();
+
 // ===== SMTP Configuration =====
 const smtpConfigured = [
   process.env.SMTP_HOST,
@@ -474,7 +511,15 @@ app.post('/api/analysis/history', async (req, res) => {
 // Admin endpoints
 app.get('/api/admin/users', async (req, res) => {
   try {
-    const [rows] = await pool.query("SELECT id_usuario, nombre, email, usuario, rol, estado, fecha_registro, puede_gestionar_usuarios FROM usuarios WHERE rol NOT IN ('admin', 'administrador', 'superadmin', 'superadministrador') ORDER BY fecha_registro DESC");
+    const query = `
+      SELECT id_usuario, nombre, email, usuario, rol, estado, fecha_registro, 
+             puede_gestionar_usuarios, permiso_editar, permiso_bloquear,
+             mod_nuevo_paciente, mod_gestion_usuarios, mod_reportes, mod_actividad, mod_alertas
+      FROM usuarios 
+      WHERE rol NOT IN ('admin', 'administrador', 'superadmin', 'superadministrador') 
+      ORDER BY fecha_registro DESC
+    `;
+    const [rows] = await pool.query(query);
     res.json({ success: true, users: rows });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
@@ -483,7 +528,14 @@ app.get('/api/admin/users', async (req, res) => {
 
 app.get('/api/superadmin/users', async (req, res) => {
   try {
-    const [rows] = await pool.query("SELECT id_usuario, nombre, email, usuario, rol, estado, fecha_registro, puede_gestionar_usuarios FROM usuarios ORDER BY fecha_registro DESC");
+    const query = `
+      SELECT id_usuario, nombre, email, usuario, rol, estado, fecha_registro, 
+             puede_gestionar_usuarios, permiso_editar, permiso_bloquear,
+             mod_nuevo_paciente, mod_gestion_usuarios, mod_reportes, mod_actividad, mod_alertas
+      FROM usuarios 
+      ORDER BY fecha_registro DESC
+    `;
+    const [rows] = await pool.query(query);
     res.json({ success: true, users: rows });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
@@ -491,10 +543,21 @@ app.get('/api/superadmin/users', async (req, res) => {
 });
 
 app.post('/api/superadmin/toggle-admin-permission', async (req, res) => {
-  const { id_usuario, puede_gestionar_usuarios } = req.body;
+  const { id_usuario, field, value } = req.body;
+  
+  // Lista blanca de campos permitidos para evitar inyección SQL en el nombre de la columna
+  const allowedFields = [
+    'puede_gestionar_usuarios', 'permiso_editar', 'permiso_bloquear',
+    'mod_nuevo_paciente', 'mod_gestion_usuarios', 'mod_reportes', 'mod_actividad', 'mod_alertas'
+  ];
+  if (!allowedFields.includes(field)) {
+    return res.status(400).json({ success: false, message: 'Campo de permiso no válido' });
+  }
+
   try {
-    await pool.query('UPDATE usuarios SET puede_gestionar_usuarios = ? WHERE id_usuario = ?', [puede_gestionar_usuarios, id_usuario]);
-    res.json({ success: true, message: 'Permiso actualizado' });
+    const query = `UPDATE usuarios SET ${field} = ? WHERE id_usuario = ?`;
+    await pool.query(query, [value ? 1 : 0, id_usuario]);
+    res.json({ success: true, message: `Permiso ${field} actualizado` });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }

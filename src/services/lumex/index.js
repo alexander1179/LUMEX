@@ -4,4 +4,3 @@ export * from './apiConfig';
 export * from './authService';
 export * from './datasetAnalysisService';
 export * from './paymentService';
-export * from './supabaseClient'; // El stub de compatibilidad

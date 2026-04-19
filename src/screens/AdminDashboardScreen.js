@@ -8,6 +8,7 @@ import {
   StatusBar,
   Modal,
   TextInput,
+  Pressable,
   Alert,
   Keyboard,
 } from 'react-native';
@@ -137,6 +138,12 @@ export default function AdminDashboardScreen({ navigation }) {
   const [showDatasetDatePicker, setShowDatasetDatePicker] = useState(false);
   const [showPickResultadoModal, setShowPickResultadoModal] = useState(false);
   const [buscarResultado, setBuscarResultado] = useState('');
+
+  const [showMyProfileModal, setShowMyProfileModal] = useState(false);
+  const [profileNombre, setProfileNombre] = useState('');
+  const [profileEmail, setProfileEmail] = useState('');
+  const [profileUsuario, setProfileUsuario] = useState('');
+  const [savingProfile, setSavingProfile] = useState(false);
 
   const resultadoOptions = [
     { id: 'diagnosticos', nombre: 'Diagnósticos', detalle: 'Resultados de valoración clínica' },
@@ -638,7 +645,7 @@ export default function AdminDashboardScreen({ navigation }) {
                 await loadDashboardData();
                 Alert.alert(
                   'No se eliminó',
-                  serverResult.message || lastError?.message || 'Supabase no eliminó filas del usuario seleccionado. Verifica permisos RLS o el identificador del registro.',
+                  serverResult.message || lastError?.message || 'El servidor no eliminó el usuario seleccionado. Verifica los identificadores.',
                 );
                 return;
               }
@@ -657,7 +664,7 @@ export default function AdminDashboardScreen({ navigation }) {
             await loadDashboardData();
             Alert.alert(
               'Eliminación confirmada',
-              `Usuario eliminado en Supabase (${usedField}: ${String(usedValue)}) y retirado de la tabla de administración.`,
+              `Usuario eliminado remotamente (${usedField}: ${String(usedValue)}) y retirado de la tabla local.`,
             );
           }
         }
@@ -867,7 +874,7 @@ export default function AdminDashboardScreen({ navigation }) {
           level: 'alta',
           title: 'Errores en el sistema',
           detail: lastSystemError,
-          possible: 'Posible causa: fallo en consulta principal de usuarios o conectividad con Supabase.',
+          possible: 'Posible causa: fallo en la consulta principal de usuarios o conectividad con el servidor base.',
         });
       }
 
@@ -880,38 +887,7 @@ export default function AdminDashboardScreen({ navigation }) {
           possible: 'Posible causa: tabla faltante, permisos de lectura o nombre de columna incorrecto.',
         });
       }
-
-      const { data: activityData, error: activityError } = await supabase
-        .from('actividad_usuarios')
-        .select('consultas_realizadas, consulta, accion, activity')
-        .limit(120);
-
-      if (activityError) {
-        rows.push({
-          id: 'activity-read-fail',
-          level: 'media',
-          title: 'Fallos en carga de datos',
-          detail: activityError.message || 'No se pudo leer actividad_usuarios.',
-          possible: 'Posible causa: la tabla actividad_usuarios no existe o la política RLS bloquea lectura.',
-        });
-      } else {
-        const riskCount = (activityData || []).filter((a) => {
-          const text = `${a.consultas_realizadas || ''} ${a.consulta || ''} ${a.accion || ''} ${a.activity || ''}`.toLowerCase();
-          return text.includes('alto riesgo') || text.includes('riesgo alto') || text.includes('high risk');
-        }).length;
-
-        if (riskCount >= 5) {
-          rows.push({
-            id: 'high-risk-cases',
-            level: 'alta',
-            title: 'Muchos casos de alto riesgo detectados',
-            detail: `Se detectaron ${riskCount} eventos con referencia a alto riesgo en actividad de usuarios.`,
-            possible: 'Posible causa: incremento real de casos críticos o reglas de clasificación demasiado sensibles.',
-          });
-        }
-      }
-
-      const incompleteUsers = (usuarios || []).filter((u) => !u.email || !u.nombre).length;
+      // Aquí se validaba actividad de Supabase, pero fue removida del sistema.      const incompleteUsers = (usuarios || []).filter((u) => !u.email || !u.nombre).length;
       if (incompleteUsers > 0) {
         rows.push({
           id: 'incomplete-users',
@@ -1182,6 +1158,54 @@ export default function AdminDashboardScreen({ navigation }) {
     loadSigner();
   }, []);
 
+  const handleOpenMyProfile = async () => {
+    const user = await storageService.getUser();
+    setProfileNombre(user?.nombre || user?.name || '');
+    setProfileEmail(user?.email || '');
+    setProfileUsuario(user?.usuario || user?.username || '');
+    setShowMyProfileModal(true);
+  };
+
+  const handleSaveMyProfile = async () => {
+    if (!profileNombre.trim() || !profileEmail.trim()) {
+      Alert.alert('Incompleto', 'El nombre y correo son obligatorios.');
+      return;
+    }
+    setSavingProfile(true);
+    try {
+      const user = await storageService.getUser();
+      
+      const payload = {
+        id_usuario: user?.id_usuario || user?.id,
+        nombre: profileNombre,
+        email: profileEmail,
+        usuario: profileUsuario,
+        rol: user?.rol || 'administrador',
+        telefono: user?.telefono || ''
+      };
+
+      const res = await fetch(`${getApiUrl()}/admin/update-user`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      const data = await res.json();
+      
+      if (!res.ok || !data.success) {
+         throw new Error(data.message || 'Fallo actualizando administrador');
+      }
+
+      await storageService.saveUser({ ...user, nombre: profileNombre, email: profileEmail, usuario: profileUsuario });
+      setShowMyProfileModal(false);
+      Alert.alert('Actualizado', 'Tu perfil se actualizó correctamente en la base de datos.');
+      await loadDashboardData();
+    } catch (e) {
+      Alert.alert('Error', e.message);
+    } finally {
+      setSavingProfile(false);
+    }
+  };
+
   const handleCreateUser = async () => {
     if (creatingUser) return;
 
@@ -1209,7 +1233,7 @@ export default function AdminDashboardScreen({ navigation }) {
       setActiveTab('pacientes');
       setShowCreateModal(false);
       resetCreateForm();
-      Alert.alert('Éxito', 'Usuario creado y guardado en Supabase.');
+      Alert.alert('Éxito', 'Usuario creado y guardado exitosamente.');
     } finally {
       setCreatingUser(false);
     }
@@ -1226,10 +1250,6 @@ export default function AdminDashboardScreen({ navigation }) {
         <View style={styles.statCard}>
           <Text style={styles.statLabel}>Usuarios activos</Text>
           <Text style={styles.statValue}>{loadingUsuarios ? '...' : usuariosRegistrados}</Text>
-        </View>
-        <View style={styles.statCard}>
-          <Text style={styles.statLabel}>Citas hoy</Text>
-          <Text style={styles.statValue}>{loadingUsuarios ? '...' : (citasHoy ?? 'Sin datos')}</Text>
         </View>
       </View>
 
@@ -1441,26 +1461,40 @@ export default function AdminDashboardScreen({ navigation }) {
 
   const renderAjustes = () => (
     <View style={styles.actionsCard}>
-      <Text style={styles.sectionTitle}>Ajustes del sistema</Text>
-      <Text style={styles.moduleDescription}>Configura parámetros técnicos y pruebas operativas del entorno Supabase.</Text>
+      <Text style={styles.sectionTitle}>Entorno Personal y Seguridad</Text>
+      <Text style={styles.moduleDescription}>Personaliza tu interfaz, maneja la confidencialidad de tu sesión administrativa y establece tus reglas operativas internas.</Text>
       <View style={styles.settingsActions}>
-        <TouchableOpacity
-          style={styles.settingsButton}
-          activeOpacity={0.85}
-          onPress={() => navigation.navigate('TestConnection')}
+        <Pressable
+          style={({ pressed }) => [styles.settingsButton, { backgroundColor: pressed ? '#24586d' : '#2f7a96' }]}
+          onPress={handleOpenMyProfile}
         >
-          <Ionicons name="cloud-done-outline" size={18} color="#ffffff" />
-          <Text style={styles.settingsButtonText}>Probar conexión</Text>
-        </TouchableOpacity>
+          <Ionicons name="id-card-outline" size={18} color="#ffffff" />
+          <Text style={styles.settingsButtonText}>Editar mi perfil</Text>
+        </Pressable>
 
-        <TouchableOpacity
-          style={[styles.settingsButton, styles.settingsButtonSecondary]}
-          activeOpacity={0.85}
-          onPress={() => navigation.navigate('TestSupabase')}
+        <Pressable
+          style={({ pressed }) => [styles.settingsButton, { backgroundColor: pressed ? '#c8dfe9' : '#eef6f8', borderWidth: 1, borderColor: '#d4e7ee' }]}
+          onPress={() => Alert.alert('Seguridad', 'El cambio de contraseña y 2FA estarán habilitados en la próxima actualización.')}
         >
-          <Ionicons name="construct-outline" size={18} color="#2f7a96" />
-          <Text style={styles.settingsButtonSecondaryText}>Validar servicios</Text>
-        </TouchableOpacity>
+          <Ionicons name="shield-checkmark-outline" size={18} color="#2f7a96" />
+          <Text style={[styles.settingsButtonText, { color: '#2f7a96' }]}>Privacidad y Seguridad</Text>
+        </Pressable>
+
+        <Pressable
+          style={({ pressed }) => [styles.settingsButton, { backgroundColor: pressed ? '#c8dfe9' : '#eef6f8', borderWidth: 1, borderColor: '#d4e7ee' }]}
+          onPress={() => Alert.alert('Notificaciones', 'El módulo de reglas de alertas está en desarrollo.')}
+        >
+          <Ionicons name="notifications-outline" size={18} color="#2f7a96" />
+          <Text style={[styles.settingsButtonText, { color: '#2f7a96' }]}>Reglas de Notificación</Text>
+        </Pressable>
+
+        <Pressable
+          style={({ pressed }) => [styles.settingsButton, { backgroundColor: pressed ? '#ead1d0' : '#fcf4f4', borderWidth: 1, borderColor: '#f2d7d5' }]}
+          onPress={() => Alert.alert('Soporte', 'Generando ticket de asistencia remota...')}
+        >
+          <Ionicons name="help-buoy-outline" size={18} color="#c0392b" />
+          <Text style={[styles.settingsButtonText, { color: '#c0392b' }]}>Soporte Técnico de Lumex</Text>
+        </Pressable>
       </View>
     </View>
   );
@@ -1479,8 +1513,8 @@ export default function AdminDashboardScreen({ navigation }) {
 
       <View style={styles.header}>
         <View>
-          <Text style={styles.headerEyebrow}>Panel administrativo</Text>
-          <Text style={styles.headerTitle}>Gestión clínica</Text>
+          <Text style={styles.headerEyebrow}>Hola, {reportSigner?.name || 'Administrador'}</Text>
+          <Text style={styles.headerTitle}>Supervisión General</Text>
         </View>
 
         <TouchableOpacity
@@ -1513,7 +1547,7 @@ export default function AdminDashboardScreen({ navigation }) {
         <View style={styles.modalOverlay}>
           <View style={styles.modalCard}>
             <Text style={styles.modalTitle}>Nuevo usuario</Text>
-            <Text style={styles.modalSubTitle}>Este registro se guardará en Supabase.</Text>
+            <Text style={styles.modalSubTitle}>Este registro operará en toda la plataforma.</Text>
 
             <TextInput
               style={styles.modalInput}
@@ -2049,12 +2083,25 @@ export default function AdminDashboardScreen({ navigation }) {
                 )}
               </View>
 
-              <Text style={styles.activityResultCount}>
-                {selectedReportUser
-                  ? `Reportes de ${selectedReportUserLabel || 'Usuario'} (ID ${selectedReportUser}): ${selectedReportRows.length}`
-                  : `Usuarios encontrados: ${filteredReportUsers.length}`}
-              </Text>
-
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+                <Text style={[styles.activityResultCount, { marginBottom: 0 }]}>
+                  {selectedReportUser
+                    ? `Reportes de ${selectedReportUserLabel || 'Usuario'} (ID ${selectedReportUser}): ${selectedReportRows.length}`
+                    : `Usuarios encontrados: ${filteredReportUsers.length}`}
+                </Text>
+                {selectedReportUser ? (
+                  <TouchableOpacity
+                    style={{ padding: 4, backgroundColor: '#c8dfe9', borderRadius: 20 }}
+                    onPress={() => {
+                        setSelectedReportUser('');
+                        setSelectedReportId(null);
+                        setLoadedReportId(null);
+                    }}
+                  >
+                    <Ionicons name="close" size={16} color="#173746" />
+                  </TouchableOpacity>
+                ) : null}
+              </View>
               <ScrollView style={styles.activityUsersList} showsVerticalScrollIndicator={false} contentContainerStyle={styles.activityUsersListContent}>
                 {filteredReportUsers.length === 0 ? (
                   <Text style={styles.activityHint}>No hay usuarios que coincidan con el filtro.</Text>
@@ -2897,6 +2944,64 @@ export default function AdminDashboardScreen({ navigation }) {
                   </View>
               ))}
             </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
+        visible={showMyProfileModal}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setShowMyProfileModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>Mi Perfil</Text>
+            <Text style={styles.modalSubTitle}>Actualiza la información de tu cuenta administrativa.</Text>
+
+            <TextInput
+              style={styles.modalInput}
+              placeholder="Nombre completo"
+              placeholderTextColor="#7a9aa8"
+              value={profileNombre}
+              onChangeText={setProfileNombre}
+            />
+            <TextInput
+              style={styles.modalInput}
+              placeholder="Nombre de usuario"
+              placeholderTextColor="#7a9aa8"
+              value={profileUsuario}
+              onChangeText={setProfileUsuario}
+            />
+            <TextInput
+              style={styles.modalInput}
+              placeholder="Correo electrónico"
+              placeholderTextColor="#7a9aa8"
+              keyboardType="email-address"
+              autoCapitalize="none"
+              value={profileEmail}
+              onChangeText={setProfileEmail}
+            />
+
+            <View style={styles.modalActions}>
+              <TouchableOpacity
+                style={[styles.modalButton, styles.modalButtonSecondary]}
+                onPress={() => setShowMyProfileModal(false)}
+                activeOpacity={0.85}
+                disabled={savingProfile}
+              >
+                <Text style={styles.modalButtonSecondaryText}>Cancelar</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.modalButton, savingProfile && styles.modalButtonDisabled]}
+                onPress={handleSaveMyProfile}
+                activeOpacity={0.85}
+                disabled={savingProfile}
+              >
+                <Text style={styles.modalButtonText}>{savingProfile ? 'Guardando...' : 'Guardar Perfil'}</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
       </Modal>

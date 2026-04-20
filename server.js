@@ -56,7 +56,8 @@ const runMigrations = async () => {
       'mod_gestion_usuarios',
       'mod_reportes',
       'mod_actividad',
-      'mod_alertas'
+      'mod_alertas',
+      'mod_pagos'
     ];
     for (const col of moduleCols) {
       if (!names.includes(col)) {
@@ -535,7 +536,7 @@ app.get('/api/superadmin/users', async (req, res) => {
     const query = `
       SELECT id_usuario, nombre, email, usuario, rol, estado, fecha_registro, telefono,
              puede_gestionar_usuarios, permiso_editar, permiso_bloquear,
-             mod_nuevo_paciente, mod_gestion_usuarios, mod_reportes, mod_actividad, mod_alertas
+             mod_nuevo_paciente, mod_gestion_usuarios, mod_reportes, mod_actividad, mod_alertas, mod_pagos
       FROM usuarios 
       ORDER BY fecha_registro DESC
     `;
@@ -552,7 +553,7 @@ app.post('/api/superadmin/toggle-admin-permission', async (req, res) => {
   // Lista blanca de campos permitidos para evitar inyección SQL en el nombre de la columna
   const allowedFields = [
     'puede_gestionar_usuarios', 'permiso_editar', 'permiso_bloquear',
-    'mod_nuevo_paciente', 'mod_gestion_usuarios', 'mod_reportes', 'mod_actividad', 'mod_alertas'
+    'mod_nuevo_paciente', 'mod_gestion_usuarios', 'mod_reportes', 'mod_actividad', 'mod_alertas', 'mod_pagos'
   ];
   if (!allowedFields.includes(field)) {
     return res.status(400).json({ success: false, message: 'Campo de permiso no válido' });

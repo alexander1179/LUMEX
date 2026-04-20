@@ -11,6 +11,7 @@ import { getApiUrl } from '../services/api/apiConfig';
 const ROLES = [
   { id: 'gestion_personas', label: 'Gestión de Personas', icon: 'people-outline', color: '#0f6d78', description: 'Administración de Usuarios y Personal del Sistema' },
   { id: 'alta_cuenta', label: 'Registro de Personal y Usuarios', icon: 'person-add-outline', color: '#1a7da2', description: 'Alta de nuevas credenciales con asignación de rol jerárquico' },
+  { id: 'supervision_pagos', label: 'Supervisión de Pagos', icon: 'card-outline', color: '#e67e22', description: 'Supervisión de transacciones y pagos de usuarios' },
 ];
 
 const ROLE_MODULES = [
@@ -40,6 +41,16 @@ export default function SuperAdminDashboardScreen({ navigation }) {
   const [showRegisterModal, setShowRegisterModal] = useState(false);
   const [showPermissionsModal, setShowPermissionsModal] = useState(false);
   const [showMyProfileModal, setShowMyProfileModal] = useState(false);
+  
+  // Pagos y Restricciones
+  const [allPayments, setAllPayments] = useState([]);
+  const [groupedPaymentUsers, setGroupedPaymentUsers] = useState([]);
+  const [showPagosUsersModal, setShowPagosUsersModal] = useState(false);
+  const [showPagosDetailModal, setShowPagosDetailModal] = useState(false);
+  const [selectedPaymentUser, setSelectedPaymentUser] = useState(null);
+  const [loadingPagos, setLoadingPagos] = useState(false);
+  const [showAdminPermissionsModal, setShowAdminPermissionsModal] = useState(false);
+  const [selectedAdminForRestrictions, setSelectedAdminForRestrictions] = useState(null);
   
   // Visibilidad de claves
   const [seeNuevaPass, setSeeNuevaPass] = useState(false);
@@ -141,6 +152,11 @@ export default function SuperAdminDashboardScreen({ navigation }) {
       return;
     }
 
+    if (roleId === 'supervision_pagos') {
+      fetchPaymentsAndShow();
+      return;
+    }
+
     if (roleId === 'gestion_personas') {
       setCurrentSubView('role_selection');
       return;
@@ -155,6 +171,45 @@ export default function SuperAdminDashboardScreen({ navigation }) {
     setFilteredUsers(list);
     setSelectedRole(roleId);
     setShowListModal(true);
+  };
+
+  const fetchPaymentsAndShow = async () => {
+    setLoadingPagos(true);
+    try {
+      const response = await fetch(`${getApiUrl()}/admin/payments`);
+      const json = await response.json();
+      if (json.success) {
+        setAllPayments(json.payments);
+        const map = new Map();
+        json.payments.forEach(p => {
+          if (!map.has(p.id_usuario)) {
+            map.set(p.id_usuario, {
+              id_usuario: p.id_usuario,
+              usuario_nombre: p.usuario_nombre,
+              usuario_username: p.usuario_username,
+              usuario_email: p.usuario_email,
+              total_pagos: 0,
+              monto_total: 0
+            });
+          }
+          const curr = map.get(p.id_usuario);
+          curr.total_pagos += 1;
+          curr.monto_total += Number(p.monto) || 0;
+        });
+        setGroupedPaymentUsers(Array.from(map.values()));
+        setShowPagosUsersModal(true);
+      } else {
+        Alert.alert('Error', 'No se pudieron cargar los pagos');
+      }
+    } catch(err) {
+      Alert.alert('Error', err.message);
+    }
+    setLoadingPagos(false);
+  };
+
+  const handleSelectPaymentUser = (userId) => {
+    setSelectedPaymentUser(userId);
+    setShowPagosDetailModal(true);
   };
 
   const handleSelectUser = (user) => {
@@ -383,68 +438,22 @@ export default function SuperAdminDashboardScreen({ navigation }) {
               data={allUsers.filter(u => ['admin', 'administrador'].includes(String(u.rol).toLowerCase()))}
               keyExtractor={(i) => String(i.id_usuario)}
               renderItem={({ item }) => (
-                <View style={[styles.whiteCard, {marginBottom: 15, padding: 15, borderLeftWidth: 4, borderLeftColor: '#e67e22'}]}>
-                    <View style={{flexDirection: 'row', alignItems: 'center', marginBottom: 12}}>
+                <TouchableOpacity 
+                   style={[styles.whiteCard, {marginBottom: 15, padding: 15, borderLeftWidth: 4, borderLeftColor: '#e67e22', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between'}]}
+                   onPress={() => {
+                       setSelectedAdminForRestrictions(item);
+                       setShowAdminPermissionsModal(true);
+                   }}
+                >
+                    <View style={{flexDirection: 'row', alignItems: 'center'}}>
                         <View style={[styles.userListAvatar, {backgroundColor: '#e67e22', width: 35, height: 35}]}><Text style={[styles.userListAvatarText, {fontSize: 14}]}>{(item.nombre || 'A')[0].toUpperCase()}</Text></View>
                         <View style={{ marginLeft: 10 }}>
                             <Text style={[styles.userListName, {fontSize: 14}]}>{item.nombre || item.usuario}</Text>
+                            <Text style={{fontSize: 11, color: '#666', marginTop: 2}}>Toca para ver o modificar accesos</Text>
                         </View>
                     </View>
-
-                    <View style={{gap: 12}}>
-                        <Text style={{fontSize: 11, fontWeight: '800', color: '#888', textTransform: 'uppercase', marginTop: 0, marginBottom: 4}}>Acceso a Módulos funcionales</Text>
-                        
-                        <View style={styles.permissionToggleRow}>
-                            <Text style={styles.permissionToggleLabel}>Módulo "Nuevo Paciente"</Text>
-                            <Switch
-                                value={item.mod_nuevo_paciente === 1 || item.mod_nuevo_paciente === true}
-                                onValueChange={(val) => handleToggleAdminPermission(item.id_usuario, 'mod_nuevo_paciente', val)}
-                                trackColor={{ false: "#d9dbda", true: "#0f6d78" }}
-                                thumbColor="#fff"
-                            />
-                        </View>
-
-                        <View style={styles.permissionToggleRow}>
-                            <Text style={styles.permissionToggleLabel}>Módulo "Gestión de Usuarios"</Text>
-                            <Switch
-                                value={item.mod_gestion_usuarios === 1 || item.mod_gestion_usuarios === true}
-                                onValueChange={(val) => handleToggleAdminPermission(item.id_usuario, 'mod_gestion_usuarios', val)}
-                                trackColor={{ false: "#d9dbda", true: "#0f6d78" }}
-                                thumbColor="#fff"
-                            />
-                        </View>
-
-                        <View style={styles.permissionToggleRow}>
-                            <Text style={styles.permissionToggleLabel}>Módulo "Reportes"</Text>
-                            <Switch
-                                value={item.mod_reportes === 1 || item.mod_reportes === true}
-                                onValueChange={(val) => handleToggleAdminPermission(item.id_usuario, 'mod_reportes', val)}
-                                trackColor={{ false: "#d9dbda", true: "#0f6d78" }}
-                                thumbColor="#fff"
-                            />
-                        </View>
-
-                        <View style={styles.permissionToggleRow}>
-                            <Text style={styles.permissionToggleLabel}>Módulo "Actividad"</Text>
-                            <Switch
-                                value={item.mod_actividad === 1 || item.mod_actividad === true}
-                                onValueChange={(val) => handleToggleAdminPermission(item.id_usuario, 'mod_actividad', val)}
-                                trackColor={{ false: "#d9dbda", true: "#0f6d78" }}
-                                thumbColor="#fff"
-                            />
-                        </View>
-
-                        <View style={styles.permissionToggleRow}>
-                            <Text style={styles.permissionToggleLabel}>Módulo "Alertas"</Text>
-                            <Switch
-                                value={item.mod_alertas === 1 || item.mod_alertas === true}
-                                onValueChange={(val) => handleToggleAdminPermission(item.id_usuario, 'mod_alertas', val)}
-                                trackColor={{ false: "#d9dbda", true: "#0f6d78" }}
-                                thumbColor="#fff"
-                            />
-                        </View>
-                    </View>
-                </View>
+                    <Ionicons name="settings-outline" size={20} color="#e67e22" />
+                </TouchableOpacity>
               )}
             />
           </View>
@@ -557,6 +566,165 @@ export default function SuperAdminDashboardScreen({ navigation }) {
                     <Text style={styles.btnSaveText}>{isRegistering ? 'Creando...' : 'Crear Cuenta'}</Text>
                 </TouchableOpacity>
              </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Modal Permisos Específicos por Admin */}
+      <Modal visible={showAdminPermissionsModal} animationType="slide" transparent={true}>
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContainer, {height: 'auto', minHeight: '60%'}]}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalHeaderTitle}>Accesos de Administrador</Text>
+              <TouchableOpacity onPress={() => setShowAdminPermissionsModal(false)}><Ionicons name="close-circle" size={30} color="#ccc" /></TouchableOpacity>
+            </View>
+            <Text style={{color: '#666', marginBottom: 15, fontSize: 13}}>Administrando restricciones para: {selectedAdminForRestrictions?.nombre || selectedAdminForRestrictions?.usuario}</Text>
+            {selectedAdminForRestrictions && (
+              <ScrollView style={{gap: 12, paddingBottom: 20}}>
+                  <View style={styles.permissionToggleRow}>
+                      <Text style={styles.permissionToggleLabel}>Módulo "Nuevo Paciente"</Text>
+                      <Switch
+                          value={selectedAdminForRestrictions.mod_nuevo_paciente === 1 || selectedAdminForRestrictions.mod_nuevo_paciente === true}
+                          onValueChange={(val) => {
+                              handleToggleAdminPermission(selectedAdminForRestrictions.id_usuario, 'mod_nuevo_paciente', val);
+                              setSelectedAdminForRestrictions({...selectedAdminForRestrictions, mod_nuevo_paciente: val ? 1 : 0});
+                          }}
+                          trackColor={{ false: "#d9dbda", true: "#0f6d78" }}
+                          thumbColor="#fff"
+                      />
+                  </View>
+                  <View style={styles.permissionToggleRow}>
+                      <Text style={styles.permissionToggleLabel}>Módulo "Gestión de Usuarios"</Text>
+                      <Switch
+                          value={selectedAdminForRestrictions.mod_gestion_usuarios === 1 || selectedAdminForRestrictions.mod_gestion_usuarios === true}
+                          onValueChange={(val) => {
+                              handleToggleAdminPermission(selectedAdminForRestrictions.id_usuario, 'mod_gestion_usuarios', val);
+                              setSelectedAdminForRestrictions({...selectedAdminForRestrictions, mod_gestion_usuarios: val ? 1 : 0});
+                          }}
+                          trackColor={{ false: "#d9dbda", true: "#0f6d78" }}
+                          thumbColor="#fff"
+                      />
+                  </View>
+                  <View style={styles.permissionToggleRow}>
+                      <Text style={styles.permissionToggleLabel}>Módulo "Reportes"</Text>
+                      <Switch
+                          value={selectedAdminForRestrictions.mod_reportes === 1 || selectedAdminForRestrictions.mod_reportes === true}
+                          onValueChange={(val) => {
+                              handleToggleAdminPermission(selectedAdminForRestrictions.id_usuario, 'mod_reportes', val);
+                              setSelectedAdminForRestrictions({...selectedAdminForRestrictions, mod_reportes: val ? 1 : 0});
+                          }}
+                          trackColor={{ false: "#d9dbda", true: "#0f6d78" }}
+                          thumbColor="#fff"
+                      />
+                  </View>
+                  <View style={styles.permissionToggleRow}>
+                      <Text style={styles.permissionToggleLabel}>Módulo "Actividad"</Text>
+                      <Switch
+                          value={selectedAdminForRestrictions.mod_actividad === 1 || selectedAdminForRestrictions.mod_actividad === true}
+                          onValueChange={(val) => {
+                              handleToggleAdminPermission(selectedAdminForRestrictions.id_usuario, 'mod_actividad', val);
+                              setSelectedAdminForRestrictions({...selectedAdminForRestrictions, mod_actividad: val ? 1 : 0});
+                          }}
+                          trackColor={{ false: "#d9dbda", true: "#0f6d78" }}
+                          thumbColor="#fff"
+                      />
+                  </View>
+                  <View style={styles.permissionToggleRow}>
+                      <Text style={styles.permissionToggleLabel}>Módulo "Alertas"</Text>
+                      <Switch
+                          value={selectedAdminForRestrictions.mod_alertas === 1 || selectedAdminForRestrictions.mod_alertas === true}
+                          onValueChange={(val) => {
+                              handleToggleAdminPermission(selectedAdminForRestrictions.id_usuario, 'mod_alertas', val);
+                              setSelectedAdminForRestrictions({...selectedAdminForRestrictions, mod_alertas: val ? 1 : 0});
+                          }}
+                          trackColor={{ false: "#d9dbda", true: "#0f6d78" }}
+                          thumbColor="#fff"
+                      />
+                  </View>
+                  <View style={styles.permissionToggleRow}>
+                      <Text style={styles.permissionToggleLabel}>Módulo "Pagos"</Text>
+                      <Switch
+                          value={selectedAdminForRestrictions.mod_pagos === 1 || selectedAdminForRestrictions.mod_pagos === true}
+                          onValueChange={(val) => {
+                              handleToggleAdminPermission(selectedAdminForRestrictions.id_usuario, 'mod_pagos', val);
+                              setSelectedAdminForRestrictions({...selectedAdminForRestrictions, mod_pagos: val ? 1 : 0});
+                          }}
+                          trackColor={{ false: "#d9dbda", true: "#0f6d78" }}
+                          thumbColor="#fff"
+                      />
+                  </View>
+              </ScrollView>
+            )}
+            <View style={{marginTop: 20, alignItems: 'center'}}>
+                <TouchableOpacity style={[styles.btnSave, {backgroundColor: '#e67e22', minWidth: 150, justifyContent: 'center', alignItems: 'center'}]} onPress={() => {
+                     setShowAdminPermissionsModal(false);
+                     // Refrescar lista madre para que se reflejen los cambios visualmente al reingresar
+                     loadUsers();
+                }}>
+                    <Text style={styles.btnSaveText}>Aceptar Cambios</Text>
+                </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Modal Pagos - Listado de Usuarios */}
+      <Modal visible={showPagosUsersModal} animationType="slide" transparent={true}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContainer}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalHeaderTitle}>Supervisión de Pagos</Text>
+              <TouchableOpacity onPress={() => setShowPagosUsersModal(false)}><Ionicons name="close-circle" size={30} color="#ccc" /></TouchableOpacity>
+            </View>
+            <Text style={{color: '#666', marginBottom: 15, fontSize: 13}}>Toca un usuario para ver el historial detallado de sus facturas.</Text>
+            
+            {loadingPagos ? (
+                <View style={{flex: 1, justifyContent: 'center'}}><ActivityIndicator size="large" color="#e67e22" /></View>
+            ) : (
+                <FlatList data={groupedPaymentUsers} keyExtractor={(i) => String(i.id_usuario)}
+                  renderItem={({ item }) => (
+                    <TouchableOpacity style={[styles.userListItem, {borderColor: '#f0f0f0', borderWidth: 1, borderRadius: 15, paddingHorizontal: 15, marginBottom: 10, paddingVertical: 12}]} onPress={() => handleSelectPaymentUser(item.id_usuario)}>
+                      <View style={[styles.userListAvatar, {backgroundColor: '#e67e22'}]}><Text style={styles.userListAvatarText}>{(item.usuario_nombre || 'U')[0].toUpperCase()}</Text></View>
+                      <View style={{ flex: 1 }}>
+                            <Text style={styles.userListName}>{item.usuario_nombre || item.usuario_username}</Text>
+                            <Text style={styles.userListEmail}>{item.usuario_email}</Text>
+                       </View>
+                       <View style={{alignItems: 'flex-end'}}>
+                           <Text style={{fontWeight: 'bold', color: '#0f6d78'}}>${Number(item.monto_total).toLocaleString('en-US')}</Text>
+                           <Text style={{fontSize: 11, color: '#888'}}>{item.total_pagos} Transacciones</Text>
+                       </View>
+                    </TouchableOpacity>
+                  )}
+                  ListEmptyComponent={<Text style={styles.emptyText}>No hay pagos registrados</Text>}
+                />
+            )}
+          </View>
+        </View>
+      </Modal>
+
+      {/* Modal Pagos - Detalle por Usuario */}
+      <Modal visible={showPagosDetailModal} animationType="slide" transparent={true}>
+        <View style={styles.modalOverlayDark}>
+          <View style={styles.detailCard}>
+             <View style={styles.detailHeader}>
+                <Text style={styles.detailTitle}>Reportes de Pago</Text>
+                <TouchableOpacity onPress={() => setShowPagosDetailModal(false)}><Ionicons name="close" size={24} color="#666" /></TouchableOpacity>
+             </View>
+             <ScrollView style={{maxHeight: 500}}>
+                {allPayments.filter(p => p.id_usuario === selectedPaymentUser).map((p, idx) => (
+                    <View key={`hist-pago-${idx}`} style={{backgroundColor: '#f9f9f9', padding: 15, borderRadius: 12, marginBottom: 10, borderLeftWidth: 4, borderLeftColor: '#e67e22'}}>
+                        <View style={{flexDirection: 'row', justifyContent: 'space-between', marginBottom: 5}}>
+                            <Text style={{fontWeight: 'bold', color: '#333'}}>Pago #{p.id_pago}</Text>
+                            <Text style={{fontWeight: 'bold', color: '#0f6d78'}}>${Number(p.monto).toLocaleString('en-US')}</Text>
+                        </View>
+                        <Text style={{fontSize: 13, color: '#555', marginBottom: 5}}>{p.descripcion}</Text>
+                        <View style={{flexDirection: 'row', justifyContent: 'space-between'}}>
+                            <Text style={{fontSize: 11, color: '#888'}}>{new Date(p.created_at).toLocaleString()}</Text>
+                            <Text style={{fontSize: 11, color: '#e67e22', fontWeight: 'bold'}}>{p.metodo_pago}</Text>
+                        </View>
+                    </View>
+                ))}
+            </ScrollView>
           </View>
         </View>
       </Modal>

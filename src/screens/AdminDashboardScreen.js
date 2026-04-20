@@ -1123,6 +1123,16 @@ export default function AdminDashboardScreen({ navigation }) {
     </>
   );
   const renderPagos = () => {
+    if (me?.mod_pagos === 0 || me?.mod_pagos === false) {
+      return (
+        <View style={styles.actionsCard}>
+          <Text style={styles.sectionTitle}>Acceso Restringido</Text>
+          <Text style={styles.moduleDescription}>
+            El Superadministrador ha bloqueado el acceso al módulo de Pagos para tu cuenta.
+          </Text>
+        </View>
+      );
+    }
     const uniqueUsersMap = new Map();
     paymentsRows.forEach((p) => {
       if (!uniqueUsersMap.has(p.id_usuario)) {
@@ -2584,6 +2594,7 @@ export default function AdminDashboardScreen({ navigation }) {
 
       <View style={styles.bottomBar}>
         {TABS.map((tab) => {
+          if (tab.key === 'pagos' && (me?.mod_pagos === 0 || me?.mod_pagos === false)) return null;
           const active = activeTab === tab.key;
           return (
             <TouchableOpacity

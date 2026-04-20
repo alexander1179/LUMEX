@@ -4,7 +4,7 @@ import Constants from 'expo-constants';
 
 // Obtener la IP local de tu computadora
 // Reemplaza con la IP de tu computadora (ejecuta 'ipconfig' en Windows o 'ifconfig' en Mac/Linux)
-const LOCAL_IP = '192.168.20.141'; // 🔥 IP actualizada según ipconfig
+const LOCAL_IP = '10.157.25.163'; // 🔥 IP actualizada según ipconfig
 
 const normalizeUrl = (url) => String(url || '').trim().replace(/\/$/, '');
 

@@ -2,8 +2,8 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   Animated,
+  Dimensions,
   Image,
   KeyboardAvoidingView,
   Modal,
@@ -31,7 +31,11 @@ import {
   parseDatasetContent,
   readDatasetAsset,
   saveAnalysisInSupabase,
+  purchaseCredits,
+  deductAnalysisCredit,
 } from '../services/lumex';
+
+const { width } = Dimensions.get('window');
 
 const icon = require('../../assets/lumex.jpeg');
 const alexPhoto = require('../../assets/Alexander.jpg');
@@ -47,7 +51,7 @@ const ANALYSIS_TYPES = [
 const ANALYSIS_VISUALS = {
   anomalias: {
     title: 'Deteccion de anomalias',
-    subtitle: 'Encuentra comportamientos fuera de patron y prioriza alertas clinicas.',
+    subtitle: 'Encuentra comportamientos fuera de patron y prioriza  as clinicas.',
     focus: 'Enfoque: variaciones atipicas frente al comportamiento esperado.',
     tip: 'Ideal cuando no tienes etiquetas claras y necesitas detectar riesgo temprano.',
     imageUri: 'https://images.unsplash.com/photo-1576671081837-49000212a370?auto=format&fit=crop&w=1200&q=80',
@@ -110,7 +114,7 @@ const HEALTH = {
 const RIESGO_META = {
   bajo: { color: '#2e9e54', bg: '#eaf7ed', label: 'Riesgo bajo', icon: 'shield-checkmark' },
   medio: { color: '#e07b21', bg: '#fef3e7', label: 'Riesgo medio', icon: 'warning' },
-  alto: { color: '#e05a21', bg: '#fceee7', label: 'Riesgo alto', icon: 'alert-circle' },
+  alto: { color: '#e05a21', bg: '#fceee7', label: 'Riesgo alto', icon: ' -circle' },
 };
 
 const ESTADO_COLOR = { normal: '#2e9e54', alto: '#e05a21', bajo: '#e07b21' };
@@ -435,12 +439,23 @@ const getFindingsRateText = (totalRegistros, totalAnomalias) => {
 export default function MainScreen({ navigation }) {
   const [user, setUser] = useState(null);
   const [activeTab, setActiveTab] = useState('inicio');
+  const [loading, setLoading] = useState(false);
 
   const [datasetName, setDatasetName] = useState('');
   const [datasetContent, setDatasetContent] = useState('');
   const [selectedDatasetMeta, setSelectedDatasetMeta] = useState(null);
   const [parsedDataset, setParsedDataset] = useState(null);
   const [isPickingCsv, setIsPickingCsv] = useState(false);
+  
+  // Estados para créditos y pagos
+  const [analisisDisponibles, setAnalisisDisponibles] = useState(0);
+  const [showOutOffCreditsModal, setShowOutOffCreditsModal] = useState(false);
+  const [showPaymentConfirmationModal, setShowPaymentConfirmationModal] = useState(false);
+  const [showPaymentMethodsModal, setShowPaymentMethodsModal] = useState(false);
+  const [selectedPlan, setSelectedPlan] = useState(null);
+  const [selectedPaymentMethod, setSelectedPaymentMethod] = useState(null);
+  const [showPaymentSuccess, setShowPaymentSuccess] = useState(false);
+  const successMessageAnim = useRef(new Animated.Value(-width)).current;
   const [selectedVisualization, setSelectedVisualization] = useState('matriz_correlacion');
   const [visualizationOpen, setVisualizationOpen] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -448,6 +463,9 @@ export default function MainScreen({ navigation }) {
   const [analysisResultSummary, setAnalysisResultSummary] = useState(null);
   const [analysisHistory, setAnalysisHistory] = useState([]);
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
+  const [showDownloadMenu, setShowDownloadMenu] = useState(false);
+  const [notification, setNotification] = useState({ visible: false, message: '', type: 'info' });
+  const notificationAnim = useRef(new Animated.Value(-width)).current;
   const [heartRate, setHeartRate] = useState(HEALTH.frecuenciaCardiaca.valor);
   const [heartRateStatus, setHeartRateStatus] = useState(HEALTH.frecuenciaCardiaca.estado);
   const [bloodPressureSystolic, setBloodPressureSystolic] = useState(HEALTH.presionArterial.sistolica);
@@ -498,6 +516,7 @@ export default function MainScreen({ navigation }) {
           if (Number.isInteger(userId)) {
             await loadHistory(userId);
           }
+          setAnalisisDisponibles(userData?.analisis_disponibles || 0);
         } else {
           navigation.replace('Login');
         }
@@ -519,7 +538,7 @@ export default function MainScreen({ navigation }) {
       setAnalysisHistory(history);
     } catch (error) {
       console.log('Error loading analysis history:', error);
-      Alert.alert('Aviso', 'No se pudo actualizar el historial de analisis desde Supabase.');
+      showNotification('No se pudo actualizar el historial de analisis desde Supabase.');
     } finally {
       setIsLoadingHistory(false);
     }
@@ -530,7 +549,7 @@ export default function MainScreen({ navigation }) {
       setIsDownloadingReport(true);
 
       if (!analysisExportCardRef.current) {
-        Alert.alert('No disponible', 'No se pudo preparar el informe para exportar imagen.');
+        showNotification('No se pudo preparar el informe para exportar imagen.');
         return;
       }
 
@@ -560,11 +579,11 @@ export default function MainScreen({ navigation }) {
           UTI: 'public.png',
         });
       } else {
-        Alert.alert('No disponible', 'La opcion de compartir no esta disponible en este dispositivo.');
+        showNotification('La opcion de compartir no esta disponible en este dispositivo.');
       }
     } catch (e) {
       console.log('Error descargando imagen:', e);
-      Alert.alert('Error', 'No se pudo descargar la imagen del resultado.');
+      showNotification('No se pudo descargar la imagen del resultado.');
     } finally {
       setIsDownloadingReport(false);
     }
@@ -691,26 +710,18 @@ export default function MainScreen({ navigation }) {
           UTI: 'com.adobe.pdf',
         });
       } else {
-        Alert.alert('No disponible', 'La opcion de compartir no esta disponible en este dispositivo.');
+        showNotification('La opcion de compartir no esta disponible en este dispositivo.');
       }
     } catch (e) {
       console.log('Error generando PDF:', e);
-      Alert.alert('Error', 'No se pudo generar el PDF del resultado.');
+      showNotification('No se pudo generar el PDF del resultado.');
     } finally {
       setIsDownloadingReport(false);
     }
   };
 
   const handleDownloadResultChoice = () => {
-    Alert.alert(
-      'Descargar resultado',
-      '¿En que formato deseas guardar el resultado?',
-      [
-        { text: 'Imagen (.PNG)', onPress: downloadResultAsImage },
-        { text: 'PDF (.PDF)', onPress: downloadResultAsPdf },
-        { text: 'Cancelar', style: 'cancel' },
-      ]
-    );
+    setShowDownloadMenu(true);
   };
 
   useEffect(() => {
@@ -739,16 +750,12 @@ export default function MainScreen({ navigation }) {
     if (!isCameraMeasuring) return;
     if (cameraSecondsLeft > 0) return;
 
-    const bpm = Math.round(62 + Math.random() * 34);
-    let newStatus = 'normal';
-    if (bpm < 60) newStatus = 'bajo';
-    if (bpm > 100) newStatus = 'alto';
-
+    const bpm = Math.floor(Math.random() * (95 - 65 + 1) + 65);
     setHeartRate(bpm);
-    setHeartRateStatus(newStatus);
+    setHeartRateStatus('Normal');
+    showNotification(`Medición completada: ${bpm} bpm`, 'info');
     setIsCameraMeasuring(false);
-
-    Alert.alert('Medicion por camara completada', `Frecuencia cardiaca estimada: ${bpm} bpm`);
+    setCameraSecondsLeft(15);
   }, [isCameraMeasuring, cameraSecondsLeft]);
 
   useEffect(() => {
@@ -768,10 +775,7 @@ export default function MainScreen({ navigation }) {
     setBloodPressureStatus(newStatus);
     setIsMeasuringBloodPressure(false);
 
-    Alert.alert(
-      bloodPressureMode === 'camera' ? 'Estimacion por camara completada' : 'Muestra completada',
-      `Presion arterial estimada: ${systolic}/${diastolic} mmHg`
-    );
+    showNotification(`Presión arterial estimada: ${systolic}/${diastolic} mmHg`, 'info');
   }, [isMeasuringBloodPressure, bloodPressureSecondsLeft, bloodPressureMode, heartRate]);
 
   const openHeartRateModule = () => {
@@ -800,7 +804,7 @@ export default function MainScreen({ navigation }) {
 
   const startBloodPressureMeasurement = () => {
     if (bloodPressureMode === 'camera' && !cameraPermission?.granted) {
-      Alert.alert('Camara no habilitada', 'Activa permisos de camara para iniciar esta estimacion.');
+      showNotification('Activa permisos de camara para iniciar esta estimacion.');
       return;
     }
     setBloodPressureSecondsLeft(10);
@@ -810,7 +814,7 @@ export default function MainScreen({ navigation }) {
   const enableBloodPressureCameraMode = async () => {
     const permission = cameraPermission?.granted ? cameraPermission : await requestCameraPermission();
     if (!permission?.granted) {
-      Alert.alert('Permiso requerido', 'Debes permitir el acceso a la camara para usar esta estimacion.');
+      showNotification('Debes permitir el acceso a la camara para usar esta estimacion.');
       return;
     }
     setBloodPressureMode('camera');
@@ -821,7 +825,7 @@ export default function MainScreen({ navigation }) {
   const enableHeartRateCameraMode = async () => {
     const permission = cameraPermission?.granted ? cameraPermission : await requestCameraPermission();
     if (!permission?.granted) {
-      Alert.alert('Permiso requerido', 'Debes permitir el acceso a la camara para medir por camara.');
+      showNotification('Debes permitir el acceso a la camara para medir por camara.');
       return;
     }
     setCameraSecondsLeft(15);
@@ -829,7 +833,7 @@ export default function MainScreen({ navigation }) {
 
   const startHeartRateCameraMeasurement = () => {
     if (!cameraPermission?.granted) {
-      Alert.alert('Camara no habilitada', 'Activa permisos de camara para iniciar esta medicion.');
+      showNotification('Activa permisos de camara para iniciar esta medicion.');
       return;
     }
     setCameraSecondsLeft(15);
@@ -846,8 +850,87 @@ export default function MainScreen({ navigation }) {
     setBloodPressureSecondsLeft(10);
   };
 
+  const triggerSuccessMessage = () => {
+    setShowPaymentSuccess(true);
+    successMessageAnim.setValue(-width);
+    Animated.sequence([
+      Animated.timing(successMessageAnim, {
+        toValue: 0,
+        duration: 1000,
+        useNativeDriver: true,
+      }),
+      Animated.delay(5000),
+      Animated.timing(successMessageAnim, {
+        toValue: width,
+        duration: 1000,
+        useNativeDriver: true,
+      }),
+    ]).start(() => {
+      setShowPaymentSuccess(false);
+      successMessageAnim.setValue(-width);
+      setActiveTab('dataset');
+    });
+  };
+
+  const showNotification = (message, type = 'info') => {
+    setNotification({ visible: true, message, type });
+    notificationAnim.setValue(-width);
+    Animated.sequence([
+      Animated.timing(notificationAnim, {
+        toValue: 0,
+        duration: 800,
+        useNativeDriver: true,
+      }),
+      Animated.delay(4000),
+      Animated.timing(notificationAnim, {
+        toValue: width,
+        duration: 800,
+        useNativeDriver: true,
+      }),
+    ]).start(() => {
+      setNotification({ visible: false, message: '', type: 'info' });
+    });
+  };
+
+  const handlePurchase = async (metodo) => {
+    if (!selectedPlan) return;
+    
+    try {
+      setLoading(true);
+      const res = await purchaseCredits(
+        currentUserId, 
+        selectedPlan.type, 
+        selectedPlan.monto, 
+        metodo
+      );
+      
+      if (res.success) {
+        setAnalisisDisponibles(res.newCredits);
+        // Actualizar storage local
+        const updatedUser = { ...user, analisis_disponibles: res.newCredits };
+        await storageService.saveUser(updatedUser);
+        setUser(updatedUser);
+        
+        setShowPaymentMethodsModal(false);
+        setShowPaymentConfirmationModal(false);
+        setShowOutOffCreditsModal(false);
+        
+        setTimeout(() => {
+          triggerSuccessMessage();
+        }, 500);
+      } else {
+        showNotification(res.message || 'No se pudo procesar el pago');
+      }
+    } catch (error) {
+      console.error('Error in handlePurchase:', error);
+      showNotification('Fallo en la conexión');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleLogout = () => {
-    Alert.alert('Cerrar sesion', 'Estas seguro de que deseas salir?', [
+    showNotification('Estas seguro de que deseas salir?', [
       { text: 'Cancelar', style: 'cancel' },
       {
         text: 'Salir',
@@ -866,17 +949,22 @@ export default function MainScreen({ navigation }) {
 
   const handleAnalyze = async () => {
     if (!datasetName.trim()) {
-      Alert.alert('Campo requerido', 'Ingresa un nombre para el dataset.');
+      showNotification('Ingresa un nombre para el dataset.', 'warning');
       return;
     }
 
     if (!datasetContent.trim()) {
-      Alert.alert('Datos requeridos', 'Carga un archivo CSV/Excel o ingresa el contenido del dataset.');
+      showNotification('Carga un archivo CSV o ingresa contenido.', 'warning');
       return;
     }
 
     if (!Number.isInteger(currentUserId)) {
-      Alert.alert('Usuario invalido', 'No se encontro un id de usuario valido para guardar el analisis.');
+      showNotification('Usuario no válido detectado.', 'error');
+      return;
+    }
+
+    if (analisisDisponibles <= 0) {
+      setShowOutOffCreditsModal(true);
       return;
     }
 
@@ -898,6 +986,17 @@ export default function MainScreen({ navigation }) {
         datasetPath: datasetPathWithVisualization,
         parsedDataset: parsed,
       });
+
+      // --- Descontar crédito ---
+      const deductRes = await deductAnalysisCredit(currentUserId);
+      if (deductRes.success) {
+        const newTotal = (analisisDisponibles || 1) - 1;
+        setAnalisisDisponibles(newTotal);
+        // Actualizar localmente
+        const updatedUser = { ...user, analisis_disponibles: newTotal };
+        await storageService.saveUser(updatedUser);
+        setUser(updatedUser);
+      }
 
       await loadHistory(currentUserId);
 
@@ -924,7 +1023,7 @@ export default function MainScreen({ navigation }) {
     } catch (error) {
       console.log('Error saving analysis:', error);
       setIsAnalyzing(false);
-      Alert.alert('Error', error?.message || 'No se pudo completar el analisis y guardarlo en Supabase.');
+      showNotification(error?.message || 'No se pudo completar el analisis y guardarlo en Supabase.');
     }
   };
 
@@ -960,12 +1059,12 @@ export default function MainScreen({ navigation }) {
 
       const asset = result.assets?.[0];
       if (!asset?.uri) {
-        Alert.alert('Archivo invalido', 'No fue posible leer el archivo seleccionado.');
+        showNotification('No fue posible leer el archivo seleccionado.');
         return;
       }
 
       if (!isDatasetFileSupported(asset)) {
-        Alert.alert('Formato no valido', 'Selecciona un archivo con extension .csv, .xlsx o .xls.');
+        showNotification('Selecciona un archivo con extension .csv, .xlsx o .xls.');
         return;
       }
 
@@ -987,10 +1086,10 @@ export default function MainScreen({ navigation }) {
         fileUri: datasetFile.fileUri,
       });
 
-      Alert.alert('Archivo cargado', `${datasetFile.fileName} listo para analizar.`);
+      showNotification(`${datasetFile.fileName} listo para analizar.`);
     } catch (error) {
       console.log('Error loading dataset file:', error);
-      Alert.alert('Error', error?.message || 'No se pudo cargar el archivo seleccionado desde tu dispositivo.');
+      showNotification(error?.message || 'No se pudo cargar el archivo seleccionado desde tu dispositivo.');
     } finally {
       setIsPickingCsv(false);
     }
@@ -1052,15 +1151,15 @@ export default function MainScreen({ navigation }) {
     try {
       const saved = await storageService.saveUser(updatedUser);
       if (!saved) {
-        Alert.alert('Error', 'No se pudieron guardar los datos del perfil.');
+        showNotification('No se pudieron guardar los datos del perfil.');
         return;
       }
       setUser(updatedUser);
       setIsEditingProfile(false);
-      Alert.alert('Perfil actualizado', 'Tus datos personales se guardaron correctamente.');
+      showNotification('Tus datos personales se guardaron correctamente.');
     } catch (error) {
       console.log('Error saving profile details:', error);
-      Alert.alert('Error', 'Ocurrio un problema al guardar tus datos.');
+      showNotification('Ocurrio un problema al guardar tus datos.');
     }
   };
 
@@ -1152,7 +1251,7 @@ export default function MainScreen({ navigation }) {
           {latestAnalysis ? (
             <View style={styles.moduleList}>
               <View style={styles.moduleItem}>
-                <Ionicons name="alert-circle-outline" size={18} color="#2f7a96" />
+                <Ionicons name="information-circle-outline" size={18} color="#2f7a96" />
                 <Text style={styles.moduleItemText}>Tipo de analisis: {formatAnalysisLabel(FIXED_ANALYSIS_TYPE)}</Text>
               </View>
 
@@ -1457,6 +1556,7 @@ export default function MainScreen({ navigation }) {
     </ScrollView>
   );
 
+
   const renderPerfil = () => (
     <ScrollView style={styles.scroll} contentContainerStyle={styles.tabContent} showsVerticalScrollIndicator={false}>
       <View style={styles.avatarWrap}>
@@ -1583,11 +1683,277 @@ export default function MainScreen({ navigation }) {
     </ScrollView>
   );
 
+  const renderSuccessBanner = () => {
+    if (!showPaymentSuccess) return null;
+    return (
+      <Animated.View style={[styles.successBanner, { transform: [{ translateX: successMessageAnim }] }]}>
+        <Ionicons name="checkmark-circle" size={24} color="#fff" />
+        <Text style={styles.successBannerText}>
+          ¡Muchas gracias! Has adquirido tus creditos correctamente.
+        </Text>
+      </Animated.View>
+    );
+  };
+
+  const renderInfoBanner = () => {
+    if (!notification.visible) return null;
+    const isWarning = notification.type === 'warning';
+    const isError = notification.type === 'error';
+    
+    return (
+      <Animated.View style={[
+        styles.infoBanner, 
+        isWarning && styles.infoBannerWarning,
+        isError && styles.infoBannerError,
+        { transform: [{ translateX: notificationAnim }] }
+      ]}>
+        <Ionicons 
+          name={isError ? ' -circle' : isWarning ? 'warning' : 'information-circle'} 
+          size={22} 
+          color="#fff" 
+        />
+        <Text style={styles.infoBannerText}>{notification.message}</Text>
+      </Animated.View>
+    );
+  };
+
+  const renderDownloadMenuModal = () => {
+    return (
+      <Modal visible={showDownloadMenu} transparent animationType="fade">
+        <View style={styles.modalOverlay}>
+          <View style={[styles.paymentModalContent, { paddingBottom: 30 }]}>
+            <View style={[styles.paymentIconCircle, { backgroundColor: '#eefcfd' }]}>
+              <Ionicons name="download-outline" size={30} color="#0f6d78" />
+            </View>
+            <Text style={styles.paymentTitle}>Descargar informe</Text>
+            <Text style={styles.paymentDescription}>
+              ¿En qué formato deseas guardar el resultado de tu análisis?
+            </Text>
+
+            <View style={{ width: '100%', gap: 12 }}>
+              <TouchableOpacity 
+                style={styles.purchaseButton}
+                onPress={() => {
+                  setShowDownloadMenu(false);
+                  setTimeout(downloadResultAsImage, 500);
+                }}
+              >
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                  <Ionicons name="image-outline" size={20} color="#fff" />
+                  <Text style={styles.purchaseButtonText}>Imagen (.PNG)</Text>
+                </View>
+              </TouchableOpacity>
+
+              <TouchableOpacity 
+                style={[styles.purchaseButton, { backgroundColor: '#34495e' }]}
+                onPress={() => {
+                  setShowDownloadMenu(false);
+                  setTimeout(downloadResultAsPdf, 500);
+                }}
+              >
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                  <Ionicons name="document-text-outline" size={20} color="#fff" />
+                  <Text style={styles.purchaseButtonText}>Documento (.PDF)</Text>
+                </View>
+              </TouchableOpacity>
+
+              <TouchableOpacity 
+                style={{ alignSelf: 'center', marginTop: 10, padding: 10 }}
+                onPress={() => setShowDownloadMenu(false)}
+              >
+                <Text style={{ color: '#7f8c8d', fontWeight: '700' }}>Cancelar</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+    );
+  };
+
+  const renderPagosModals = () => {
+    return (
+      <>
+        {/* Modal 1: Análisis Agotados */}
+        <Modal visible={showOutOffCreditsModal} transparent animationType="fade">
+          <View style={styles.modalOverlay}>
+            <View style={styles.paymentModalContent}>
+              <View style={styles.paymentIconCircle}>
+                <Ionicons name="cart-outline" size={30} color={T} />
+              </View>
+              <Text style={styles.paymentTitle}>Analisis agotados</Text>
+              <Text style={styles.paymentDescription}>
+                Adquiere un plan para iniciar tu análisis de dataset.
+              </Text>
+
+              <View style={styles.plansRow}>
+                {/* Plan Básico */}
+                <TouchableOpacity 
+                   style={[styles.planCard, styles.planCardBasic]} 
+                   activeOpacity={0.8}
+                   onPress={() => {
+                     setSelectedPlan({ type: 'Basico', monto: 5, credits: 1 });
+                     setShowPaymentConfirmationModal(true);
+                   }}
+                >
+                  <Ionicons name="flash-outline" size={32} color={T} style={styles.planIcon} />
+                  <Text style={[styles.planTitle, { color: '#0f6d78' }]}>Plan Basico</Text>
+                  <Text style={[styles.planPrice, { color: '#15333d' }]}>$5 USD</Text>
+                  <Text style={[styles.planDetail, { color: '#4f666c' }]}>1 Credito por analisis</Text>
+                </TouchableOpacity>
+
+                {/* Plan Diamante */}
+                <TouchableOpacity 
+                  style={[styles.planCard, styles.planCardDiamond]} 
+                  activeOpacity={0.8}
+                  onPress={() => {
+                    setSelectedPlan({ type: 'Diamante', monto: 12, credits: 3 });
+                    setShowPaymentConfirmationModal(true);
+                  }}
+                >
+                  <View style={styles.planTopBadge}>
+                    <Text style={styles.planTopBadgeText}>TOP</Text>
+                  </View>
+                  <Ionicons name="diamond-outline" size={32} color="#fff" style={styles.planIcon} />
+                  <Text style={[styles.planTitle, { color: '#fff' }]}>Diamante</Text>
+                  <Text style={[styles.planPrice, { color: '#fff' }]}>$12 USD</Text>
+                  <Text style={[styles.planDetail, { color: '#eaf6f5' }]}>3 Creditos por analisis</Text>
+                </TouchableOpacity>
+              </View>
+
+              <TouchableOpacity style={styles.closeLink} onPress={() => setShowOutOffCreditsModal(false)}>
+                <Text style={styles.closeLinkText}>Cerrar</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Modal>
+
+        {/* Modal 2: Confirmación */}
+        <Modal visible={showPaymentConfirmationModal} transparent animationType="slide">
+          <View style={styles.modalOverlay}>
+            <View style={[styles.paymentModalContent, { width: '85%' }]}>
+              <View style={styles.paymentIconCircle}>
+                <Ionicons name="help-circle-outline" size={35} color={T} />
+              </View>
+              <Text style={styles.paymentTitle}>¿Deseas realizar la compra?</Text>
+              <Text style={styles.paymentDescription}>
+                Has seleccionado el Plan {selectedPlan?.type} por ${selectedPlan?.monto} USD
+              </Text>
+
+              <View style={styles.modalButtonsRow}>
+                <TouchableOpacity 
+                   style={[styles.modalActionBtn, styles.modalActionBtnSecondary]} 
+                   onPress={() => setShowPaymentConfirmationModal(false)}
+                >
+                  <Text style={styles.modalActionBtnSecondaryText}>Cancelar</Text>
+                </TouchableOpacity>
+                <TouchableOpacity 
+                  style={[styles.modalActionBtn, styles.modalActionBtnPrimary]}
+                  onPress={() => {
+                    setShowPaymentMethodsModal(true);
+                  }}
+                >
+                  <Text style={styles.modalActionBtnPrimaryText}>Continuar</Text>
+                </TouchableOpacity>
+              </View>
+
+              <TouchableOpacity style={[styles.closeLink, { marginTop: 15 }]} onPress={() => {
+                setShowPaymentConfirmationModal(false);
+                setShowOutOffCreditsModal(false);
+              }}>
+                <Text style={styles.closeLinkText}>Cerrar</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Modal>
+
+        {/* Modal 3: Métodos de Pago */}
+        <Modal visible={showPaymentMethodsModal} transparent animationType="slide">
+          <View style={styles.modalOverlay}>
+            <View style={styles.paymentModalContent}>
+              <Text style={[styles.paymentTitle, { alignSelf: 'flex-start', marginLeft: 5 }]}>Forma de pago</Text>
+              <Text style={[styles.paymentDescription, { alignSelf: 'flex-start', textAlign: 'left', paddingHorizontal: 5, marginBottom: 15 }]}>
+                Selecciona como deseas pagar tu plan.
+              </Text>
+
+              <View style={styles.paymentMethodsList}>
+                {['Tarjeta de Credito', 'PSE / Transferencia', 'Nequi / Daviplata', 'PayPal', 'Mercado Pago'].map((method) => (
+                  <TouchableOpacity 
+                    key={method} 
+                    style={[
+                      styles.paymentMethodItem,
+                      selectedPaymentMethod === method && styles.paymentMethodItemSelected
+                    ]}
+                    onPress={() => setSelectedPaymentMethod(method)}
+                  >
+                    <Ionicons 
+                      name={
+                        method.includes('Tarjeta') ? 'card-outline' : 
+                        method.includes('PSE') ? 'swap-horizontal-outline' : 
+                        method.includes('Nequi') ? 'phone-portrait-outline' : 
+                        method.includes('PayPal') ? 'logo-paypal' : 'wallet-outline'
+                      } 
+                      size={20} 
+                      color={selectedPaymentMethod === method ? '#fff' : T} 
+                    />
+                    <Text style={[
+                      styles.paymentMethodText,
+                      selectedPaymentMethod === method && styles.paymentMethodTextSelected
+                    ]}>{method}</Text>
+                    {selectedPaymentMethod === method && (
+                      <Ionicons name="checkmark-circle" size={18} color="#fff" style={{ marginLeft: 'auto' }} />
+                    )}
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              <TouchableOpacity 
+                style={[
+                  styles.purchaseButton, 
+                  !selectedPaymentMethod && { opacity: 0.6 }
+                ]}
+                activeOpacity={0.8}
+                onPress={() => {
+                  if (selectedPaymentMethod) {
+                    handlePurchase(selectedPaymentMethod);
+                  } else {
+                    showNotification('Por favor selecciona un método de pago');
+                  }
+                }}
+                disabled={!selectedPaymentMethod || loading}
+              >
+                {loading ? (
+                  <ActivityIndicator color="#fff" />
+                ) : (
+                  <Text style={styles.purchaseButtonText}>Pagar ahora</Text>
+                )}
+              </TouchableOpacity>
+
+              <TouchableOpacity style={styles.closeLink} onPress={() => setShowPaymentMethodsModal(false)}>
+                <Text style={[styles.closeLinkText, { color: T }]}>Volver</Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity style={styles.closeLink} onPress={() => {
+                setShowPaymentMethodsModal(false);
+                setShowPaymentConfirmationModal(false);
+                setShowOutOffCreditsModal(false);
+              }}>
+                <Text style={styles.closeLinkText}>Cerrar</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Modal>
+      </>
+    );
+  };
+
   const userName = user?.nombre || user?.usuario || 'Usuario';
   const initials = userName.slice(0, 2).toUpperCase();
 
   return (
     <Animated.View style={[styles.screen, { opacity: fadeAnim }]}> 
+      {renderSuccessBanner()}
+      {renderInfoBanner()}
+      {renderDownloadMenuModal()}
       <View style={styles.blob1} pointerEvents="none" />
       <View style={styles.blob2} pointerEvents="none" />
 
@@ -1661,6 +2027,8 @@ export default function MainScreen({ navigation }) {
             : startBloodPressureMeasurement
         }
       />
+
+      {renderPagosModals()}
 
       <Modal visible={showUserMenuModal} animationType="fade" transparent onRequestClose={() => setShowUserMenuModal(false)}>
         <View style={styles.userMenuDropdownOverlay}>
@@ -1737,7 +2105,7 @@ export default function MainScreen({ navigation }) {
                 LUMEX es una aplicacion movil orientada a la deteccion de anomalias cardiovasculares mediante tecnicas de aprendizaje profundo, con proyeccion hacia entornos clinicos y tecnologicos. Su proposito es facilitar la identificacion temprana de alteraciones en variables fisiologicas como la frecuencia cardiaca y la presion arterial, contribuyendo a la prevencion de enfermedades y al monitoreo continuo de la salud.
               </Text>
               <Text style={styles.aboutModalText}>
-                El objetivo principal de LUMEX es mejorar la deteccion oportuna de anomalias en datos biomedicos, permitiendo identificar desviaciones en los signos vitales antes de que evolucionen en condiciones criticas. A traves del analisis inteligente de patrones, la aplicacion fortalece el seguimiento de pacientes, optimiza la gestion de datos sensibles y apoya la toma de decisiones medicas mediante la generacion de alertas automatizadas basadas en comportamientos anomalos.
+                El objetivo principal de LUMEX es mejorar la deteccion oportuna de anomalias en datos biomedicos, permitiendo identificar desviaciones en los signos vitales antes de que evolucionen en condiciones criticas. A traves del analisis inteligente de patrones, la aplicacion fortalece el seguimiento de pacientes, optimiza la gestion de datos sensibles y apoya la toma de decisiones medicas mediante la generacion de  as automatizadas basadas en comportamientos anomalos.
               </Text>
               <Text style={styles.aboutModalText}>
                 La aplicacion permite recibir y almacenar datos provenientes de dispositivos moviles, sensores o tensiometros digitales. Posteriormente, estos datos son procesados por modelos de aprendizaje profundo previamente entrenados, los cuales calculan el grado de anomalia asociado a cada registro. Los resultados se presentan de forma clara, interpretativa y accesible, facilitando la comprension tanto para usuarios como para profesionales de la salud.
@@ -3383,5 +3751,213 @@ const styles = StyleSheet.create({
     color: '#4f6f7b',
     fontSize: 12,
     lineHeight: 17,
+  },
+  // Estilos para el flujo de pagos
+  paymentModalContent: {
+    width: '90%',
+    backgroundColor: '#ffffff',
+    borderRadius: 25,
+    padding: 20,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.1,
+    shadowRadius: 20,
+    elevation: 10,
+  },
+  paymentIconCircle: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: '#f0f9fa',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 15,
+  },
+  paymentTitle: {
+    fontSize: 22,
+    fontWeight: '800',
+    color: '#15333d',
+    marginBottom: 10,
+    textAlign: 'center',
+  },
+  paymentDescription: {
+    fontSize: 14,
+    color: '#4f666c',
+    textAlign: 'center',
+    marginBottom: 20,
+    lineHeight: 20,
+    paddingHorizontal: 10,
+  },
+  plansRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    width: '100%',
+    gap: 12,
+    marginBottom: 25,
+  },
+  planCard: {
+    flex: 1,
+    borderRadius: 20,
+    padding: 15,
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: 'transparent',
+    backgroundColor: '#f8fbfc',
+  },
+  planCardBasic: {
+    backgroundColor: '#ffffff',
+    borderWidth: 1,
+    borderColor: '#e8f2f4',
+  },
+  planCardDiamond: {
+    backgroundColor: '#0f6d78',
+  },
+  planTopBadge: {
+    position: 'absolute',
+    top: -10,
+    right: 10,
+    backgroundColor: '#e67e22',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 10,
+  },
+  planTopBadgeText: {
+    color: '#fff',
+    fontSize: 10,
+    fontWeight: '900',
+  },
+  planIcon: {
+    marginBottom: 10,
+  },
+  planTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    marginBottom: 8,
+  },
+  planPrice: {
+    fontSize: 18,
+    fontWeight: '800',
+    marginBottom: 5,
+  },
+  planDetail: {
+    fontSize: 11,
+    textAlign: 'center',
+    lineHeight: 14,
+  },
+  paymentMethodsList: {
+    width: '100%',
+    gap: 10,
+    marginBottom: 20,
+  },
+  paymentMethodItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 14,
+    borderRadius: 15,
+    backgroundColor: '#f8fbfc',
+    borderWidth: 1,
+    borderColor: '#e8f2f4',
+  },
+  paymentMethodItemActive: {
+    borderColor: '#0f6d78',
+    backgroundColor: '#f0f9fa',
+  },
+  paymentMethodText: {
+    flex: 1,
+    marginLeft: 12,
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#15333d',
+  },
+  paymentMethodItemSelected: {
+    backgroundColor: '#0f6d78',
+    borderColor: '#0f6d78',
+  },
+  paymentMethodTextSelected: {
+    color: '#ffffff',
+  },
+  purchaseButton: {
+    width: '100%',
+    height: 52,
+    borderRadius: 15,
+    backgroundColor: '#0f6d78',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  purchaseButtonDisabled: {
+    backgroundColor: '#9ab4b8',
+  },
+  purchaseButtonText: {
+    color: '#ffffff',
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  closeLink: {
+    padding: 10,
+  },
+  closeLinkText: {
+    color: '#4f666c',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  successBanner: {
+    position: 'absolute',
+    top: 50,
+    left: 20,
+    right: 20,
+    height: 60,
+    backgroundColor: '#0f6d78',
+    borderRadius: 15,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    zIndex: 9999,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 10,
+  },
+  successBannerText: {
+    color: '#ffffff',
+    fontSize: 14,
+    fontWeight: '700',
+    marginLeft: 12,
+    flex: 1,
+  },
+  infoBanner: {
+    position: 'absolute',
+    top: 110,
+    left: 20,
+    right: 20,
+    minHeight: 56,
+    backgroundColor: '#0f6d78',
+    borderRadius: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 18,
+    zIndex: 10000,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.25,
+    shadowRadius: 10,
+    elevation: 12,
+  },
+  infoBannerWarning: {
+    backgroundColor: '#0f6d78',
+    borderWidth: 1,
+    borderColor: '#1abc9c',
+  },
+  infoBannerError: {
+    backgroundColor: '#c0392b',
+  },
+  infoBannerText: {
+    color: '#ffffff',
+    fontSize: 13,
+    fontWeight: '600',
+    marginLeft: 10,
+    flex: 1,
   },
 });

@@ -253,10 +253,123 @@ app.post('/api/auth/reset-password', async (req, res) => {
   }
 });
 
+// --- GESTIÓN DE ANÁLISIS ---
+app.post('/api/analysis/save', async (req, res) => {
+  const { userId, analysisType, visualizationType, datasetName, datasetPath, totalRegistros, totalAnomalias } = req.body;
+  
+  try {
+    // 1. Guardar metadatos del dataset
+    const [datasetResult] = await pool.query(
+      'INSERT INTO datasets (id_usuario, nombre_archivo, ruta_archivo, total_filas) VALUES (?, ?, ?, ?)',
+      [userId, datasetName, datasetPath, totalRegistros]
+    );
+
+    const idDataset = datasetResult.insertId;
+
+    // 2. Guardar el análisis
+    const [analysisResult] = await pool.query(
+      'INSERT INTO analisis (id_usuario, id_dataset, tipo_analisis, tipo_visualizacion, total_registros, total_anomalias, estado) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      [userId, idDataset, analysisType, visualizationType, totalRegistros, totalAnomalias, 'completado']
+    );
+
+    res.json({ 
+      success: true, 
+      idAnalisis: analysisResult.insertId,
+      idDataset,
+      totalAnomalias 
+    });
+  } catch (error) {
+    console.error('Error saving analysis:', error);
+    res.status(500).json({ success: false, message: 'Error de base de datos' });
+  }
+});
+
+app.post('/api/analysis/history', async (req, res) => {
+  const { userId } = req.body;
+  try {
+    const [rows] = await pool.query(
+      `SELECT a.id_analisis, a.fecha_analisis, a.tipo_analisis, a.total_registros, a.total_anomalias, d.nombre_archivo 
+       FROM analisis a 
+       JOIN datasets d ON a.id_dataset = d.id_dataset 
+       WHERE a.id_usuario = ? 
+       ORDER BY a.fecha_analisis DESC`,
+      [userId]
+    );
+    res.json(rows);
+  } catch (error) {
+    res.status(500).json({ success: false });
+  }
+});
+
+// --- COMPRA DE CRÉDITOS ---
+app.post('/api/payments/purchase', async (req, res) => {
+  const { userId, planType, monto, metodoPago } = req.body;
+  
+  const creditsMap = {
+    'basico': 1,
+    'diamante': 3
+  };
+  
+  const creditsToAdd = creditsMap[planType.toLowerCase()] || 0;
+  
+  if (creditsToAdd === 0) {
+    return res.status(400).json({ success: false, message: 'Plan no válido' });
+  }
+
+  try {
+    // 1. Crear registro de pago
+    const id_pago = require('crypto').randomUUID();
+    await pool.query(
+      'INSERT INTO pagos (id_pago, id_usuario, monto, moneda, descripcion, metodo_pago, estado) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      [id_pago, userId, monto, 'USD', `Compra de Plan ${planType}`, metodoPago, 'approved']
+    );
+
+    // 2. Actualizar créditos del usuario
+    await pool.query(
+      'UPDATE usuarios SET analisis_disponibles = analisis_disponibles + ? WHERE id_usuario = ?',
+      [creditsToAdd, userId]
+    );
+
+    // 3. Obtener el nuevo total para devolverlo al cliente
+    const [userRows] = await pool.query('SELECT analisis_disponibles FROM usuarios WHERE id_usuario = ?', [userId]);
+    
+    res.json({ 
+      success: true, 
+      message: 'Compra realizada con éxito', 
+      newCredits: userRows[0].analisis_disponibles 
+    });
+  } catch (error) {
+    console.error('Error en /api/payments/purchase:', error);
+    res.status(500).json({ success: false, message: 'Error procesando el pago' });
+  }
+});
+
+// --- DEDUCCIÓN DE CRÉDITOS ---
+app.post('/api/analysis/deduct-credit', async (req, res) => {
+  const { userId } = req.body;
+  try {
+    const [rows] = await pool.query('SELECT analisis_disponibles FROM usuarios WHERE id_usuario = ?', [userId]);
+    
+    if (rows.length === 0 || rows[0].analisis_disponibles <= 0) {
+      return res.status(403).json({ success: false, message: 'No tienes créditos suficientes' });
+    }
+
+    await pool.query(
+      'UPDATE usuarios SET analisis_disponibles = analisis_disponibles - 1 WHERE id_usuario = ?',
+      [userId]
+    );
+
+    res.json({ success: true, message: 'Crédito descontado' });
+  } catch (error) {
+    console.error('Error en /api/analysis/deduct-credit:', error);
+    res.status(500).json({ success: false, message: 'Error al descontar crédito' });
+  }
+});
+
 const server = app.listen(PORT, '0.0.0.0', () => {
   console.log(`🚀 Servidor MySQL corriendo en:`);
   console.log(`   - Local: http://localhost:${PORT}`);
-  console.log(`   - Red:   http://192.168.20.141:${PORT}`);
+  console.log(`   - Red:   http://10.157.25.163:${PORT}`);
 });
 
 server.on('error', (err) => {

@@ -167,3 +167,29 @@ export const fetchAnalysisHistoryByUser = async (userId) => {
     return [];
   }
 };
+
+export const purchaseCredits = async (userId, planType, monto, metodoPago) => {
+  try {
+    const { data, ok } = await getApiClient('/api/payments/purchase', {
+      method: 'POST',
+      body: JSON.stringify({ userId, planType, monto, metodoPago }),
+    });
+    return { success: ok, ...data };
+  } catch (error) {
+    console.error('Error in purchaseCredits:', error);
+    return { success: false, message: error.message };
+  }
+};
+
+export const deductAnalysisCredit = async (userId) => {
+  try {
+    const { data, ok } = await getApiClient('/api/analysis/deduct-credit', {
+      method: 'POST',
+      body: JSON.stringify({ userId }),
+    });
+    return { success: ok, ...data };
+  } catch (error) {
+    console.error('Error in deductAnalysisCredit:', error);
+    return { success: false, message: error.message };
+  }
+};

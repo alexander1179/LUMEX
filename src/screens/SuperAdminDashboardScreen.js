@@ -297,6 +297,28 @@ export default function SuperAdminDashboardScreen({ navigation }) {
     }
   };
 
+  const toggleBlockUser = async (user) => {
+    const isCurrentlyBlocked = user.estado === 'bloqueado';
+    const nextBlocked = !isCurrentlyBlocked;
+    
+    const mappedUsers = allUsers.map(u => u.id_usuario === user.id_usuario ? { ...u, estado: nextBlocked ? 'bloqueado' : 'activo' } : u);
+    setAllUsers(mappedUsers);
+    setFilteredUsers(prev => prev.map(u => u.id_usuario === user.id_usuario ? { ...u, estado: nextBlocked ? 'bloqueado' : 'activo' } : u));
+    
+    try {
+      const response = await fetch(`${getApiUrl()}/admin/block-user`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id_usuario: user.id_usuario, blocked: nextBlocked })
+      });
+      const data = await response.json();
+      if (!response.ok || !data.success) throw new Error(data.message || 'Fallo de conexión');
+    } catch (err) {
+      Alert.alert('Error', err.message);
+      loadUsers();
+    }
+  };
+
   const renderRoleCard = ({ item }) => (
     <TouchableOpacity style={styles.roleCard} onPress={() => handleSelectRole(item.id)} activeOpacity={0.8}>
       <View style={[styles.roleIconBox, { backgroundColor: item.color + '20' }]}><Ionicons name={item.icon} size={30} color={item.color} /></View>
@@ -403,16 +425,23 @@ export default function SuperAdminDashboardScreen({ navigation }) {
             </View>
             <FlatList data={filteredUsers} keyExtractor={(item) => String(item.id_usuario)}
               renderItem={({ item }) => (
-                <TouchableOpacity style={styles.userListItem} onPress={() => handleSelectUser(item)}>
-                  <View style={styles.userListAvatar}><Text style={styles.userListAvatarText}>{(item.nombre || 'U')[0].toUpperCase()}</Text></View>
+                <View style={[styles.userListItem, item.estado === 'bloqueado' && { opacity: 0.6 }]}>
+                  <View style={[styles.userListAvatar, item.estado === 'bloqueado' && { backgroundColor: '#e74c3c' }]}><Text style={styles.userListAvatarText}>{(item.nombre || 'U')[0].toUpperCase()}</Text></View>
                   <View style={{ flex: 1 }}>
-                        <Text style={styles.userListName}>{item.nombre || item.usuario}</Text>
-                        <View style={{backgroundColor: '#e8f4f9', alignSelf: 'flex-start', paddingHorizontal: 6, paddingVertical: 1, borderRadius: 4, marginTop: 2}}>
-                            <Text style={{fontSize: 9, color: '#0f6d78', fontWeight: 'bold', textTransform: 'uppercase'}}>{item.rol}</Text>
+                        <Text style={[styles.userListName, item.estado === 'bloqueado' && { textDecorationLine: 'line-through', color: '#999' }]}>{item.nombre || item.usuario}</Text>
+                        <View style={{backgroundColor: item.estado === 'bloqueado' ? '#fbeeee' : '#e8f4f9', alignSelf: 'flex-start', paddingHorizontal: 6, paddingVertical: 1, borderRadius: 4, marginTop: 2}}>
+                            <Text style={{fontSize: 9, color: item.estado === 'bloqueado' ? '#e74c3c' : '#0f6d78', fontWeight: 'bold', textTransform: 'uppercase'}}>{item.estado === 'bloqueado' ? 'BLOQUEADO' : item.rol}</Text>
                         </View>
                    </View>
-                  <Ionicons name="eye-outline" size={20} color="#0f6d78" />
-                </TouchableOpacity>
+                   <View style={{flexDirection: 'row', alignItems: 'center', gap: 10}}>
+                      <TouchableOpacity onPress={() => toggleBlockUser(item)} style={{padding: 8, backgroundColor: item.estado === 'bloqueado' ? '#fbeeee' : '#ecf0f1', borderRadius: 8}}>
+                         <Ionicons name={item.estado === 'bloqueado' ? 'lock-closed' : 'lock-open-outline'} size={20} color={item.estado === 'bloqueado' ? '#e74c3c' : '#7f8c8d'} />
+                      </TouchableOpacity>
+                      <TouchableOpacity onPress={() => handleSelectUser(item)} style={{padding: 8, backgroundColor: '#e8f4f9', borderRadius: 8}}>
+                         <Ionicons name="pencil-outline" size={20} color="#0f6d78" />
+                      </TouchableOpacity>
+                   </View>
+                </View>
               )}
               ListEmptyComponent={<Text style={styles.emptyText}>No hay personas registradas</Text>}
             />

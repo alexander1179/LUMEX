@@ -99,35 +99,99 @@ app.post('/api/auth/register', async (req, res) => {
 
     res.json({ success: true, user: safeUser, message: 'Usuario registrado correctamente' });
   } catch (error) {
-    console.error('Error en registro:', error);
-    res.status(500).json({ success: false, message: 'Error interno del servidor' });
+    console.error(error);
+    res.status(500).json({ success: false, message: error.message });
   }
 });
 
-// --- ENDPOINTS DE DASHBOARD Y USUARIOS ---
+app.post('/api/analysis/history', async (req, res) => {
+  const { userId } = req.body;
+  try {
+    const query = `
+      SELECT a.id_analisis, a.fecha_analisis, a.total_registros, a.total_anomalias,
+             d.nombre_archivo, d.ruta_archivo,
+             m.tipo_modelo, m.descripcion, m.nombre_modelo
+      FROM analisis a
+      JOIN datasets d ON a.id_dataset = d.id_dataset
+      JOIN modelos m ON a.id_modelo = m.id_modelo
+      WHERE a.id_usuario = ?
+      ORDER BY a.fecha_analisis DESC LIMIT 50
+    `;
+    const [rows] = await pool.query(query, [userId]);
+    const mapped = rows.map(item => ({
+      id_analisis: item.id_analisis,
+      fecha_analisis: item.fecha_analisis,
+      total_registros: item.total_registros,
+      total_anomalias: item.total_anomalias,
+      datasets: { nombre_archivo: item.nombre_archivo, ruta_archivo: item.ruta_archivo },
+      modelos: { tipo_modelo: item.tipo_modelo, descripcion: item.descripcion, nombre_modelo: item.nombre_modelo }
+    }));
+    return res.json({ success: true, data: mapped });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+});
 
-// Listar usuarios (para SuperAdmin)
+// Admin endpoints
 app.get('/api/admin/users', async (req, res) => {
   try {
-    const [rows] = await pool.query('SELECT id_usuario, nombre, email, usuario, rol, fecha_registro FROM usuarios ORDER BY fecha_registro DESC');
+    const query = `
+      SELECT id_usuario, nombre, email, usuario, rol, estado, fecha_registro, 
+             puede_gestionar_usuarios, permiso_editar, permiso_bloquear,
+             mod_nuevo_paciente, mod_gestion_usuarios, mod_reportes, mod_actividad, mod_alertas
+      FROM usuarios 
+      WHERE rol NOT IN ('admin', 'administrador', 'superadmin', 'superadministrador') 
+      ORDER BY fecha_registro DESC
+    `;
+    const [rows] = await pool.query(query);
     res.json({ success: true, users: rows });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
 });
 
-// Endpoint de prueba para verificar conexión ojo si no sirve eliminar esta parte completa 
-app.get('/', (req, res) => {
-  res.send('Servidor activo');
+app.get('/api/superadmin/users', async (req, res) => {
+  try {
+    const query = `
+      SELECT id_usuario, nombre, email, usuario, rol, estado, fecha_registro, telefono,
+             puede_gestionar_usuarios, permiso_editar, permiso_bloquear,
+             mod_nuevo_paciente, mod_gestion_usuarios, mod_reportes, mod_actividad, mod_alertas, mod_pagos
+      FROM usuarios 
+      ORDER BY fecha_registro DESC
+    `;
+    const [rows] = await pool.query(query);
+    res.json({ success: true, users: rows });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
 });
 
+app.post('/api/superadmin/toggle-admin-permission', async (req, res) => {
+  const { id_usuario, field, value } = req.body;
+  
+  // Lista blanca de campos permitidos
+  const allowedFields = [
+    'puede_gestionar_usuarios', 'permiso_editar', 'permiso_bloquear',
+    'mod_nuevo_paciente', 'mod_gestion_usuarios', 'mod_reportes', 'mod_actividad', 'mod_alertas', 'mod_pagos'
+  ];
+  if (!allowedFields.includes(field)) {
+    return res.status(400).json({ success: false, message: 'Campo de permiso no válido' });
+  }
 
-// Actualizar rol
-app.post('/api/admin/update-role', async (req, res) => {
-  const { userId, newRole } = req.body;
   try {
-    await pool.query('UPDATE usuarios SET rol = ? WHERE id_usuario = ?', [newRole, userId]);
-    res.json({ success: true, message: 'Rol actualizado' });
+    const query = `UPDATE usuarios SET ${field} = ? WHERE id_usuario = ?`;
+    await pool.query(query, [value, id_usuario]);
+    res.json({ success: true, message: 'Permiso actualizado' });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+app.post('/api/admin/update-user', async (req, res) => {
+  const { id_usuario, nombre, email, usuario, rol, telefono } = req.body;
+  try {
+    await pool.query('UPDATE usuarios SET nombre = ?, email = ?, usuario = ?, rol = ?, telefono = ? WHERE id_usuario = ?', [nombre, email, usuario, rol, telefono, id_usuario]);
+    res.json({ success: true, message: 'Usuario actualizado' });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
@@ -143,31 +207,53 @@ app.delete('/api/admin/user/:id', async (req, res) => {
   }
 });
 
-// Actualizar datos completos de usuario
-app.post('/api/admin/update-user', async (req, res) => {
-  const { id_usuario, nombre, email, usuario, rol, telefono } = req.body;
+app.get('/api/admin/activity', async (req, res) => {
   try {
-    await pool.query(
-      'UPDATE usuarios SET nombre = ?, email = ?, usuario = ?, rol = ?, telefono = ? WHERE id_usuario = ?',
-      [nombre, email, usuario, rol, telefono, id_usuario]
-    );
-    res.json({ success: true, message: 'Usuario actualizado correctamente' });
+    const query = `
+      SELECT a.id_analisis, a.id_usuario, a.id_dataset, a.id_modelo, a.fecha_analisis, a.total_registros, a.total_anomalias,
+             u.nombre AS usuario_nombre, u.usuario AS usuario_username, u.email AS usuario_email,
+             d.nombre_archivo AS dataset_nombre,
+             m.tipo_modelo, m.descripcion, m.nombre_modelo
+      FROM analisis a
+      LEFT JOIN usuarios u ON a.id_usuario = u.id_usuario
+      LEFT JOIN datasets d ON a.id_dataset = d.id_dataset
+      LEFT JOIN modelos m ON a.id_modelo = m.id_modelo
+      ORDER BY a.fecha_analisis DESC
+      LIMIT 100
+    `;
+    const [rows] = await pool.query(query);
+    res.json({ success: true, activity: rows });
   } catch (error) {
-    res.status(500).json({ success: false, message: 'Error al actualizar usuario: ' + error.message });
+    res.status(500).json({ success: false, message: error.message });
   }
 });
 
-// Obtener usuario actual (refresco)
-app.post('/api/auth/get-user', async (req, res) => {
-  const { userId } = req.body;
+app.get('/api/admin/payments', async (req, res) => {
   try {
-    const [rows] = await pool.query('SELECT * FROM usuarios WHERE id_usuario = ?', [userId]);
-    if (rows.length === 0) return res.status(404).json({ success: false });
-    const { contrasena, ...safeUser } = rows[0];
-    res.json({ success: true, user: safeUser });
+    const query = `
+      SELECT p.*, u.nombre AS usuario_nombre, u.usuario AS usuario_username, u.email AS usuario_email
+      FROM pagos p
+      LEFT JOIN usuarios u ON p.id_usuario = u.id_usuario
+      ORDER BY p.created_at DESC
+    `;
+    const [rows] = await pool.query(query);
+    res.json({ success: true, payments: rows });
   } catch (error) {
-    res.status(500).json({ success: false });
+    res.status(500).json({ success: false, message: error.message });
   }
+});
+
+
+// 404 — Ruta no encontrada
+app.use((req, res) => {
+  res.status(404).json({ success: false, message: `Ruta no encontrada: ${req.method} ${req.url}` });
+});
+
+// 500 — Error global (4 parámetros obligatorios para que Express lo reconozca como error handler)
+// eslint-disable-next-line no-unused-vars
+app.use((err, req, res, next) => {
+  console.error('[SERVER ERROR]', err?.message || err);
+  res.status(500).json({ success: false, message: err?.message || 'Error interno del servidor' });
 });
 
 // Aceptar términos
@@ -192,17 +278,15 @@ app.post('/api/auth/forgot-password', async (req, res) => {
     }
     
     // Generar código de 6 dígitos
-    const code = Math.floor(100000 + Math.random() * 900000).toString();
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    const expiresAt = Date.now() + OTP_EXPIRY_MINUTES * 60000;
     
-    // Guardar en memoria (expira en 15 min)
-    otps[normalizedEmail] = {
-      code,
-      expires: Date.now() + (15 * 60 * 1000)
-    };
+    // Guardar en memoria cache
+    otpMemCache.set(normalizedEmail, { otp, expiresAt });
 
     console.log("**************************************************");
     console.log(`🔑 CÓDIGO PARA: ${normalizedEmail}`);
-    console.log(`👉 CÓDIGO: ${code}`);
+    console.log(`👉 CÓDIGO: ${otp}`);
     console.log("**************************************************");
     
     res.json({ success: true, message: 'Código generado correctamente. Revisa la consola del servidor.' });
@@ -216,20 +300,23 @@ app.post('/api/auth/verify-token', async (req, res) => {
   const { email, token } = req.body;
   const normalizedEmail = email.trim().toLowerCase();
   
-  const stored = otps[normalizedEmail];
+  const cacheObj = otpMemCache.get(normalizedEmail);
   
-  if (!stored) {
+  if (!cacheObj) {
     return res.status(400).json({ success: false, message: 'No hay un código pendiente para este correo' });
   }
   
-  if (Date.now() > stored.expires) {
-    delete otps[normalizedEmail];
+  if (Date.now() > cacheObj.expiresAt) {
+    otpMemCache.delete(normalizedEmail);
     return res.status(400).json({ success: false, message: 'El código ha expirado' });
   }
   
-  if (stored.code !== token) {
+  if (cacheObj.otp !== String(token)) {
     return res.status(400).json({ success: false, message: 'Código incorrecto' });
   }
+  
+  // Marcar como verificado para permitir reset
+  otpMemCache.set(normalizedEmail, { ...cacheObj, verified: true });
   
   res.json({ success: true, message: 'Código verificado' });
 });
@@ -240,18 +327,23 @@ app.post('/api/auth/reset-password', async (req, res) => {
   const normalizedEmail = email.trim().toLowerCase();
   
   try {
-    // En una App real aquí deberíamos verificar que el token fue validado antes.
-    // Para el demo, lo permitimos si el email existe.
+    const cacheObj = otpMemCache.get(normalizedEmail);
+    if (!cacheObj || !cacheObj.verified) {
+      return res.status(403).json({ success: false, message: 'Debes verificar el código primero' });
+    }
+
     await pool.query('UPDATE usuarios SET contrasena = ? WHERE email = ?', [newPassword, normalizedEmail]);
     
-    // Limpiar OTP después de usarlo
-    delete otps[normalizedEmail];
+    // Limpiar cache después de usarlo
+    otpMemCache.delete(normalizedEmail);
     
     res.json({ success: true, message: 'Contraseña actualizada correctamente' });
   } catch (error) {
     res.status(500).json({ success: false, message: 'Error al actualizar contraseña' });
   }
 });
+
+
 
 const server = app.listen(PORT, '0.0.0.0', () => {
   console.log(`🚀 Servidor MySQL corriendo en:`);
@@ -269,3 +361,4 @@ server.on('error', (err) => {
 process.on('unhandledRejection', (reason, promise) => {
   console.error('Unhandled Rejection at:', promise, 'reason:', reason);
 });
+

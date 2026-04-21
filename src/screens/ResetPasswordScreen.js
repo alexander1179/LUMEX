@@ -10,7 +10,8 @@ import {
 } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { Ionicons } from '@expo/vector-icons';
-import { resetPassword } from '../services/lumex';
+import { resetPassword } from '../services/api/authService';
+
 import { colors } from '../styles/colors';
 import { validators } from '../utils/validators';
 import { CustomButton } from '../components/common/CustomButton';

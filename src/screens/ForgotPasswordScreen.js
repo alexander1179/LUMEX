@@ -11,7 +11,8 @@ import {
 } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { Ionicons } from '@expo/vector-icons';
-import { forgotPassword } from '../services/lumex';
+import { forgotPassword } from '../services/api/authService';
+
 import { colors } from '../styles/colors';
 import { CustomButton } from '../components/common/CustomButton';
 import { AccessQuickNav } from '../components/common/AccessQuickNav';

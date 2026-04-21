@@ -26,23 +26,14 @@ import { captureRef } from 'react-native-view-shot';
 import { BloodPressureModal } from '../components/health/BloodPressureModal';
 import { HeartRateModal } from '../components/health/HeartRateModal';
 import { storageService } from '../services/storage/storageService';
+import { Toast } from '../components/common/Toast';
 import {
   fetchAnalysisHistoryByUser,
   isDatasetFileSupported,
   parseDatasetContent,
   readDatasetAsset,
-  saveAnalysisInSupabase
-} from '../services/lumex/datasetAnalysisService';
-import { 
-  registerPayment, 
-  consumeAnalysisCredit,
-  fetchPaymentHistory
-} from '../services/lumex/paymentService';
-import { 
-  fetchLatestUserData 
-} from '../services/lumex/authService';
-
-const { width } = Dimensions.get('window');
+  saveAnalysisInSupabase,
+} from '../services/lumex';
 
 const icon = require('../../assets/lumex.jpeg');
 const alexPhoto = require('../../assets/Alexander.jpg');
@@ -446,28 +437,6 @@ const getFindingsRateText = (totalRegistros, totalAnomalias) => {
 export default function MainScreen({ navigation }) {
   const [user, setUser] = useState(null);
   const [activeTab, setActiveTab] = useState('inicio');
-  const [loading, setLoading] = useState(false);
-  const [isPurchasing, setIsPurchasing] = useState(false);
-  
-  // Estados para flujo de pago (3 pasos)
-  const [paymentStep, setPaymentStep] = useState('plans'); // 'plans', 'confirm', 'methods'
-  const [pendingPlan, setPendingPlan] = useState(null);
-  const [paymentMethod, setPaymentMethod] = useState(null);
-
-  // Estados para el flujo de pago restaurados
-  const [showCreditsModal, setShowCreditsModal] = useState(false);
-  const [showPaymentConfirmationModal, setShowPaymentConfirmationModal] = useState(false);
-  const [showPaymentMethodsModal, setShowPaymentMethodsModal] = useState(false);
-  const [showPaymentSuccess, setShowPaymentSuccess] = useState(false);
-  const [selectedPlan, setSelectedPlan] = useState(null);
-  const [selectedPaymentMethod, setSelectedPaymentMethod] = useState(null);
-  const [analisisDisponibles, setAnalisisDisponibles] = useState(0);
-  const [notification, setNotification] = useState({ visible: false, message: '', type: 'info' });
-
-  // Adaptador para triggerToast (usa nuestro sistema premium showNotification)
-  const triggerToast = (message, type = 'success') => {
-    showNotification(message, type);
-  };
 
   const [datasetName, setDatasetName] = useState('');
   const [datasetContent, setDatasetContent] = useState('');
@@ -531,13 +500,8 @@ export default function MainScreen({ navigation }) {
 
           const userId = Number(userData?.id_usuario ?? userData?.id ?? null);
           if (Number.isInteger(userId)) {
-            loadHistory(userId);
-            // Sincronizar créditos
-            fetchLatestUserData(userId).then(latestData => {
-              if (latestData) setAnalisisDisponibles(latestData.analisis_disponibles || 0);
-            });
+            await loadHistory(userId);
           }
-          setAnalisisDisponibles(userData?.analisis_disponibles || 0);
         } else {
           navigation.replace('Login');
         }
@@ -560,7 +524,7 @@ export default function MainScreen({ navigation }) {
       setAnalysisHistory(history);
     } catch (error) {
       console.log('Error loading analysis history:', error);
-      showNotification('No se pudo actualizar el historial de analisis.', 'error');
+      Alert.alert('Aviso', 'No se pudo actualizar el historial de analisis desde Supabase.');
     } finally {
       setIsLoadingHistory(false);
     }
@@ -571,7 +535,7 @@ export default function MainScreen({ navigation }) {
       setIsDownloadingReport(true);
 
       if (!analysisExportCardRef.current) {
-        showNotification('No se pudo preparar el informe para exportar imagen.', 'error');
+        Alert.alert('No disponible', 'No se pudo preparar el informe para exportar imagen.');
         return;
       }
 
@@ -601,11 +565,11 @@ export default function MainScreen({ navigation }) {
           UTI: 'public.png',
         });
       } else {
-        showNotification('La opción de compartir no esta disponible en este dispositivo.', 'warning');
+        Alert.alert('No disponible', 'La opcion de compartir no esta disponible en este dispositivo.');
       }
     } catch (e) {
       console.log('Error descargando imagen:', e);
-      showNotification('No se pudo descargar la imagen del resultado.', 'error');
+      Alert.alert('Error', 'No se pudo descargar la imagen del resultado.');
     } finally {
       setIsDownloadingReport(false);
     }
@@ -732,11 +696,11 @@ export default function MainScreen({ navigation }) {
           UTI: 'com.adobe.pdf',
         });
       } else {
-        showNotification('La opción de compartir no esta disponible en este dispositivo.', 'warning');
+        Alert.alert('No disponible', 'La opcion de compartir no esta disponible en este dispositivo.');
       }
     } catch (e) {
       console.log('Error generando PDF:', e);
-      showNotification('No se pudo generar el PDF del resultado.', 'error');
+      Alert.alert('Error', 'No se pudo generar el PDF del resultado.');
     } finally {
       setIsDownloadingReport(false);
     }
@@ -788,7 +752,8 @@ export default function MainScreen({ navigation }) {
     setHeartRate(bpm);
     setHeartRateStatus(newStatus);
     setIsCameraMeasuring(false);
-    setCameraSecondsLeft(15);
+
+    Alert.alert('Medicion por camara completada', `Frecuencia cardiaca estimada: ${bpm} bpm`);
   }, [isCameraMeasuring, cameraSecondsLeft]);
 
   useEffect(() => {
@@ -808,7 +773,10 @@ export default function MainScreen({ navigation }) {
     setBloodPressureStatus(newStatus);
     setIsMeasuringBloodPressure(false);
 
-    showNotification(`Presión arterial estimada: ${systolic}/${diastolic} mmHg`, 'info');
+    Alert.alert(
+      bloodPressureMode === 'camera' ? 'Estimacion por camara completada' : 'Muestra completada',
+      `Presion arterial estimada: ${systolic}/${diastolic} mmHg`
+    );
   }, [isMeasuringBloodPressure, bloodPressureSecondsLeft, bloodPressureMode, heartRate]);
 
   const openHeartRateModule = () => {
@@ -837,7 +805,7 @@ export default function MainScreen({ navigation }) {
 
   const startBloodPressureMeasurement = () => {
     if (bloodPressureMode === 'camera' && !cameraPermission?.granted) {
-      showNotification('Activa permisos de camara para iniciar esta estimacion.', 'warning');
+      Alert.alert('Camara no habilitada', 'Activa permisos de camara para iniciar esta estimacion.');
       return;
     }
     setBloodPressureSecondsLeft(10);
@@ -847,7 +815,7 @@ export default function MainScreen({ navigation }) {
   const enableBloodPressureCameraMode = async () => {
     const permission = cameraPermission?.granted ? cameraPermission : await requestCameraPermission();
     if (!permission?.granted) {
-      showNotification('Debes permitir el acceso a la camara para usar esta estimacion.', 'error');
+      Alert.alert('Permiso requerido', 'Debes permitir el acceso a la camara para usar esta estimacion.');
       return;
     }
     setBloodPressureMode('camera');
@@ -858,7 +826,7 @@ export default function MainScreen({ navigation }) {
   const enableHeartRateCameraMode = async () => {
     const permission = cameraPermission?.granted ? cameraPermission : await requestCameraPermission();
     if (!permission?.granted) {
-      showNotification('Debes permitir el acceso a la camara para medir por camara.', 'error');
+      Alert.alert('Permiso requerido', 'Debes permitir el acceso a la camara para medir por camara.');
       return;
     }
     setCameraSecondsLeft(15);
@@ -866,7 +834,7 @@ export default function MainScreen({ navigation }) {
 
   const startHeartRateCameraMeasurement = () => {
     if (!cameraPermission?.granted) {
-      showNotification('Activa permisos de camara para iniciar esta medicion.', 'warning');
+      Alert.alert('Camara no habilitada', 'Activa permisos de camara para iniciar esta medicion.');
       return;
     }
     setCameraSecondsLeft(15);
@@ -985,23 +953,18 @@ export default function MainScreen({ navigation }) {
 
   const handleAnalyze = async () => {
     if (!datasetName.trim()) {
-      showNotification('Ingresa un nombre para el dataset.', 'warning');
+      Alert.alert('Campo requerido', 'Ingresa un nombre para el dataset.');
       return;
     }
 
     if (!datasetContent.trim()) {
-      showNotification('Carga un archivo CSV o ingresa el contenido.', 'warning');
+      Alert.alert('Datos requeridos', 'Carga un archivo CSV/Excel o ingresa el contenido del dataset.');
       return;
     }
 
+    const currentUserId = user?.id_usuario;
     if (!Number.isInteger(currentUserId)) {
-      showNotification('Usuario no válido detectado.', 'error');
-      return;
-    }
-
-    // VERIFICACIÓN DE CRÉDITOS
-    if (analisisDisponibles <= 0) {
-      setShowCreditsModal(true);
+      Alert.alert('Usuario invalido', 'No se encontro un id de usuario valido para guardar el analisis.');
       return;
     }
 
@@ -1015,7 +978,7 @@ export default function MainScreen({ navigation }) {
       const parsed = parsedDataset || parseDatasetContent(datasetContent);
       const visualizationImageUri = buildVisualizationImageUri(parsed, selectedVisualization);
 
-      const saveResult = await saveAnalysisInSupabase({
+      const saveResult = await saveAnalysis({
         userId: currentUserId,
         analysisType: FIXED_ANALYSIS_TYPE,
         visualizationType: selectedVisualization,
@@ -1023,16 +986,6 @@ export default function MainScreen({ navigation }) {
         datasetPath: datasetPathWithVisualization,
         parsedDataset: parsed,
       });
-
-      // DESCONTAR CRÉDITO
-      await consumeAnalysisCredit(currentUserId);
-      const newTotal = Math.max(0, analisisDisponibles - 1);
-      setAnalisisDisponibles(newTotal);
-
-      // Actualizar storage local
-      const updatedUser = { ...user, analisis_disponibles: newTotal };
-      await storageService.saveUser(updatedUser);
-      setUser(updatedUser);
 
       await loadHistory(currentUserId);
 
@@ -1059,62 +1012,7 @@ export default function MainScreen({ navigation }) {
     } catch (error) {
       console.log('Error saving analysis:', error);
       setIsAnalyzing(false);
-      showNotification(error?.message || 'No se pudo completar el análisis.', 'error');
-    }
-  };
-
-  const handleSelectPlan = (amount, price, name) => {
-    setPendingPlan({ amount, price, name });
-    setPaymentStep('confirm');
-  };
-
-  const handleExecutePayment = async () => {
-    if (!paymentMethod) {
-      showNotification('Selecciona un método de pago.', 'error');
-      return;
-    }
-
-    try {
-      setIsPurchasing(true);
-      // Simular delay de procesamiento
-      await new Promise(resolve => setTimeout(resolve, 1500));
-      
-      const safeUserId = Number(user?.id_usuario ?? user?.id ?? null);
-      if (!safeUserId) {
-        showNotification('Sesión invalida. Por favor reingresa.', 'error');
-        return;
-      }
-
-      const res = await registerPayment(
-        safeUserId, 
-        pendingPlan?.amount || 0, 
-        pendingPlan?.price || 0, 
-        paymentMethod, 
-        `Compra de ${pendingPlan?.name || 'creditos'}`,
-        pendingPlan?.amount || 0
-      );
-      if (res.success) {
-        const newCredits = analisisDisponibles + (pendingPlan?.amount || 0);
-        setAnalisisDisponibles(newCredits);
-        
-        // Actualizar storage local
-        const updatedUser = { ...user, analisis_disponibles: newCredits };
-        await storageService.saveUser(updatedUser);
-        setUser(updatedUser);
-
-        showNotification('¡Muchas gracias! Has adquirido tus créditos correctamente.');
-        setShowCreditsModal(false);
-        // Resetear flujo para la proxima vez
-        setPaymentStep('plans');
-        setPendingPlan(null);
-        setPaymentMethod(null);
-      } else {
-        showNotification(res.message || 'No se pudo procesar la carga de créditos.', 'error');
-      }
-    } catch (error) {
-      showNotification('Hubo un problema con el servidor.', 'error');
-    } finally {
-      setIsPurchasing(false);
+      Alert.alert('Error', error?.message || 'No se pudo completar el analisis y guardarlo en Supabase.');
     }
   };
 
@@ -1150,14 +1048,14 @@ export default function MainScreen({ navigation }) {
 
       const asset = result.assets?.[0];
       if (!asset?.uri) {
-      showNotification('No fue posible leer el archivo seleccionado.', 'error');
+        Alert.alert('Archivo invalido', 'No fue posible leer el archivo seleccionado.');
         return;
       }
 
       if (!isDatasetFileSupported(asset)) {
-      showNotification('Formato no soportado (.csv, .xlsx, .xls).', 'error');
-      return;
-    }
+        Alert.alert('Formato no valido', 'Selecciona un archivo con extension .csv, .xlsx o .xls.');
+        return;
+      }
 
       const datasetFile = await readDatasetAsset(asset);
       const suggestedDatasetName = (datasetFile.fileName || 'dataset.csv').replace(/\.(csv|xlsx|xls)$/i, '').trim() || 'dataset';
@@ -1177,14 +1075,14 @@ export default function MainScreen({ navigation }) {
         fileUri: datasetFile.fileUri,
       });
 
-    showNotification(`${datasetFile.fileName} listo para analizar.`);
-  } catch (error) {
-    console.log('Error loading dataset file:', error);
-    showNotification(error?.message || 'No se pudo cargar el archivo seleccionado.', 'error');
-  } finally {
-    setIsPickingCsv(false);
-  }
-};
+      Alert.alert('Archivo cargado', `${datasetFile.fileName} listo para analizar.`);
+    } catch (error) {
+      console.log('Error loading dataset file:', error);
+      Alert.alert('Error', error?.message || 'No se pudo cargar el archivo seleccionado desde tu dispositivo.');
+    } finally {
+      setIsPickingCsv(false);
+    }
+  };
 
   const openProfileEditor = () => {
     setProfileAge(user?.edad ? String(user.edad) : '');
@@ -1242,15 +1140,15 @@ export default function MainScreen({ navigation }) {
     try {
       const saved = await storageService.saveUser(updatedUser);
       if (!saved) {
-        showNotification('No se pudieron guardar los datos del perfil.', 'error');
+        Alert.alert('Error', 'No se pudieron guardar los datos del perfil.');
         return;
       }
       setUser(updatedUser);
       setIsEditingProfile(false);
-      showNotification('Perfil actualizado correctamente.');
+      Alert.alert('Perfil actualizado', 'Tus datos personales se guardaron correctamente.');
     } catch (error) {
       console.log('Error saving profile details:', error);
-      showNotification('Ocurrio un problema al guardar tus datos.', 'error');
+      Alert.alert('Error', 'Ocurrio un problema al guardar tus datos.');
     }
   };
 
@@ -2020,6 +1918,113 @@ export default function MainScreen({ navigation }) {
         }
       />
 
+      {/* MODAL DE CRÉDITOS / PRECIOS */}
+      <Modal visible={showCreditsModal} transparent animationType="slide">
+        <View style={styles.modalOverlay}>
+          <View style={styles.creditsModalContainer}>
+            
+            {paymentStep === 'plans' && (
+              <>
+                <View style={styles.creditsModalHeader}>
+                  <View style={styles.creditsIconBg}>
+                    <Ionicons name="cart-outline" size={24} color="#0f6d78" />
+                  </View>
+                  <Text style={styles.creditsModalTitle}>Analisis agotados</Text>
+                  <Text style={styles.creditsModalSubtitle}>Adquiere un plan para iniciar tu analisis de dataset.</Text>
+                </View>
+
+                <View style={styles.plansContainer}>
+                  <TouchableOpacity style={styles.planCard} onPress={() => handleSelectPlan(1, 5, 'Plan Basico')}>
+                    <Ionicons name="flash-outline" size={30} color="#0f6d78" />
+                    <Text style={styles.planName}>Plan Basico</Text>
+                    <Text style={styles.planValue}>$5 USD</Text>
+                    <Text style={styles.planDesc}>1 Credito por analisis</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity style={[styles.planCard, styles.planCardActive]} onPress={() => handleSelectPlan(3, 12, 'Diamante')}>
+                    <View style={styles.diamanteBadge}><Text style={styles.diamanteBadgeText}>TOP</Text></View>
+                    <Ionicons name="diamond-outline" size={30} color="#fff" />
+                    <Text style={[styles.planName, {color:'#fff'}]}>Diamante</Text>
+                    <Text style={[styles.planValue, {color:'#fff'}]}>$12 USD</Text>
+                    <Text style={[styles.planDesc, {color:'#fff'}]}>3 Creditos por analisis</Text>
+                  </TouchableOpacity>
+                </View>
+              </>
+            )}
+
+            {paymentStep === 'confirm' && (
+              <View style={styles.paymentStepContainer}>
+                <Ionicons name="help-circle-outline" size={60} color="#0f6d78" />
+                <Text style={styles.confirmTitle}>¿Deseas realizar la compra?</Text>
+                <Text style={styles.confirmSubtitle}>Has seleccionado el {pendingPlan?.name} por ${pendingPlan?.price} USD.</Text>
+                
+                <View style={styles.confirmActions}>
+                  <TouchableOpacity style={styles.backBtn} onPress={() => setPaymentStep('plans')}>
+                    <Text style={styles.backBtnText}>Cancelar</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={styles.continueBtn} onPress={() => setPaymentStep('methods')}>
+                    <Text style={styles.continueBtnText}>Continuar</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            )}
+
+            {paymentStep === 'methods' && (
+              <View style={styles.paymentStepContainer}>
+                <Text style={styles.methodsTitle}>Forma de pago</Text>
+                <Text style={styles.methodsSubtitle}>Selecciona como deseas pagar tu plan.</Text>
+                
+                <View style={styles.methodsList}>
+                  {[
+                    { id: 'card', label: 'Tarjeta de Credito', icon: 'card-outline' },
+                    { id: 'pse', label: 'PSE / Transferencia', icon: 'swap-horizontal-outline' },
+                    { id: 'nequi', label: 'Nequi / Daviplata', icon: 'phone-portrait-outline' },
+                    { id: 'paypal', label: 'PayPal', icon: 'logo-paypal' },
+                    { id: 'mercado-pago', label: 'Mercado Pago', icon: 'wallet-outline' },
+                  ].map(method => (
+                    <TouchableOpacity 
+                      key={method.id} 
+                      style={[styles.methodItem, paymentMethod === method.id && styles.methodItemActive]}
+                      onPress={() => setPaymentMethod(method.id)}
+                    >
+                      <Ionicons name={method.icon} size={24} color={paymentMethod === method.id ? '#fff' : '#0f6d78'} />
+                      <Text style={[styles.methodLabel, paymentMethod === method.id && styles.methodLabelActive]}>{method.label}</Text>
+                      {paymentMethod === method.id && <Ionicons name="checkmark-circle" size={20} color="#fff" />}
+                    </TouchableOpacity>
+                  ))}
+                </View>
+
+                <TouchableOpacity 
+                  style={[styles.payFinalBtn, (!paymentMethod || isPurchasing) && styles.payFinalBtnDisabled]} 
+                  onPress={handleExecutePayment}
+                  disabled={!paymentMethod || isPurchasing}
+                >
+                  {isPurchasing ? (
+                    <ActivityIndicator color="#fff" />
+                  ) : (
+                    <Text style={styles.payFinalBtnText}>Pagar ${pendingPlan?.price} USD</Text>
+                  )}
+                </TouchableOpacity>
+
+                <TouchableOpacity style={styles.backLink} onPress={() => setPaymentStep('confirm')}>
+                  <Text style={styles.backLinkText}>Volver</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+
+            <TouchableOpacity 
+              style={styles.closeCreditsBtn} 
+              onPress={() => {
+                setShowCreditsModal(false);
+                setTimeout(() => { setPaymentStep('plans'); setPaymentMethod(null); }, 300);
+              }}
+            >
+              <Text style={styles.closeCreditsText}>Cerrar</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
       <BloodPressureModal
         visible={showBloodPressureModal}
         onClose={closeBloodPressureModal}
@@ -2040,8 +2045,6 @@ export default function MainScreen({ navigation }) {
             : startBloodPressureMeasurement
         }
       />
-
-      {renderPagosModals()}
 
       <Modal visible={showUserMenuModal} animationType="fade" transparent onRequestClose={() => setShowUserMenuModal(false)}>
         <View style={styles.userMenuDropdownOverlay}>
@@ -4223,5 +4226,226 @@ const styles = StyleSheet.create({
   },
   paymentMethodTextSelected: {
     color: '#fff',
+  },
+  // CREDIT MODAL STYLES
+  creditsModalContainer: {
+    backgroundColor: '#fff',
+    width: '90%',
+    borderRadius: 24,
+    padding: 24,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.2,
+    shadowRadius: 15,
+    elevation: 10,
+  },
+  creditsModalHeader: {
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  creditsIconBg: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    backgroundColor: '#f0f7f8',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 12,
+  },
+  creditsModalTitle: {
+    fontSize: 22,
+    fontWeight: '800',
+    color: '#051821',
+    marginBottom: 8,
+  },
+  creditsModalSubtitle: {
+    fontSize: 14,
+    color: '#6b8a8f',
+    textAlign: 'center',
+    lineHeight: 20,
+  },
+  plansContainer: {
+    flexDirection: 'row',
+    gap: 12,
+    width: '100%',
+    marginBottom: 20,
+  },
+  planCard: {
+    flex: 1,
+    backgroundColor: '#f8fbfc',
+    borderWidth: 1,
+    borderColor: '#e1ecee',
+    borderRadius: 16,
+    padding: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  planCardActive: {
+    backgroundColor: '#0f6d78',
+    borderColor: '#0f6d78',
+  },
+  planName: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#0f6d78',
+  },
+  planValue: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: '#051821',
+  },
+  planDesc: {
+    fontSize: 11,
+    color: '#6b8a8f',
+    textAlign: 'center',
+  },
+  diamanteBadge: {
+    position: 'absolute',
+    top: -10,
+    backgroundColor: '#e05a21',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 10,
+  },
+  diamanteBadgeText: {
+    color: '#fff',
+    fontSize: 9,
+    fontWeight: '900',
+  },
+  closeCreditsBtn: {
+    paddingVertical: 12,
+    width: '100%',
+    alignItems: 'center',
+  },
+  closeCreditsText: {
+    color: '#6b8a8f',
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  // MULTI-STEP PAYMENT STYLES
+  paymentStepContainer: {
+    width: '100%',
+    alignItems: 'center',
+    paddingVertical: 10,
+  },
+  confirmTitle: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: '#051821',
+    marginTop: 15,
+    marginBottom: 10,
+    textAlign: 'center',
+  },
+  confirmSubtitle: {
+    fontSize: 15,
+    color: '#6b8a8f',
+    textAlign: 'center',
+    marginBottom: 25,
+    lineHeight: 22,
+  },
+  confirmActions: {
+    flexDirection: 'row',
+    gap: 12,
+    width: '100%',
+  },
+  backBtn: {
+    flex: 1,
+    paddingVertical: 14,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#e1ecee',
+    alignItems: 'center',
+  },
+  backBtnText: {
+    color: '#6b8a8f',
+    fontWeight: '700',
+    fontSize: 15,
+  },
+  continueBtn: {
+    flex: 1,
+    paddingVertical: 14,
+    borderRadius: 12,
+    backgroundColor: '#0f6d78',
+    alignItems: 'center',
+  },
+  continueBtnText: {
+    color: '#fff',
+    fontWeight: '700',
+    fontSize: 15,
+  },
+  methodsTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: '#051821',
+    marginBottom: 5,
+    width: '100%',
+  },
+  methodsSubtitle: {
+    fontSize: 13,
+    color: '#6b8a8f',
+    marginBottom: 20,
+    width: '100%',
+  },
+  methodsList: {
+    width: '100%',
+    gap: 10,
+    marginBottom: 20,
+  },
+  methodItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 14,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#e1ecee',
+    backgroundColor: '#f8fbfc',
+    gap: 12,
+  },
+  methodItemActive: {
+    backgroundColor: '#1a7da2',
+    borderColor: '#1a7da2',
+  },
+  methodLabel: {
+    flex: 1,
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#051821',
+  },
+  methodLabelActive: {
+    color: '#fff',
+  },
+  payFinalBtn: {
+    width: '100%',
+    paddingVertical: 15,
+    backgroundColor: '#e05a21',
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#e05a21',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 5,
+    elevation: 4,
+  },
+  payFinalBtnDisabled: {
+    backgroundColor: '#9ab4b8',
+    shadowOpacity: 0,
+    elevation: 0,
+  },
+  payFinalBtnText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '800',
+  },
+  backLink: {
+    marginTop: 15,
+    padding: 5,
+  },
+  backLinkText: {
+    color: '#0f6d78',
+    fontWeight: '700',
+    fontSize: 13,
   },
 });

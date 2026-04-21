@@ -6,7 +6,6 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { fetchAllUsers, updateUser, deleteUser, updateAdminPermission, hashPassword, registerUser } from '../services/lumex/authService';
 import { storageService } from '../services/storage/storageService';
-import { getApiUrl } from '../services/lumex/apiConfig';
 
 const ROLES = [
   { id: 'gestion_personas', label: 'Gestión de Personas', icon: 'people-outline', color: '#0f6d78', description: 'Administración de Usuarios y Personal del Sistema' },

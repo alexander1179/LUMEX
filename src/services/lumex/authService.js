@@ -4,7 +4,7 @@ import { getApiClient } from './apiClient';
 const SESSION_KEY = 'lumex_user_session';
 
 // Hash SHA-256 (igual al que usaba antes para mantener compatibilidad de hashes en DB)
-const hashPassword = async (password) => {
+export const hashPassword = async (password) => {
   try {
     const encoder = new TextEncoder();
     const buf = encoder.encode(String(password));
@@ -113,6 +113,46 @@ export const acceptSecurityTerms = async (userId) => {
   }
 };
 
+export const fetchLatestUserData = async (userId) => {
+  try {
+    const { data, ok } = await getApiClient('/api/auth/get-user', {
+      method: 'POST',
+      body: JSON.stringify({ userId }),
+    });
+    return ok ? data.user : null;
+  } catch { return null; }
+};
+
+export const deductCredit = async (userId) => {
+  try {
+    const { ok } = await getApiClient('/api/auth/deduct-credit', {
+      method: 'POST',
+      body: JSON.stringify({ userId }),
+    });
+    return ok;
+  } catch { return false; }
+};
+
+export const addCredits = async (userId, amount, monto, metodoPago, descripcion) => {
+  try {
+    const result = await getApiClient('/api/auth/add-credits', {
+      method: 'POST',
+      body: JSON.stringify({ userId, amount, monto, metodoPago, descripcion }),
+    });
+
+    const { data, ok, message: clientMessage } = result;
+    
+    if (ok) {
+      return { success: true, message: data?.message };
+    } else {
+      // Priorizar el mensaje del servidor, si no, usar el del cliente (error de conexión)
+      return { success: false, message: data?.message || clientMessage || data?.detail };
+    }
+  } catch (error) { 
+    return { success: false, message: error.message }; 
+  }
+};
+
 export const forgotPassword = async (email) => {
   const { data, ok } = await getApiClient('/api/auth/forgot-password', {
     method: 'POST',
@@ -134,7 +174,7 @@ export const resetPassword = async (email, newPassword) => {
     const passwordHash = await hashPassword(newPassword);
     const { data, ok } = await getApiClient('/api/auth/reset-password', {
       method: 'POST',
-      body: JSON.stringify({ email, newPassword: passwordHash }),
+      body: JSON.stringify({ email, passwordHash }),
     });
     return ok ? { success: true, message: data.message } : { success: false, message: data?.message };
   } catch (error) {
@@ -144,7 +184,7 @@ export const resetPassword = async (email, newPassword) => {
 
 // --- MÉTODOS DE ADMIN ---
 export const fetchAllUsers = async () => {
-  const { data, ok } = await getApiClient('/api/admin/users');
+  const { data, ok } = await getApiClient('/api/superadmin/users');
   return ok ? data.users : [];
 };
 
@@ -165,11 +205,18 @@ export const updateUserRole = async (userId, newRole) => {
 };
 
 export const updateUser = async (userData) => {
-  const { data, ok } = await getApiClient('/api/admin/update-user', {
-    method: 'POST',
-    body: JSON.stringify(userData),
-  });
-  return ok;
+  try {
+    const { data, ok } = await getApiClient('/api/admin/update-user', {
+      method: 'POST',
+      body: JSON.stringify(userData),
+    });
+    return { 
+      success: ok, 
+      message: data?.message || (ok ? 'Actualización exitosa' : 'Error al conectar con servidor') 
+    };
+  } catch (error) {
+    return { success: false, message: error.message };
+  }
 };
 
 export const deleteUser = async (userId) => {

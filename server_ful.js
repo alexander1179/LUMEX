@@ -187,9 +187,28 @@ const buildOtpEmailHtml = (otp) => `
 app.get('/health', async (_req, res) => {
     try {
         const [rows] = await pool.query('SELECT 1 as result');
-        res.json({ success: true, message: 'Servidor y BD activos', dbResult: rows[0].result });
+        res.json({ 
+            success: true, 
+            message: 'Servidor y BD activos', 
+            database: 'Conectado ✅',
+            dbResult: rows[0].result 
+        });
     } catch (error) {
-        res.status(500).json({ success: false, message: 'Servidor activo pero BD inactiva', details: error.message });
+        const missingVars = [];
+        if (!DB_CONFIG.host || DB_CONFIG.host === 'localhost') missingVars.push('MYSQL_HOST');
+        if (!DB_CONFIG.user || DB_CONFIG.user === 'root') missingVars.push('MYSQL_USER');
+        if (!DB_CONFIG.database || DB_CONFIG.database === 'lumex_db') missingVars.push('MYSQL_DATABASE');
+        if (!process.env.MYSQLPASSWORD && !process.env.MYSQL_PASSWORD) missingVars.push('MYSQL_PASSWORD');
+
+        res.status(500).json({ 
+            success: false, 
+            message: 'Servidor activo pero BD inactiva', 
+            details: error.message,
+            diagnostico: {
+                variables_faltantes: missingVars,
+                sugerencia: 'Verifica las variables de entorno en el panel de Railway y haz clic en "Deploy" o "Apply changes".'
+            }
+        });
     }
 });
 

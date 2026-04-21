@@ -26,14 +26,18 @@ import { captureRef } from 'react-native-view-shot';
 import { BloodPressureModal } from '../components/health/BloodPressureModal';
 import { HeartRateModal } from '../components/health/HeartRateModal';
 import { storageService } from '../services/storage/storageService';
-import { Toast } from '../components/common/Toast';
 import {
   fetchAnalysisHistoryByUser,
   isDatasetFileSupported,
   parseDatasetContent,
   readDatasetAsset,
   saveAnalysisInSupabase,
+  registerPayment,
+  consumeAnalysisCredit,
+  fetchLatestUserData,
 } from '../services/lumex';
+
+const { width } = Dimensions.get('window');
 
 const icon = require('../../assets/lumex.jpeg');
 const alexPhoto = require('../../assets/Alexander.jpg');
@@ -438,6 +442,23 @@ export default function MainScreen({ navigation }) {
   const [user, setUser] = useState(null);
   const [activeTab, setActiveTab] = useState('inicio');
 
+  // ── Estados de pago ──────────────────────────────────────────────────────
+  const [loading, setLoading] = useState(false);
+  const [isPurchasing, setIsPurchasing] = useState(false);
+  const [showPaymentSuccess, setShowPaymentSuccess] = useState(false);
+  const [showCreditsModal, setShowCreditsModal] = useState(false);
+  const [showPaymentConfirmationModal, setShowPaymentConfirmationModal] = useState(false);
+  const [showPaymentMethodsModal, setShowPaymentMethodsModal] = useState(false);
+  const [selectedPlan, setSelectedPlan] = useState(null);
+  const [selectedPaymentMethod, setSelectedPaymentMethod] = useState(null);
+  const [analisisDisponibles, setAnalisisDisponibles] = useState(0);
+  const [notification, setNotification] = useState({ visible: false, message: '', type: 'info' });
+  // Flujo de pago alternativo (multi-paso desde modal de créditos)
+  const [paymentStep, setPaymentStep] = useState('plans'); // 'plans' | 'confirm' | 'methods'
+  const [pendingPlan, setPendingPlan] = useState(null);
+  const [paymentMethod, setPaymentMethod] = useState(null);
+  // ────────────────────────────────────────────────────────────────────────
+
   const [datasetName, setDatasetName] = useState('');
   const [datasetContent, setDatasetContent] = useState('');
   const [selectedDatasetMeta, setSelectedDatasetMeta] = useState(null);
@@ -501,7 +522,12 @@ export default function MainScreen({ navigation }) {
           const userId = Number(userData?.id_usuario ?? userData?.id ?? null);
           if (Number.isInteger(userId)) {
             await loadHistory(userId);
+            // Sincronizar créditos desde el servidor
+            fetchLatestUserData(userId).then(latestData => {
+              if (latestData) setAnalisisDisponibles(latestData.analisis_disponibles || 0);
+            });
           }
+          setAnalisisDisponibles(userData?.analisis_disponibles || 0);
         } else {
           navigation.replace('Login');
         }
@@ -524,7 +550,6 @@ export default function MainScreen({ navigation }) {
       setAnalysisHistory(history);
     } catch (error) {
       console.log('Error loading analysis history:', error);
-      Alert.alert('Aviso', 'No se pudo actualizar el historial de analisis desde Supabase.');
     } finally {
       setIsLoadingHistory(false);
     }
@@ -941,6 +966,57 @@ export default function MainScreen({ navigation }) {
     }
   };
 
+  // Flujo multi-paso desde el modal de créditos (planCard)
+  const handleSelectPlan = (amount, price, name) => {
+    setPendingPlan({ amount, price, name });
+    setPaymentStep('confirm');
+  };
+
+  const handleExecutePayment = async () => {
+    if (!paymentMethod) {
+      showNotification('Selecciona un método de pago.', 'error');
+      return;
+    }
+    try {
+      setIsPurchasing(true);
+      const safeUserId = Number(user?.id_usuario ?? user?.id ?? null);
+      if (!safeUserId) {
+        showNotification('Sesión invalida. Por favor reingresa.', 'error');
+        return;
+      }
+      const res = await registerPayment(
+        safeUserId,
+        pendingPlan?.price || 0,
+        `Plan ${pendingPlan?.name || 'creditos'}`,
+        pendingPlan?.amount || 1,
+        paymentMethod
+      );
+      if (res.success) {
+        // Priorizar el valor real calculado por el servidor
+        const newCredits = res.newCredits ?? (analisisDisponibles + (pendingPlan?.amount || 1));
+        setAnalisisDisponibles(newCredits);
+        const updatedUser = { ...user, analisis_disponibles: newCredits };
+        await storageService.saveUser(updatedUser);
+        setUser(updatedUser);
+        // Cerrar modal y resetear flujo
+        setShowCreditsModal(false);
+        setPaymentStep('plans');
+        setPendingPlan(null);
+        setPaymentMethod(null);
+        // Navegar a tab de análisis para que el usuario pueda iniciar el análisis
+        setActiveTab('dataset');
+        // Mostrar mensaje de éxito
+        setTimeout(() => triggerSuccessMessage(), 300);
+      } else {
+        showNotification(res.message || 'No se pudo procesar la carga de créditos.', 'error');
+      }
+    } catch (error) {
+      showNotification('Hubo un problema con el servidor.', 'error');
+    } finally {
+      setIsPurchasing(false);
+    }
+  };
+
   const handleLogout = async () => {
     try {
       await storageService.removeUser();
@@ -968,6 +1044,13 @@ export default function MainScreen({ navigation }) {
       return;
     }
 
+    // VERIFICACIÓN DE CRÉDITOS (Conversión estricta a número)
+    const safeCredits = parseInt(analisisDisponibles || 0, 10);
+    if (isNaN(safeCredits) || safeCredits <= 0) {
+      setShowCreditsModal(true);
+      return;
+    }
+
     try {
       setIsAnalyzing(true);
       const selectedAnalysisLabel = formatAnalysisLabel(FIXED_ANALYSIS_TYPE);
@@ -978,7 +1061,7 @@ export default function MainScreen({ navigation }) {
       const parsed = parsedDataset || parseDatasetContent(datasetContent);
       const visualizationImageUri = buildVisualizationImageUri(parsed, selectedVisualization);
 
-      const saveResult = await saveAnalysis({
+      const saveResult = await saveAnalysisInSupabase({
         userId: currentUserId,
         analysisType: FIXED_ANALYSIS_TYPE,
         visualizationType: selectedVisualization,
@@ -986,6 +1069,16 @@ export default function MainScreen({ navigation }) {
         datasetPath: datasetPathWithVisualization,
         parsedDataset: parsed,
       });
+
+      // Actualizar créditos con el valor real devuelto por el servidor
+      // (el servidor ya descontó 1 crédito de forma atómica durante el guardado)
+      const newTotal = saveResult.creditosRestantes !== null
+        ? saveResult.creditosRestantes
+        : Math.max(0, analisisDisponibles - 1);
+      setAnalisisDisponibles(newTotal);
+      const updatedUser = { ...user, analisis_disponibles: newTotal };
+      await storageService.saveUser(updatedUser);
+      setUser(updatedUser);
 
       await loadHistory(currentUserId);
 

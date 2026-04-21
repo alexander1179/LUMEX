@@ -136,6 +136,7 @@ export const saveAnalysisInSupabase = async ({
       idAnalisis: data.idAnalisis,
       totalRegistros: parsedDataset.rowCount,
       totalAnomalias: data.totalAnomalias || 0,
+      creditosRestantes: data.creditosRestantes ?? null,
       status: 'completado'
     };
   } catch (error) {

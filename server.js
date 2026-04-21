@@ -2,6 +2,7 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const mysql = require('mysql2/promise');
+const crypto = require('crypto');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -97,7 +98,7 @@ app.post('/api/auth/register', async (req, res) => {
     }
 
     const [result] = await pool.query(
-      'INSERT INTO usuarios (nombre, email, usuario, rol, contrasena, telefono, fecha_registro, terminos_aceptados) VALUES (?, ?, ?, ?, ?, ?, NOW(), 1)',
+      'INSERT INTO usuarios (nombre, email, usuario, rol, contrasena, telefono, fecha_registro, terminos_aceptados, analisis_disponibles) VALUES (?, ?, ?, ?, ?, ?, NOW(), 1, 0)',
       [name, email || null, username || null, finalRole, passwordHash, phone || null]
     );
     
@@ -234,11 +235,14 @@ app.post('/api/auth/reset-password', async (req, res) => {
 
 // Registrar Pago y añadir créditos (Unificado)
 app.post('/api/payments/register', async (req, res) => {
-  const { userId, amount, monto, metodoPago, descripcion, creditsToAdd } = req.body;
+  const { userId, amount, monto, metodoPago, metodo, description, descripcion, credits, creditsToAdd } = req.body;
   
   const safeUserId = Number(userId);
-  const safeCredits = Number(creditsToAdd || amount || 0);
+  // Priorizar los nombres enviados por paymentService.js
+  const safeCredits = Number(credits || creditsToAdd || 0);
   const safeMonto = Number(monto || amount || 0);
+  const finalMetodo = metodo || metodoPago || 'Tarjeta';
+  const finalDesc = description || descripcion || `Compra de ${safeCredits} créditos`;
 
   const conn = await pool.getConnection();
   try {
@@ -250,14 +254,16 @@ app.post('/api/payments/register', async (req, res) => {
     const idPago = crypto.randomUUID();
     await conn.query(
       'INSERT INTO pagos (id_pago, id_usuario, monto, moneda, descripcion, metodo_pago, estado, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, NOW())',
-      [idPago, safeUserId, safeMonto, 'USD', descripcion || `Compra de ${safeCredits} créditos`, metodoPago || 'Tarjeta', 'completado']
+      [idPago, safeUserId, safeMonto, 'USD', finalDesc, finalMetodo, 'completado']
     );
 
-    const currentCredits = user[0].analisis_disponibles || 0;
-    await conn.query('UPDATE usuarios SET analisis_disponibles = ? WHERE id_usuario = ?', [currentCredits + safeCredits, safeUserId]);
+    const currentCredits = Number(user[0].analisis_disponibles || 0);
+    const newTotal = currentCredits + safeCredits;
+    await conn.query('UPDATE usuarios SET analisis_disponibles = ? WHERE id_usuario = ?', [newTotal, safeUserId]);
 
     await conn.commit();
-    res.json({ success: true, message: `Se han añadido ${safeCredits} créditos correctamente` });
+    console.log(`[PAYMENT SUCCESS] userId=${safeUserId}, added=${safeCredits}, newTotal=${newTotal}`);
+    res.json({ success: true, message: `Se han añadido ${safeCredits} créditos correctamente`, newCredits: newTotal });
   } catch (err) {
     await conn.rollback();
     res.status(500).json({ success: false, message: err.message });
@@ -382,7 +388,7 @@ const MODEL_BY_ANALYSIS = {
   clustering: { nombre: 'KMeans', descripcion: 'Clustering', tipo: 'clustering' },
 };
 
-app.post('/analysis/save', async (req, res) => {
+app.post('/api/analysis/save', async (req, res) => {
   try {
     const { userId, analysisType, datasetName, datasetPath, parsedDataset, analysisSummary } = req.body || {};
     const numericUserId = Number(userId);
@@ -395,22 +401,44 @@ app.post('/analysis/save', async (req, res) => {
     try {
       await conn.beginTransaction();
 
+      // Verificar créditos ANTES de proceder
+      const [userCheck] = await conn.query('SELECT analisis_disponibles FROM usuarios WHERE id_usuario = ?', [numericUserId]);
+      const currentCredits = userCheck[0]?.analisis_disponibles ?? 0;
+      if (currentCredits <= 0) {
+        throw new Error('No tienes créditos suficientes para realizar este análisis.');
+      }
+
       const modelConfig = MODEL_BY_ANALYSIS[analysisType] || MODEL_BY_ANALYSIS.anomalias;
       const [modelInsert] = await conn.query('INSERT INTO modelos (nombre_modelo, descripcion, tipo_modelo, fecha_creacion) VALUES (?, ?, ?, NOW())', [modelConfig.nombre, modelConfig.descripcion, modelConfig.tipo]);
       const [datasetInsert] = await conn.query('INSERT INTO datasets (id_usuario, nombre_archivo, ruta_archivo, fecha_subida) VALUES (?, ?, ?, NOW())', [numericUserId, datasetName || 'dataset.csv', datasetPath || 'movil://dataset']);
-      
+
       const resultados = hasSummary ? [] : buildResults({ rows, headers });
       const totalRegistros = hasSummary ? Number(analysisSummary.totalRegistros) : rows.length;
       const totalAnomalias = hasSummary ? Number(analysisSummary.totalAnomalias) : resultados.reduce((s, r) => s + (r.es_anomalia ? 1 : 0), 0);
 
-      const [analisisInsert] = await conn.query('INSERT INTO analisis (id_usuario, id_dataset, id_modelo, fecha_analisis, total_registros, total_anomalias) VALUES (?, ?, ?, NOW(), ?, ?)', [numericUserId, datasetInsert.insertId, modelInsert.insertId, totalRegistros, totalAnomalias]);
-      
+      const [analisisInsert] = await conn.query(
+        'INSERT INTO analisis (id_usuario, id_dataset, id_modelo, fecha_analisis, total_registros, total_anomalias, tipo_analisis, tipo_visualizacion, estado) VALUES (?, ?, ?, NOW(), ?, ?, ?, ?, ?)',
+        [numericUserId, datasetInsert.insertId, modelInsert.insertId, totalRegistros, totalAnomalias, analysisType || 'anomalias', 'histograma', 'completado']
+      );
+
+      // Descontar 1 crédito al usuario de forma atómica manejando posibles NULLs
+      await conn.query(
+        'UPDATE usuarios SET analisis_disponibles = GREATEST(0, COALESCE(analisis_disponibles, 0) - 1) WHERE id_usuario = ?',
+        [numericUserId]
+      );
+
       if (!hasSummary && resultados.length > 0) {
         await insertResultadosInBatches(resultados, analisisInsert.insertId, conn);
       }
 
       await conn.commit();
-      res.json({ success: true, idAnalisis: analisisInsert.insertId, totalRegistros, totalAnomalias });
+      // Obtener créditos actualizados del usuario
+      const [userRow] = await conn.query('SELECT analisis_disponibles FROM usuarios WHERE id_usuario = ?', [numericUserId]);
+      const creditosRestantes = userRow[0]?.analisis_disponibles ?? 0;
+      
+      console.log(`[ANALYSIS SUCCESS] userId=${numericUserId}, used=1, remaining=${creditosRestantes}`);
+      
+      res.json({ success: true, idAnalisis: analisisInsert.insertId, totalRegistros, totalAnomalias, creditosRestantes });
     } catch (err) {
       await conn.rollback();
       throw err;
@@ -418,8 +446,55 @@ app.post('/analysis/save', async (req, res) => {
       conn.release();
     }
   } catch (error) {
-    console.error('Error en registro:', error);
-    res.status(500).json({ success: false, message: 'Error interno del servidor' });
+    console.error('[ANALYSIS SAVE ERROR]', error.message);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+app.post('/api/analysis/history', async (req, res) => {
+  const { userId } = req.body;
+  try {
+    const query = `
+      SELECT a.id_analisis, a.fecha_analisis, a.total_registros, a.total_anomalias,
+             d.nombre_archivo, d.ruta_archivo,
+             m.tipo_modelo, m.descripcion, m.nombre_modelo
+      FROM analisis a
+      LEFT JOIN datasets d ON a.id_dataset = d.id_dataset
+      LEFT JOIN modelos m ON a.id_modelo = m.id_modelo
+      WHERE a.id_usuario = ?
+      ORDER BY a.fecha_analisis DESC
+    `;
+    const [rows] = await pool.query(query, [userId]);
+    console.log(`[HISTORY] userId=${userId} => ${rows.length} registros`);
+    const mapped = rows.map(item => ({
+      id_analisis: item.id_analisis,
+      fecha_analisis: item.fecha_analisis,
+      total_registros: item.total_registros,
+      total_anomalias: item.total_anomalias,
+      nombre_archivo: item.nombre_archivo || `analisis_${item.id_analisis}.csv`,
+      ruta_archivo: item.ruta_archivo,
+      tipo_modelo: item.tipo_modelo,
+      nombre_modelo: item.nombre_modelo,
+    }));
+    return res.json({ success: true, data: mapped });
+  } catch (error) {
+    console.error('[HISTORY ERROR]', error.message);
+    return res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// Endpoint para obtener datos actualizados del usuario (créditos, etc.)
+app.post('/api/auth/latest-data', async (req, res) => {
+  const { userId } = req.body;
+  try {
+    const [rows] = await pool.query(
+      'SELECT id_usuario, nombre, email, usuario, rol, analisis_disponibles, acepta_terminos FROM usuarios WHERE id_usuario = ?',
+      [userId]
+    );
+    if (rows.length === 0) return res.status(404).json({ success: false, message: 'Usuario no encontrado' });
+    res.json({ success: true, user: rows[0] });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
   }
 });
 
@@ -607,7 +682,7 @@ app.post('/api/auth/reset-password', async (req, res) => {
 const server = app.listen(PORT, '0.0.0.0', () => {
   console.log(`🚀 Servidor MySQL corriendo en:`);
   console.log(`   - Local: http://localhost:${PORT}`);
-  console.log(`   - Red:   http://192.168.20.141:${PORT}`);
+  console.log(`   - Red:   http://192.168.20.142:${PORT}`);
 });
 
 server.on('error', (err) => {
@@ -617,7 +692,6 @@ server.on('error', (err) => {
   }
 });
 
-app.listen(PORT, '0.0.0.0', () => {
-  console.log(`🚀 Servidor MySQL corriendo en puerto ${PORT}`);
+process.on('unhandledRejection', (reason) => {
+  console.error('[Unhandled Rejection]', reason);
 });
-

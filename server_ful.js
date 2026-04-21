@@ -8,30 +8,42 @@ const crypto = require('crypto');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// ===== Configuración de Entorno (Debug) =====
+console.log('🛠️ Iniciando servidor en entorno:', process.env.NODE_ENV || 'development');
+console.log('🔍 Detectando variables de base de datos:');
+console.log('- MYSQLHOST:', process.env.MYSQLHOST ? '✅ Configurado' : '❌ Falta');
+console.log('- MYSQLUSER:', process.env.MYSQLUSER ? '✅ Configurado' : '❌ Falta');
+console.log('- MYSQLDATABASE:', process.env.MYSQLDATABASE ? '✅ Configurado' : '❌ Falta');
+console.log('- MYSQLPORT:', process.env.MYSQLPORT ? `✅ (${process.env.MYSQLPORT})` : '⚠️ No definido (usando 3306)');
+
 // ===== MySQL Pool Configuration =====
 const pool = mysql.createPool({
-    host: process.env.MYSQLHOST,
-    user: process.env.MYSQLUSER,
-    password: process.env.MYSQLPASSWORD,
-    database: process.env.MYSQLDATABASE,
-    port: Number(process.env.MYSQLPORT),
+    host: process.env.MYSQLHOST || 'localhost',
+    user: process.env.MYSQLUSER || 'root',
+    password: process.env.MYSQLPASSWORD || '',
+    database: process.env.MYSQLDATABASE || 'lumex_db',
+    port: parseInt(process.env.MYSQLPORT || '3306', 10),
     waitForConnections: true,
     connectionLimit: 10,
     queueLimit: 0,
+    connectTimeout: 10000, // 10 segundos
 });
 
 // Test connection
 pool.getConnection()
     .then(connection => {
-        console.log('✅ Conectado a MySQL exitosamente');
+        console.log('✅ Conexión exitosa al Pool de MySQL');
         connection.release();
     })
     .catch(err => {
-        console.error('❌ Error conectando a MySQL:', err.message);
+        console.error('❌ ERROR CRÍTICO DE CONEXIÓN A MYSQL:');
+        console.error('Código:', err.code);
+        console.error('Mensaje:', err.message);
+        console.error('Host intentado:', process.env.MYSQLHOST || 'localhost');
     });
 
 pool.on('error', (err) => {
-    console.error('[DB ERROR]', err);
+    console.error('⚠️ [POOL ERROR]:', err.code, err.message);
 });
 
 // ===== Auto Migration =====

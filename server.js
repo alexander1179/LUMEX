@@ -12,7 +12,7 @@ const PORT = process.env.PORT || 3000;
 console.log('🛠️ Iniciando servidor en entorno:', process.env.NODE_ENV || 'development');
 
 // Fallback para MYSQL_URL (típico en algunos entornos de Railway/Heroku)
-if (process.env.MYSQL_URL && (!process.env.MYSQLHOST || !process.env.MYSQLDATABASE)) {
+if (process.env.MYSQL_URL && (!process.env.MYSQLHOST || !process.env.MYSQL_HOST)) {
     try {
         const url = new URL(process.env.MYSQL_URL);
         process.env.MYSQLHOST = url.hostname;
@@ -26,23 +26,32 @@ if (process.env.MYSQL_URL && (!process.env.MYSQLHOST || !process.env.MYSQLDATABA
     }
 }
 
+// Normalización de variables (soporte para MYSQL_HOST y MYSQLHOST)
+const DB_CONFIG = {
+    host: process.env.MYSQLHOST || process.env.MYSQL_HOST || 'localhost',
+    user: process.env.MYSQLUSER || process.env.MYSQL_USER || 'root',
+    password: process.env.MYSQLPASSWORD || process.env.MYSQL_PASSWORD || '',
+    database: process.env.MYSQLDATABASE || process.env.MYSQL_DATABASE || 'lumex_db',
+    port: parseInt(process.env.MYSQLPORT || process.env.MYSQL_PORT || '3306', 10)
+};
+
 console.log('🔍 Detectando variables de base de datos:');
-console.log('- MYSQLHOST:', process.env.MYSQLHOST ? '✅ Configurado' : '❌ Falta');
-console.log('- MYSQLUSER:', process.env.MYSQLUSER ? '✅ Configurado' : '❌ Falta');
-console.log('- MYSQLDATABASE:', process.env.MYSQLDATABASE ? '✅ Configurado' : '❌ Falta');
-console.log('- MYSQLPORT:', process.env.MYSQLPORT ? `✅ (${process.env.MYSQLPORT})` : '⚠️ No definido (usando 3306)');
+console.log('- Host:', DB_CONFIG.host !== 'localhost' ? '✅ Configurado' : '⚠️ Usando localhost');
+console.log('- Usuario:', DB_CONFIG.user !== 'root' ? '✅ Configurado' : '⚠️ Usando root');
+console.log('- Base Datos:', DB_CONFIG.database !== 'lumex_db' ? '✅ Configurado' : '⚠️ Usando default');
+console.log('- Puerto:', DB_CONFIG.port);
 
 // ===== MySQL Pool Configuration =====
 const pool = mysql.createPool({
-    host: process.env.MYSQLHOST || 'localhost',
-    user: process.env.MYSQLUSER || 'root',
-    password: process.env.MYSQLPASSWORD || '',
-    database: process.env.MYSQLDATABASE || 'lumex_db',
-    port: parseInt(process.env.MYSQLPORT || '3306', 10),
+    host: DB_CONFIG.host,
+    user: DB_CONFIG.user,
+    password: DB_CONFIG.password,
+    database: DB_CONFIG.database,
+    port: DB_CONFIG.port,
     waitForConnections: true,
     connectionLimit: 10,
     queueLimit: 0,
-    connectTimeout: 10000, // 10 segundos
+    connectTimeout: 10000,
 });
 
 // Test connection

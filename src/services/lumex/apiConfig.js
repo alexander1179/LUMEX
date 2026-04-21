@@ -4,7 +4,8 @@ import Constants from 'expo-constants';
 
 // Obtener la IP local de tu computadora
 // Reemplaza con la IP de tu computadora (ejecuta 'ipconfig' en Windows o 'ifconfig' en Mac/Linux)
-const LOCAL_IP = '192.168.20.141'; // 🔥 IP actualizada según ipconfig
+// ⚠️ IMPORTANTE: El celular DEBE estar conectado a la misma red Wi-Fi que el PC (hitronhub.home)
+const LOCAL_IP = '192.168.20.142'; // 🔥 IP del PC en la red Wi-Fi hitronhub
 
 const normalizeUrl = (url) => String(url || '').trim().replace(/\/$/, '');
 

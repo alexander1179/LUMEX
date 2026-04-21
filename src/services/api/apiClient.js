@@ -2,7 +2,9 @@ import { Platform } from 'react-native';
 import Constants from 'expo-constants';
 
 // IP local de la máquina de desarrollo — actualizar si cambia la red
-const LOCAL_IP = '10.157.25.163';
+// ⚠️ DEBE coincidir con la IP del PC en la red Wi-Fi (ejecuta 'ipconfig' para verificar)
+// ⚠️ El celular DEBE estar en la MISMA red Wi-Fi que el PC
+const LOCAL_IP = '192.168.20.142'; // IP del PC en red hitronhub.home
 
 const TIMEOUT_MS = 10000; // 10 segundos máximo de espera
 

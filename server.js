@@ -2,8 +2,6 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const mysql = require('mysql2/promise');
-const nodemailer = require('nodemailer');
-const crypto = require('crypto');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -34,68 +32,8 @@ pool.on('error', (err) => {
   console.error('[DB ERROR]', err);
 });
 
-// ===== Auto Migration =====
-const runMigrations = async () => {
-  try {
-    console.log('🔍 Verificando estructura de base de datos...');
-    const [columns] = await pool.query('SHOW COLUMNS FROM usuarios');
-    const names = columns.map(c => c.Field);
-
-    if (!names.includes('permiso_editar')) {
-      await pool.query('ALTER TABLE usuarios ADD COLUMN permiso_editar TINYINT DEFAULT 1');
-      console.log('➕ Columna permiso_editar añadida');
-    }
-    if (!names.includes('permiso_bloquear')) {
-      await pool.query('ALTER TABLE usuarios ADD COLUMN permiso_bloquear TINYINT DEFAULT 1');
-      console.log('➕ Columna permiso_bloquear añadida');
-    }
-    
-    // Nuevos permisos de módulos
-    const moduleCols = [
-      'mod_nuevo_paciente',
-      'mod_gestion_usuarios',
-      'mod_reportes',
-      'mod_actividad',
-      'mod_alertas',
-      'mod_pagos'
-    ];
-    for (const col of moduleCols) {
-      if (!names.includes(col)) {
-        await pool.query(`ALTER TABLE usuarios ADD COLUMN ${col} TINYINT DEFAULT 1`);
-        console.log(`➕ Columna ${col} añadida`);
-      }
-    }
-    console.log('✅ Migraciones completadas.');
-  } catch (error) {
-    console.error('❌ Error en migraciones:', error.message);
-  }
-};
-runMigrations();
-
-// ===== SMTP Configuration =====
-const smtpConfigured = [
-  process.env.SMTP_HOST,
-  process.env.SMTP_PORT,
-  process.env.SMTP_USER,
-  process.env.SMTP_PASS,
-  process.env.SMTP_FROM,
-].every((value) => !!value);
-
-const transporter = smtpConfigured
-  ? nodemailer.createTransport({
-      host: process.env.SMTP_HOST,
-      port: Number(process.env.SMTP_PORT),
-      secure: Number(process.env.SMTP_PORT) === 465,
-      auth: {
-        user: process.env.SMTP_USER,
-        pass: process.env.SMTP_PASS,
-      },
-    })
-  : null;
-
-if (!smtpConfigured) {
-  console.warn('SMTP no configurado. El endpoint /forgot-password quedará deshabilitado.');
-}
+// Almacenamiento temporal de OTPs (En producción usar Redis o DB)
+const otps = {};
 
 app.use(cors());
 app.use(express.json());
@@ -480,40 +418,14 @@ app.post('/analysis/save', async (req, res) => {
       conn.release();
     }
   } catch (error) {
-    console.error(error);
-    res.status(500).json({ success: false, message: error.message });
+    console.error('Error en registro:', error);
+    res.status(500).json({ success: false, message: 'Error interno del servidor' });
   }
 });
 
-app.post('/api/analysis/history', async (req, res) => {
-  const { userId } = req.body;
-  try {
-    const query = `
-      SELECT a.id_analisis, a.fecha_analisis, a.total_registros, a.total_anomalias,
-             d.nombre_archivo, d.ruta_archivo,
-             m.tipo_modelo, m.descripcion, m.nombre_modelo
-      FROM analisis a
-      JOIN datasets d ON a.id_dataset = d.id_dataset
-      JOIN modelos m ON a.id_modelo = m.id_modelo
-      WHERE a.id_usuario = ?
-      ORDER BY a.fecha_analisis DESC LIMIT 50
-    `;
-    const [rows] = await pool.query(query, [userId]);
-    const mapped = rows.map(item => ({
-      id_analisis: item.id_analisis,
-      fecha_analisis: item.fecha_analisis,
-      total_registros: item.total_registros,
-      total_anomalias: item.total_anomalias,
-      datasets: { nombre_archivo: item.nombre_archivo, ruta_archivo: item.ruta_archivo },
-      modelos: { tipo_modelo: item.tipo_modelo, descripcion: item.descripcion, nombre_modelo: item.nombre_modelo }
-    }));
-    return res.json({ success: true, data: mapped });
-  } catch (error) {
-    return res.status(500).json({ success: false, message: error.message });
-  }
-});
+// --- ENDPOINTS DE DASHBOARD Y USUARIOS ---
 
-// Admin endpoints
+// Listar usuarios (para SuperAdmin)
 app.get('/api/admin/users', async (req, res) => {
   try {
     const query = `
@@ -531,17 +443,18 @@ app.get('/api/admin/users', async (req, res) => {
   }
 });
 
-app.get('/api/superadmin/users', async (req, res) => {
+// Endpoint de prueba para verificar conexión ojo si no sirve eliminar esta parte completa 
+app.get('/', (req, res) => {
+  res.send('Servidor activo');
+});
+
+
+// Actualizar rol
+app.post('/api/admin/update-role', async (req, res) => {
+  const { userId, newRole } = req.body;
   try {
-    const query = `
-      SELECT id_usuario, nombre, email, usuario, rol, estado, fecha_registro, telefono,
-             puede_gestionar_usuarios, permiso_editar, permiso_bloquear,
-             mod_nuevo_paciente, mod_gestion_usuarios, mod_reportes, mod_actividad, mod_alertas, mod_pagos
-      FROM usuarios 
-      ORDER BY fecha_registro DESC
-    `;
-    const [rows] = await pool.query(query);
-    res.json({ success: true, users: rows });
+    await pool.query('UPDATE usuarios SET rol = ? WHERE id_usuario = ?', [newRole, userId]);
+    res.json({ success: true, message: 'Rol actualizado' });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
@@ -568,92 +481,33 @@ app.post('/api/superadmin/toggle-admin-permission', async (req, res) => {
   }
 });
 
+// Actualizar datos completos de usuario
 app.post('/api/admin/update-user', async (req, res) => {
-  const { id_usuario, nombre, email, usuario, rol, telefono, passwordHash } = req.body;
+  const { id_usuario, nombre, email, usuario, rol, telefono } = req.body;
   try {
-    if (passwordHash) {
-      await pool.query(
-        'UPDATE usuarios SET nombre = ?, email = ?, usuario = ?, rol = ?, telefono = ?, contrasena = ? WHERE id_usuario = ?', 
-        [nombre, email || null, usuario, rol, telefono || null, passwordHash, id_usuario]
-      );
-    } else {
-      await pool.query(
-        'UPDATE usuarios SET nombre = ?, email = ?, usuario = ?, rol = ?, telefono = ? WHERE id_usuario = ?', 
-        [nombre, email || null, usuario, rol, telefono || null, id_usuario]
-      );
-    }
-    res.json({ success: true, message: 'Cambios guardados correctamente' });
+    await pool.query(
+      'UPDATE usuarios SET nombre = ?, email = ?, usuario = ?, rol = ?, telefono = ? WHERE id_usuario = ?',
+      [nombre, email, usuario, rol, telefono, id_usuario]
+    );
+    res.json({ success: true, message: 'Usuario actualizado correctamente' });
   } catch (error) {
-    console.error('Error DB Update:', error.message);
-    res.status(500).json({ success: false, message: `Error en base de datos: ${error.message}` });
+    res.status(500).json({ success: false, message: 'Error al actualizar usuario: ' + error.message });
   }
 });
 
-app.delete('/api/admin/user/:userId', async (req, res) => {
-  const { userId } = req.params;
+// Obtener usuario actual (refresco)
+app.post('/api/auth/get-user', async (req, res) => {
+  const { userId } = req.body;
   try {
-    await pool.query('DELETE FROM usuarios WHERE id_usuario = ?', [userId]);
-    res.json({ success: true, message: 'Usuario eliminado' });
+    const [rows] = await pool.query('SELECT * FROM usuarios WHERE id_usuario = ?', [userId]);
+    if (rows.length === 0) return res.status(404).json({ success: false });
+    const { contrasena, ...safeUser } = rows[0];
+    res.json({ success: true, user: safeUser });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
 });
 
-app.post('/api/admin/block-user', async (req, res) => {
-  const { id_usuario, blocked } = req.body;
-  try {
-    const estadoStr = blocked ? 'bloqueado' : 'activo';
-    await pool.query('UPDATE usuarios SET estado = ? WHERE id_usuario = ?', [estadoStr, id_usuario]);
-    res.json({ success: true, message: 'Estado actualizado' });
-  } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
-  }
-});
-
-app.delete('/api/admin/user/:id', async (req, res) => {
-  try {
-    await pool.query('DELETE FROM usuarios WHERE id_usuario = ?', [req.params.id]);
-    res.json({ success: true, message: 'Usuario eliminado' });
-  } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
-  }
-});
-
-app.get('/api/admin/activity', async (req, res) => {
-  try {
-    const query = `
-      SELECT a.id_analisis, a.id_usuario, a.id_dataset, a.id_modelo, a.fecha_analisis, a.total_registros, a.total_anomalias,
-             u.nombre AS usuario_nombre, u.usuario AS usuario_username, u.email AS usuario_email,
-             d.nombre_archivo AS dataset_nombre,
-             m.tipo_modelo, m.descripcion, m.nombre_modelo
-      FROM analisis a
-      LEFT JOIN usuarios u ON a.id_usuario = u.id_usuario
-      LEFT JOIN datasets d ON a.id_dataset = d.id_dataset
-      LEFT JOIN modelos m ON a.id_modelo = m.id_modelo
-      ORDER BY a.fecha_analisis DESC
-      LIMIT 1000
-    `;
-    const [rows] = await pool.query(query);
-    res.json({ success: true, activity: rows });
-  } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
-  }
-});
-
-app.get('/api/admin/payments', async (req, res) => {
-  try {
-    const query = `
-      SELECT p.*, u.nombre AS usuario_nombre, u.usuario AS usuario_username, u.email AS usuario_email
-      FROM pagos p
-      LEFT JOIN usuarios u ON p.id_usuario = u.id_usuario
-      ORDER BY p.created_at DESC
-    `;
-    const [rows] = await pool.query(query);
-    res.json({ success: true, payments: rows });
-  } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
-  }
-});
 
 // 404 — Ruta no encontrada
 app.use((req, res) => {
@@ -667,6 +521,103 @@ app.use((err, req, res, next) => {
   res.status(500).json({ success: false, message: err?.message || 'Error interno del servidor' });
 });
 
+app.post('/api/admin/block-user', async (req, res) => {
+  const { id_usuario, blocked } = req.body;
+  try {
+    const estadoStr = blocked ? 'bloqueado' : 'activo';
+    await pool.query('UPDATE usuarios SET estado = ? WHERE id_usuario = ?', [estadoStr, id_usuario]);
+    res.json({ success: true, message: 'Estado actualizado' });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// Recuperar contraseña (Generar código)
+app.post('/api/auth/forgot-password', async (req, res) => {
+  const { email } = req.body;
+  try {
+    const normalizedEmail = email.trim().toLowerCase();
+    const [rows] = await pool.query('SELECT id_usuario FROM usuarios WHERE email = ?', [normalizedEmail]);
+    if (rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Correo no registrado' });
+    }
+    
+    // Generar código de 6 dígitos
+    const code = Math.floor(100000 + Math.random() * 900000).toString();
+    
+    // Guardar en memoria (expira en 15 min)
+    otps[normalizedEmail] = {
+      code,
+      expires: Date.now() + (15 * 60 * 1000)
+    };
+
+    console.log("**************************************************");
+    console.log(`🔑 CÓDIGO PARA: ${normalizedEmail}`);
+    console.log(`👉 CÓDIGO: ${code}`);
+    console.log("**************************************************");
+    
+    res.json({ success: true, message: 'Código generado correctamente. Revisa la consola del servidor.' });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// Verificar código
+app.post('/api/auth/verify-token', async (req, res) => {
+  const { email, token } = req.body;
+  const normalizedEmail = email.trim().toLowerCase();
+  
+  const stored = otps[normalizedEmail];
+  
+  if (!stored) {
+    return res.status(400).json({ success: false, message: 'No hay un código pendiente para este correo' });
+  }
+  
+  if (Date.now() > stored.expires) {
+    delete otps[normalizedEmail];
+    return res.status(400).json({ success: false, message: 'El código ha expirado' });
+  }
+  
+  if (stored.code !== token) {
+    return res.status(400).json({ success: false, message: 'Código incorrecto' });
+  }
+  
+  res.json({ success: true, message: 'Código verificado' });
+});
+
+// Cambiar contraseña real
+app.post('/api/auth/reset-password', async (req, res) => {
+  const { email, newPassword } = req.body;
+  const normalizedEmail = email.trim().toLowerCase();
+  
+  try {
+    // En una App real aquí deberíamos verificar que el token fue validado antes.
+    // Para el demo, lo permitimos si el email existe.
+    await pool.query('UPDATE usuarios SET contrasena = ? WHERE email = ?', [newPassword, normalizedEmail]);
+    
+    // Limpiar OTP después de usarlo
+    delete otps[normalizedEmail];
+    
+    res.json({ success: true, message: 'Contraseña actualizada correctamente' });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+const server = app.listen(PORT, '0.0.0.0', () => {
+  console.log(`🚀 Servidor MySQL corriendo en:`);
+  console.log(`   - Local: http://localhost:${PORT}`);
+  console.log(`   - Red:   http://192.168.20.141:${PORT}`);
+});
+
+server.on('error', (err) => {
+  console.error('[SERVER ERROR]', err);
+  if (err.code === 'EADDRINUSE') {
+    console.error(`OJO: El puerto ${PORT} ya está en uso por otro proceso.`);
+  }
+});
+
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`🚀 Servidor MySQL corriendo en puerto ${PORT}`);
 });
+

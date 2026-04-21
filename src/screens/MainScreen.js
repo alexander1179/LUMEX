@@ -4,6 +4,7 @@ import {
   ActivityIndicator,
   Alert,
   Animated,
+  Dimensions,
   Image,
   KeyboardAvoidingView,
   Modal,
@@ -31,15 +32,8 @@ import {
   isDatasetFileSupported,
   parseDatasetContent,
   readDatasetAsset,
-  saveAnalysis
-} from '../services/api/datasetAnalysisService';
-import { 
-  registerPayment, 
-  consumeAnalysisCredit 
-} from '../services/api/paymentService';
-import { 
-  fetchLatestUserData 
-} from '../services/api/authService';
+  saveAnalysisInSupabase,
+} from '../services/lumex';
 
 const icon = require('../../assets/lumex.jpeg');
 const alexPhoto = require('../../assets/Alexander.jpg');
@@ -443,21 +437,6 @@ const getFindingsRateText = (totalRegistros, totalAnomalias) => {
 export default function MainScreen({ navigation }) {
   const [user, setUser] = useState(null);
   const [activeTab, setActiveTab] = useState('inicio');
-  const [availableCredits, setAvailableCredits] = useState(0);
-  const [showCreditsModal, setShowCreditsModal] = useState(false);
-  const [isPurchasing, setIsPurchasing] = useState(false);
-  
-  // Toast Config
-  const [toast, setToast] = useState({ visible: false, message: '', type: 'success' });
-
-  const triggerToast = (message, type = 'success') => {
-    setToast({ visible: true, message, type });
-  };
-  
-  // Estados para flujo de pago
-  const [paymentStep, setPaymentStep] = useState('plans'); // 'plans', 'confirm', 'methods'
-  const [pendingPlan, setPendingPlan] = useState(null);
-  const [paymentMethod, setPaymentMethod] = useState(null);
 
   const [datasetName, setDatasetName] = useState('');
   const [datasetContent, setDatasetContent] = useState('');
@@ -497,6 +476,8 @@ export default function MainScreen({ navigation }) {
   const [downloadFormat, setDownloadFormat] = useState('pdf');
 
   const fadeAnim = useRef(new Animated.Value(0)).current;
+  const successMessageAnim = useRef(new Animated.Value(-width)).current;
+  const notificationAnim = useRef(new Animated.Value(-width)).current;
   const analysisExportCardRef = useRef(null);
 
   const currentUserId = Number(user?.id_usuario ?? user?.id ?? null);
@@ -519,11 +500,7 @@ export default function MainScreen({ navigation }) {
 
           const userId = Number(userData?.id_usuario ?? userData?.id ?? null);
           if (Number.isInteger(userId)) {
-            loadHistory(userId);
-            // Sincronizar créditos
-            fetchLatestUserData(userId).then(latestData => {
-              if (latestData) setAvailableCredits(latestData.analisis_disponibles || 0);
-            });
+            await loadHistory(userId);
           }
         } else {
           navigation.replace('Login');
@@ -543,10 +520,11 @@ export default function MainScreen({ navigation }) {
     try {
       setIsLoadingHistory(true);
       const history = await fetchAnalysisHistoryByUser(safeUserId);
+      console.log(`[SCREEN] Historial cargado en estado: ${history.length} items`);
       setAnalysisHistory(history);
     } catch (error) {
       console.log('Error loading analysis history:', error);
-      triggerToast('No se pudo actualizar el historial de analisis.', 'error');
+      Alert.alert('Aviso', 'No se pudo actualizar el historial de analisis desde Supabase.');
     } finally {
       setIsLoadingHistory(false);
     }
@@ -557,7 +535,7 @@ export default function MainScreen({ navigation }) {
       setIsDownloadingReport(true);
 
       if (!analysisExportCardRef.current) {
-        triggerToast('No se pudo preparar el reporte para exportar.', 'error');
+        Alert.alert('No disponible', 'No se pudo preparar el informe para exportar imagen.');
         return;
       }
 
@@ -587,11 +565,11 @@ export default function MainScreen({ navigation }) {
           UTI: 'public.png',
         });
       } else {
-        triggerToast('La opcion de compartir no esta disponible.', 'error');
+        Alert.alert('No disponible', 'La opcion de compartir no esta disponible en este dispositivo.');
       }
     } catch (e) {
       console.log('Error descargando imagen:', e);
-      triggerToast('No se pudo descargar la imagen del resultado.', 'error');
+      Alert.alert('Error', 'No se pudo descargar la imagen del resultado.');
     } finally {
       setIsDownloadingReport(false);
     }
@@ -718,11 +696,11 @@ export default function MainScreen({ navigation }) {
           UTI: 'com.adobe.pdf',
         });
       } else {
-        triggerToast('La opcion de compartir no esta disponible.', 'error');
+        Alert.alert('No disponible', 'La opcion de compartir no esta disponible en este dispositivo.');
       }
     } catch (e) {
       console.log('Error generando PDF:', e);
-      triggerToast('No se pudo generar el PDF del resultado.', 'error');
+      Alert.alert('Error', 'No se pudo generar el PDF del resultado.');
     } finally {
       setIsDownloadingReport(false);
     }
@@ -775,7 +753,7 @@ export default function MainScreen({ navigation }) {
     setHeartRateStatus(newStatus);
     setIsCameraMeasuring(false);
 
-    triggerToast(`Medicion completada: ${bpm} bpm`);
+    Alert.alert('Medicion por camara completada', `Frecuencia cardiaca estimada: ${bpm} bpm`);
   }, [isCameraMeasuring, cameraSecondsLeft]);
 
   useEffect(() => {
@@ -795,8 +773,9 @@ export default function MainScreen({ navigation }) {
     setBloodPressureStatus(newStatus);
     setIsMeasuringBloodPressure(false);
 
-    triggerToast(
-      bloodPressureMode === 'camera' ? 'Estimacion por camara completada' : 'Muestra completada'
+    Alert.alert(
+      bloodPressureMode === 'camera' ? 'Estimacion por camara completada' : 'Muestra completada',
+      `Presion arterial estimada: ${systolic}/${diastolic} mmHg`
     );
   }, [isMeasuringBloodPressure, bloodPressureSecondsLeft, bloodPressureMode, heartRate]);
 
@@ -826,7 +805,7 @@ export default function MainScreen({ navigation }) {
 
   const startBloodPressureMeasurement = () => {
     if (bloodPressureMode === 'camera' && !cameraPermission?.granted) {
-      triggerToast('Activa permisos de camara.', 'error');
+      Alert.alert('Camara no habilitada', 'Activa permisos de camara para iniciar esta estimacion.');
       return;
     }
     setBloodPressureSecondsLeft(10);
@@ -836,7 +815,7 @@ export default function MainScreen({ navigation }) {
   const enableBloodPressureCameraMode = async () => {
     const permission = cameraPermission?.granted ? cameraPermission : await requestCameraPermission();
     if (!permission?.granted) {
-      triggerToast('Permiso de camara requerido.', 'error');
+      Alert.alert('Permiso requerido', 'Debes permitir el acceso a la camara para usar esta estimacion.');
       return;
     }
     setBloodPressureMode('camera');
@@ -847,7 +826,7 @@ export default function MainScreen({ navigation }) {
   const enableHeartRateCameraMode = async () => {
     const permission = cameraPermission?.granted ? cameraPermission : await requestCameraPermission();
     if (!permission?.granted) {
-      triggerToast('Permiso de camara requerido.', 'error');
+      Alert.alert('Permiso requerido', 'Debes permitir el acceso a la camara para medir por camara.');
       return;
     }
     setCameraSecondsLeft(15);
@@ -855,7 +834,7 @@ export default function MainScreen({ navigation }) {
 
   const startHeartRateCameraMeasurement = () => {
     if (!cameraPermission?.granted) {
-      triggerToast('Activa permisos de camara.', 'error');
+      Alert.alert('Camara no habilitada', 'Activa permisos de camara para iniciar esta medicion.');
       return;
     }
     setCameraSecondsLeft(15);
@@ -872,44 +851,120 @@ export default function MainScreen({ navigation }) {
     setBloodPressureSecondsLeft(10);
   };
 
-  const handleLogout = () => {
-    Alert.alert('Cerrar sesion', 'Estas seguro de que deseas salir?', [
-      { text: 'Cancelar', style: 'cancel' },
-      {
-        text: 'Salir',
-        style: 'destructive',
-        onPress: async () => {
-          try {
-            await storageService.removeUser();
-            navigation.replace('Login');
-          } catch (error) {
-            console.log('Error logging out:', error);
-          }
-        },
-      },
-    ]);
+  const triggerSuccessMessage = () => {
+    console.log('[PAYMENT] Disparando banner de exito');
+    setShowPaymentSuccess(true);
+    successMessageAnim.setValue(-width);
+    Animated.sequence([
+      Animated.timing(successMessageAnim, {
+        toValue: 0,
+        duration: 1000,
+        useNativeDriver: true,
+      }),
+      Animated.delay(5000),
+      Animated.timing(successMessageAnim, {
+        toValue: width,
+        duration: 1000,
+        useNativeDriver: true,
+      }),
+    ]).start(() => {
+      console.log('[PAYMENT] Banner de exito finalizado');
+      setShowPaymentSuccess(false);
+      successMessageAnim.setValue(-width);
+      setActiveTab('dataset');
+    });
+  };
+
+  const showNotification = (message, type = 'info') => {
+    setNotification({ visible: true, message, type });
+    notificationAnim.setValue(-width);
+    Animated.sequence([
+      Animated.timing(notificationAnim, {
+        toValue: 0,
+        duration: 800,
+        useNativeDriver: true,
+      }),
+      Animated.delay(4000),
+      Animated.timing(notificationAnim, {
+        toValue: width,
+        duration: 800,
+        useNativeDriver: true,
+      }),
+    ]).start(() => {
+      setNotification({ visible: false, message: '', type: 'info' });
+    });
+  };
+  
+  const purchaseCredits = (uid, type, monto, method) => {
+    const credits = selectedPlan?.credits || 1;
+    return registerPayment(uid, monto, `Plan ${type}`, credits, method);
+  };
+  
+  const handlePurchase = async (metodo) => {
+    if (!selectedPlan) return;
+    
+    try {
+      setLoading(true);
+      console.log('[PAYMENT] Iniciando pago:', { userId: currentUserId, plan: selectedPlan, metodo });
+      const res = await purchaseCredits(
+        currentUserId, 
+        selectedPlan.type, 
+        selectedPlan.monto, 
+        metodo
+      );
+      console.log('[PAYMENT] Respuesta del servidor:', JSON.stringify(res));
+      
+      if (res.success) {
+        const nuevosCreditos = res.newCredits ?? (analisisDisponibles + (selectedPlan?.credits || 1));
+        setAnalisisDisponibles(nuevosCreditos);
+        // Actualizar storage local
+        const updatedUser = { ...user, analisis_disponibles: nuevosCreditos };
+        await storageService.saveUser(updatedUser);
+        setUser(updatedUser);
+        
+        setShowPaymentMethodsModal(false);
+        setShowPaymentConfirmationModal(false);
+        setShowCreditsModal(false);
+        
+        console.log('[PAYMENT] Mostrando banner de exito...');
+        setTimeout(() => {
+          triggerSuccessMessage();
+        }, 300);
+      } else {
+        showNotification(res.message || 'No se pudo procesar el pago', 'error');
+      }
+    } catch (error) {
+      console.error('[PAYMENT] Error en handlePurchase:', error);
+      showNotification('Fallo en la conexion con el servidor', 'error');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleLogout = async () => {
+    try {
+      await storageService.removeUser();
+      navigation.replace('Login');
+    } catch (error) {
+      console.log('Error logging out:', error);
+      showNotification('No se pudo cerrar la sesion correctamente', 'error');
+    }
   };
 
   const handleAnalyze = async () => {
     if (!datasetName.trim()) {
-      triggerToast('Ingresa un nombre para el dataset.', 'error');
+      Alert.alert('Campo requerido', 'Ingresa un nombre para el dataset.');
       return;
     }
 
     if (!datasetContent.trim()) {
-      triggerToast('Carga un archivo o ingresa el contenido.', 'error');
+      Alert.alert('Datos requeridos', 'Carga un archivo CSV/Excel o ingresa el contenido del dataset.');
       return;
     }
 
     const currentUserId = user?.id_usuario;
     if (!Number.isInteger(currentUserId)) {
-      triggerToast('No se encontro un usuario valido.', 'error');
-      return;
-    }
-
-    // VERIFICACIÓN DE CRÉDITOS
-    if (availableCredits <= 0) {
-      setShowCreditsModal(true);
+      Alert.alert('Usuario invalido', 'No se encontro un id de usuario valido para guardar el analisis.');
       return;
     }
 
@@ -931,10 +986,6 @@ export default function MainScreen({ navigation }) {
         datasetPath: datasetPathWithVisualization,
         parsedDataset: parsed,
       });
-
-      // DESCONTAR CRÉDITO EXITOSAMENTE
-      await consumeAnalysisCredit(currentUserId);
-      setAvailableCredits(prev => Math.max(0, prev - 1));
 
       await loadHistory(currentUserId);
 
@@ -961,55 +1012,7 @@ export default function MainScreen({ navigation }) {
     } catch (error) {
       console.log('Error saving analysis:', error);
       setIsAnalyzing(false);
-      triggerToast(error?.message || 'No se pudo completar el analisis.', 'error');
-    }
-  };
-
-  const handleSelectPlan = (amount, price, name) => {
-    setPendingPlan({ amount, price, name });
-    setPaymentStep('confirm');
-  };
-
-  const handleExecutePayment = async () => {
-    if (!paymentMethod) {
-      triggerToast('Selecciona un metodo de pago.', 'error');
-      return;
-    }
-
-    try {
-      setIsPurchasing(true);
-      // Simular delay de procesamiento
-      await new Promise(resolve => setTimeout(resolve, 1500));
-      
-      const safeUserId = Number(user?.id_usuario ?? user?.id ?? null);
-      if (!safeUserId) {
-        triggerToast('Sesion invalida. Por favor reingresa.', 'error');
-        return;
-      }
-
-      const res = await registerPayment(
-        safeUserId, 
-        pendingPlan?.amount || 0, 
-        pendingPlan?.price || 0, 
-        paymentMethod, 
-        `Compra de ${pendingPlan?.name || 'creditos'}`,
-        pendingPlan?.amount || 0
-      );
-      if (res.success) {
-        setAvailableCredits(prev => prev + (pendingPlan?.amount || 0));
-        triggerToast('¡Muchas gracias! Has adquirido tus creditos correctamente.');
-        setShowCreditsModal(false);
-        // Resetear flujo para la proxima vez
-        setPaymentStep('plans');
-        setPendingPlan(null);
-        setPaymentMethod(null);
-      } else {
-        triggerToast(res.message || 'No se pudo procesar la carga de creditos.', 'error');
-      }
-    } catch (error) {
-      triggerToast('Hubo un problema con el servidor.', 'error');
-    } finally {
-      setIsPurchasing(false);
+      Alert.alert('Error', error?.message || 'No se pudo completar el analisis y guardarlo en Supabase.');
     }
   };
 
@@ -1045,12 +1048,12 @@ export default function MainScreen({ navigation }) {
 
       const asset = result.assets?.[0];
       if (!asset?.uri) {
-        triggerToast('No fue posible leer el archivo.', 'error');
+        Alert.alert('Archivo invalido', 'No fue posible leer el archivo seleccionado.');
         return;
       }
 
       if (!isDatasetFileSupported(asset)) {
-        triggerToast('Formato no soportado (.csv, .xlsx, .xls).', 'error');
+        Alert.alert('Formato no valido', 'Selecciona un archivo con extension .csv, .xlsx o .xls.');
         return;
       }
 
@@ -1072,10 +1075,10 @@ export default function MainScreen({ navigation }) {
         fileUri: datasetFile.fileUri,
       });
 
-      triggerToast('Archivo cargado y listo para analizar.');
+      Alert.alert('Archivo cargado', `${datasetFile.fileName} listo para analizar.`);
     } catch (error) {
       console.log('Error loading dataset file:', error);
-      triggerToast('No se pudo cargar el archivo seleccionado.', 'error');
+      Alert.alert('Error', error?.message || 'No se pudo cargar el archivo seleccionado desde tu dispositivo.');
     } finally {
       setIsPickingCsv(false);
     }
@@ -1137,15 +1140,15 @@ export default function MainScreen({ navigation }) {
     try {
       const saved = await storageService.saveUser(updatedUser);
       if (!saved) {
-        triggerToast('No se pudieron guardar los datos del perfil.', 'error');
+        Alert.alert('Error', 'No se pudieron guardar los datos del perfil.');
         return;
       }
       setUser(updatedUser);
       setIsEditingProfile(false);
-      triggerToast('Perfil actualizado correctamente.');
+      Alert.alert('Perfil actualizado', 'Tus datos personales se guardaron correctamente.');
     } catch (error) {
       console.log('Error saving profile details:', error);
-      triggerToast('Ocurrio un problema al guardar tus datos.', 'error');
+      Alert.alert('Error', 'Ocurrio un problema al guardar tus datos.');
     }
   };
 
@@ -1499,7 +1502,7 @@ export default function MainScreen({ navigation }) {
         </View>
       )}
       {[...analysisHistory]
-        .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+        .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
         .map((item) => (
         <TouchableOpacity
           key={item.id}
@@ -1670,9 +1673,198 @@ export default function MainScreen({ navigation }) {
 
   const userName = user?.nombre || user?.usuario || 'Usuario';
   const initials = userName.slice(0, 2).toUpperCase();
+ 
+  const renderPagosModals = () => {
+    return (
+      <>
+        {/* Modal 1: Selección de Plan */}
+        <Modal visible={showCreditsModal} transparent animationType="slide">
+          <View style={styles.modalOverlay}>
+            <View style={styles.creditsModalContainer}>
+              <View style={styles.creditsIconBg}>
+                <Ionicons name="flash" size={30} color={T} />
+              </View>
+              <Text style={styles.creditsTitle}>¡Te has quedado sin créditos!</Text>
+              <Text style={styles.creditsSubtitle}>Adquiere un plan para continuar realizando análisis de IA.</Text>
+  
+              <View style={styles.plansRow}>
+                <TouchableOpacity 
+                  style={[styles.planCard, selectedPlan?.type === 'Basico' && styles.planCardActive]} 
+                  activeOpacity={0.8}
+                  onPress={() => {
+                    setSelectedPlan({ type: 'Basico', monto: 5, credits: 1 });
+                    setShowPaymentConfirmationModal(true);
+                  }}
+                >
+                  <Ionicons name="leaf-outline" size={28} color={selectedPlan?.type === 'Basico' ? '#fff' : T} />
+                  <Text style={[styles.planTitle, selectedPlan?.type === 'Basico' && { color: '#fff' }]}>Básico</Text>
+                  <Text style={[styles.planPrice, selectedPlan?.type === 'Basico' && { color: '#fff' }]}>$5 USD</Text>
+                  <Text style={[styles.planDetail, selectedPlan?.type === 'Basico' && { color: '#eaf6f5' }]}>1 Crédito por análisis</Text>
+                </TouchableOpacity>
+  
+                <TouchableOpacity 
+                  style={[styles.planCard, styles.planCardDiamond]} 
+                  activeOpacity={0.8}
+                  onPress={() => {
+                    setSelectedPlan({ type: 'Diamante', monto: 12, credits: 3 });
+                    setShowPaymentConfirmationModal(true);
+                  }}
+                >
+                  <View style={styles.planTopBadge}>
+                    <Text style={styles.planTopBadgeText}>TOP</Text>
+                  </View>
+                  <Ionicons name="diamond-outline" size={32} color="#fff" style={styles.planIcon} />
+                  <Text style={[styles.planTitle, { color: '#fff' }]}>Diamante</Text>
+                  <Text style={[styles.planPrice, { color: '#fff' }]}>$12 USD</Text>
+                  <Text style={[styles.planDetail, { color: '#eaf6f5' }]}>3 Créditos por análisis</Text>
+                </TouchableOpacity>
+              </View>
+  
+              <TouchableOpacity style={styles.closeLink} onPress={() => setShowCreditsModal(false)}>
+                <Text style={styles.closeLinkText}>Cerrar</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Modal>
+  
+        {/* Modal 2: Confirmación */}
+        <Modal visible={showPaymentConfirmationModal} transparent animationType="slide">
+          <View style={styles.modalOverlay}>
+            <View style={[styles.paymentModalContent, { width: '85%' }]}>
+              <View style={styles.paymentIconCircle}>
+                <Ionicons name="help-circle-outline" size={35} color={T} />
+              </View>
+              <Text style={styles.paymentTitle}>¿Deseas realizar la compra?</Text>
+              <Text style={styles.paymentDescription}>
+                Has seleccionado el Plan {selectedPlan?.type} por ${selectedPlan?.monto} USD
+              </Text>
+  
+              <View style={styles.modalButtonsRow}>
+                <TouchableOpacity 
+                   style={[styles.modalActionBtn, styles.modalActionBtnSecondary]} 
+                   onPress={() => setShowPaymentConfirmationModal(false)}
+                >
+                  <Text style={styles.modalActionBtnSecondaryText}>Cancelar</Text>
+                </TouchableOpacity>
+                <TouchableOpacity 
+                  style={[styles.modalActionBtn, styles.modalActionBtnPrimary]}
+                  onPress={() => {
+                    setShowPaymentMethodsModal(true);
+                  }}
+                >
+                  <Text style={styles.modalActionBtnPrimaryText}>Continuar</Text>
+                </TouchableOpacity>
+              </View>
+  
+              <TouchableOpacity style={[styles.closeLink, { marginTop: 15 }]} onPress={() => {
+                setShowPaymentConfirmationModal(false);
+                setShowCreditsModal(false);
+              }}>
+                <Text style={styles.closeLinkText}>Cerrar</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Modal>
+  
+        {/* Modal 3: Métodos de Pago */}
+        <Modal visible={showPaymentMethodsModal} transparent animationType="slide">
+          <View style={styles.modalOverlay}>
+            <View style={styles.paymentModalContent}>
+              <Text style={[styles.paymentTitle, { alignSelf: 'flex-start', marginLeft: 5 }]}>Forma de pago</Text>
+              <Text style={[styles.paymentDescription, { alignSelf: 'flex-start', textAlign: 'left', paddingHorizontal: 5, marginBottom: 15 }]}>
+                Selecciona como deseas pagar tu plan.
+              </Text>
+  
+              <View style={styles.paymentMethodsList}>
+                {['Tarjeta de Credito', 'PSE / Transferencia', 'Nequi / Daviplata', 'PayPal', 'Mercado Pago'].map((method) => (
+                  <TouchableOpacity 
+                    key={method} 
+                    style={[
+                      styles.paymentMethodItem,
+                      selectedPaymentMethod === method && styles.paymentMethodItemSelected
+                    ]}
+                    onPress={() => setSelectedPaymentMethod(method)}
+                  >
+                    <Ionicons 
+                      name={
+                        method.includes('Tarjeta') ? 'card-outline' : 
+                        method.includes('PSE') ? 'swap-horizontal-outline' : 
+                        method.includes('Nequi') ? 'phone-portrait-outline' : 
+                        method.includes('PayPal') ? 'logo-paypal' : 'wallet-outline'
+                      } 
+                      size={20} 
+                      color={selectedPaymentMethod === method ? '#fff' : T} 
+                    />
+                    <Text style={[
+                      styles.paymentMethodText,
+                      selectedPaymentMethod === method && styles.paymentMethodTextSelected
+                    ]}>{method}</Text>
+                    {selectedPaymentMethod === method && (
+                      <Ionicons name="checkmark-circle" size={18} color="#fff" style={{ marginLeft: 'auto' }} />
+                    )}
+                  </TouchableOpacity>
+                ))}
+              </View>
+  
+              <TouchableOpacity 
+                style={[
+                  styles.purchaseButton, 
+                  !selectedPaymentMethod && { opacity: 0.6 }
+                ]}
+                activeOpacity={0.8}
+                onPress={() => {
+                  if (selectedPaymentMethod) {
+                    handlePurchase(selectedPaymentMethod);
+                  } else {
+                    showNotification('Por favor selecciona un método de pago');
+                  }
+                }}
+                disabled={!selectedPaymentMethod || loading}
+              >
+                {loading ? (
+                  <ActivityIndicator color="#fff" />
+                ) : (
+                  <Text style={styles.purchaseButtonText}>Pagar ahora</Text>
+                )}
+              </TouchableOpacity>
+  
+              <TouchableOpacity style={styles.closeLink} onPress={() => setShowPaymentMethodsModal(false)}>
+                <Text style={[styles.closeLinkText, { color: T }]}>Volver</Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity style={styles.closeLink} onPress={() => {
+                setShowPaymentMethodsModal(false);
+                setShowPaymentConfirmationModal(false);
+                setShowCreditsModal(false);
+              }}>
+                <Text style={styles.closeLinkText}>Cerrar</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Modal>
+      </>
+    );
+  };
 
+  const renderPaymentSuccessMessage = () => (
+    <Modal
+      visible={showPaymentSuccess}
+      transparent
+      animationType="none"
+      statusBarTranslucent
+    >
+      <View style={styles.successModalOverlay} pointerEvents="none">
+        <Animated.View style={[styles.successBanner, { transform: [{ translateX: successMessageAnim }] }]}>
+          <Ionicons name="checkmark-circle" size={28} color="#fff" />
+          <Text style={styles.successBannerText}>¡Muchas gracias! Has adquirido tus creditos correctamente.</Text>
+        </Animated.View>
+      </View>
+    </Modal>
+  );
+  
   return (
     <Animated.View style={[styles.screen, { opacity: fadeAnim }]}> 
+      {renderPaymentSuccessMessage()}
       <View style={styles.blob1} pointerEvents="none" />
       <View style={styles.blob2} pointerEvents="none" />
 
@@ -1852,13 +2044,6 @@ export default function MainScreen({ navigation }) {
             ? stopBloodPressureMeasurement
             : startBloodPressureMeasurement
         }
-      />
-
-      <Toast 
-        visible={toast.visible} 
-        message={toast.message} 
-        type={toast.type} 
-        onClose={() => setToast(prev => ({ ...prev, visible: false }))} 
       />
 
       <Modal visible={showUserMenuModal} animationType="fade" transparent onRequestClose={() => setShowUserMenuModal(false)}>
@@ -3581,7 +3766,466 @@ const styles = StyleSheet.create({
   bpCameraGuideText: {
     color: '#4f6f7b',
     fontSize: 12,
-    lineHeight: 17,
+  },
+  // CREDIT MODAL STYLES (3 Steps)
+  creditsModalContainer: {
+    backgroundColor: '#fff',
+    width: '90%',
+    borderRadius: 24,
+    padding: 24,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.2,
+    shadowRadius: 15,
+    elevation: 10,
+  },
+  creditsModalHeader: {
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  creditsIconBg: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: '#f0f7f8',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 12,
+  },
+  creditsModalTitle: {
+    fontSize: 22,
+    fontWeight: '800',
+    color: '#051821',
+    marginBottom: 8,
+  },
+  creditsModalSubtitle: {
+    fontSize: 14,
+    color: '#6b8a8f',
+    textAlign: 'center',
+    lineHeight: 20,
+  },
+  plansContainer: {
+    flexDirection: 'row',
+    gap: 12,
+    width: '100%',
+    marginBottom: 20,
+  },
+  planCard: {
+    flex: 1,
+    backgroundColor: '#f8fbfc',
+    borderWidth: 1,
+    borderColor: '#e1ecee',
+    borderRadius: 16,
+    padding: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  planCardActive: {
+    backgroundColor: '#0f6d78',
+    borderColor: '#0f6d78',
+  },
+  planName: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#0f6d78',
+  },
+  planValue: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: '#051821',
+  },
+  planDesc: {
+    fontSize: 11,
+    color: '#6b8a8f',
+    textAlign: 'center',
+  },
+  diamanteBadge: {
+    position: 'absolute',
+    top: -10,
+    right: 10,
+    backgroundColor: '#e05a21',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 10,
+  },
+  diamanteBadgeText: {
+    color: '#fff',
+    fontSize: 9,
+    fontWeight: '900',
+  },
+  closeCreditsBtn: {
+    paddingVertical: 12,
+    width: '100%',
+    alignItems: 'center',
+  },
+  closeCreditsText: {
+    color: '#6b8a8f',
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  // MULTI-STEP PAYMENT STYLES
+  paymentStepContainer: {
+    width: '100%',
+    alignItems: 'center',
+    paddingVertical: 10,
+  },
+  confirmTitle: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: '#051821',
+    marginTop: 15,
+    marginBottom: 10,
+    textAlign: 'center',
+  },
+  confirmSubtitle: {
+    fontSize: 15,
+    color: '#6b8a8f',
+    textAlign: 'center',
+    marginBottom: 25,
+    lineHeight: 22,
+  },
+  confirmActions: {
+    flexDirection: 'row',
+    gap: 12,
+    width: '100%',
+  },
+  backBtn: {
+    flex: 1,
+    paddingVertical: 14,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#e1ecee',
+    alignItems: 'center',
+  },
+  backBtnText: {
+    color: '#6b8a8f',
+    fontWeight: '700',
+    fontSize: 15,
+  },
+  continueBtn: {
+    flex: 1,
+    paddingVertical: 14,
+    borderRadius: 12,
+    backgroundColor: '#0f6d78',
+    alignItems: 'center',
+  },
+  continueBtnText: {
+    color: '#fff',
+    fontWeight: '700',
+    fontSize: 15,
+  },
+  methodsTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: '#051821',
+    marginBottom: 5,
+    width: '100%',
+  },
+  methodsSubtitle: {
+    fontSize: 13,
+    color: '#6b8a8f',
+    marginBottom: 20,
+    width: '100%',
+  },
+  methodsList: {
+    width: '100%',
+    gap: 10,
+    marginBottom: 20,
+  },
+  methodItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 14,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#e1ecee',
+    backgroundColor: '#f8fbfc',
+    gap: 12,
+  },
+  methodItemActive: {
+    backgroundColor: '#0f6d78',
+    borderColor: '#0f6d78',
+  },
+  methodLabel: {
+    flex: 1,
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#051821',
+  },
+  methodLabelActive: {
+    color: '#fff',
+  },
+  payFinalBtn: {
+    width: '100%',
+    paddingVertical: 15,
+    backgroundColor: '#e05a21',
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#e05a21',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 5,
+    elevation: 4,
+  },
+  payFinalBtnDisabled: {
+    backgroundColor: '#9ab4b8',
+    shadowOpacity: 0,
+    elevation: 0,
+  },
+  payFinalBtnText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '800',
+  },
+  backLink: {
+    marginTop: 15,
+    padding: 5,
+  },
+  backLinkText: {
+    color: '#0f6d78',
+    fontWeight: '700',
+    fontSize: 13,
+  },
+  // BANNERS (Premium Look)
+  successModalOverlay: {
+    flex: 1,
+    justifyContent: 'flex-start',
+    paddingTop: 80,
+    paddingHorizontal: 20,
+    backgroundColor: 'transparent',
+  },
+  successBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#0f6d78',
+    borderRadius: 15,
+    paddingHorizontal: 20,
+    paddingVertical: 18,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.25,
+    shadowRadius: 10,
+    elevation: 20,
+  },
+  successBannerText: {
+    color: '#ffffff',
+    fontSize: 14,
+    fontWeight: '700',
+    marginLeft: 12,
+    flex: 1,
+  },
+  infoBanner: {
+    position: 'absolute',
+    top: 50,
+    left: 20,
+    right: 20,
+    minHeight: 56,
+    backgroundColor: '#0f6d78',
+    borderRadius: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 18,
+    zIndex: 10000,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.25,
+    shadowRadius: 10,
+    elevation: 12,
+  },
+  infoBannerWarning: {
+    backgroundColor: '#0f6d78',
+    borderWidth: 1,
+    borderColor: '#1abc9c',
+  },
+  infoBannerError: {
+    backgroundColor: '#c0392b',
+  },
+  infoBannerText: {
+    color: '#ffffff',
+    fontSize: 13,
+    fontWeight: '600',
+    marginLeft: 10,
+    flex: 1,
+  },
+  // Compatibility with usuario branch modals if needed
+  paymentModalContent: {
+    width: '90%',
+    backgroundColor: '#ffffff',
+    borderRadius: 25,
+    padding: 20,
+    alignItems: 'center',
+  },
+  paymentIconCircle: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: '#f0f9fa',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 15,
+  },
+  paymentTitle: {
+    fontSize: 22,
+    fontWeight: '800',
+    color: '#051821',
+  },
+  paymentDescription: {
+    fontSize: 14,
+    color: '#6b8a8f',
+    textAlign: 'center',
+  },
+  plansRow: {
+    flexDirection: 'row',
+    width: '100%',
+    gap: 12,
+  },
+  planTopBadge: {
+    position: 'absolute',
+    top: -10,
+    right: 10,
+    backgroundColor: '#e67e22',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 10,
+  },
+  planPrice: {
+    fontSize: 18,
+    fontWeight: '800',
+  },
+  paymentMethodItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 14,
+    borderRadius: 15,
+    backgroundColor: '#f8fbfc',
+    borderWidth: 1,
+    borderColor: '#e8f2f4',
+  },
+  paymentMethodItemActive: {
+    borderColor: '#0f6d78',
+    backgroundColor: '#f0f9fa',
+  },
+  paymentMethodText: {
+    flex: 1,
+    marginLeft: 12,
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#15333d',
+  },
+  purchaseButton: {
+    width: '100%',
+    height: 52,
+    borderRadius: 15,
+    backgroundColor: '#0f6d78',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  purchaseButtonText: {
+    color: '#ffffff',
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  closeLink: {
+    padding: 10,
+  },
+  closeLinkText: {
+    color: '#4f666c',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  creditsModalContainer: {
+    backgroundColor: '#fff',
+    width: '90%',
+    borderRadius: 22,
+    padding: 24,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.15,
+    shadowRadius: 15,
+    elevation: 8,
+  },
+  creditsIconBg: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: '#f0f7f8',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 16,
+  },
+  creditsTitle: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: '#15333d',
+    textAlign: 'center',
+    marginBottom: 8,
+  },
+  creditsSubtitle: {
+    fontSize: 14,
+    color: '#6e8a8f',
+    textAlign: 'center',
+    marginBottom: 24,
+    paddingHorizontal: 10,
+  },
+  planCard: {
+    flex: 1,
+    backgroundColor: '#f8fbfc',
+    borderRadius: 18,
+    padding: 16,
+    alignItems: 'center',
+    borderWidth: 1.5,
+    borderColor: '#e8f2f4',
+  },
+  planCardActive: {
+    borderColor: '#0f6d78',
+    backgroundColor: '#f0f9fa',
+  },
+  planCardDiamond: {
+    backgroundColor: '#0f6d78',
+    borderColor: '#0f6d78',
+  },
+  planIcon: {
+    marginBottom: 10,
+  },
+  planTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#15333d',
+    marginBottom: 4,
+  },
+  planDetail: {
+    fontSize: 11,
+    color: '#6e8a8f',
+    textAlign: 'center',
+    lineHeight: 14,
+  },
+  planTopBadgeText: {
+    color: '#fff',
+    fontSize: 10,
+    fontWeight: '800',
+  },
+  modalButtonsRow: {
+    flexDirection: 'row',
+    width: '100%',
+    gap: 12,
+    marginTop: 10,
+  },
+  paymentMethodsList: {
+    width: '100%',
+    gap: 10,
+    marginBottom: 20,
+  },
+  paymentMethodItemSelected: {
+    backgroundColor: '#0f6d78',
+    borderColor: '#0f6d78',
+  },
+  paymentMethodTextSelected: {
+    color: '#fff',
   },
   // CREDIT MODAL STYLES
   creditsModalContainer: {

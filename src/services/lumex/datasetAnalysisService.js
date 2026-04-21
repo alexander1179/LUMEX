@@ -152,7 +152,11 @@ export const fetchAnalysisHistoryByUser = async (userId) => {
     });
     if (!ok) return [];
     
-    return (data || []).map(item => ({
+    // El servidor devuelve { success: true, data: [...] }
+    const historyData = data?.data || [];
+    console.log(`[SERVICE] Historial recibido: ${historyData.length} items`);
+    
+    return historyData.map(item => ({
       id: String(item.id_analisis),
       idAnalisis: item.id_analisis,
       name: item.nombre_archivo || `analisis_${item.id_analisis}.csv`,
@@ -161,6 +165,7 @@ export const fetchAnalysisHistoryByUser = async (userId) => {
       status: 'completado',
       anomalies: item.total_anomalias || 0,
       totalRecords: item.total_registros || 0,
+      visualizationType: item.visualization_type,
     }));
   } catch (error) {
     console.error('Error fetching history:', error);

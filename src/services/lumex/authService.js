@@ -225,3 +225,16 @@ export const deleteUser = async (userId) => {
   });
   return ok;
 };
+
+export const fetchLatestUserData = async (userId) => {
+  try {
+    const { data, ok } = await getApiClient('/api/auth/latest-data', {
+      method: 'POST',
+      body: JSON.stringify({ userId }),
+    });
+    return ok ? data.user : null;
+  } catch (error) {
+    console.error('Error in fetchLatestUserData:', error);
+    return null;
+  }
+};

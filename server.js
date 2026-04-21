@@ -200,13 +200,22 @@ app.get('/health', async (_req, res) => {
         if (!DB_CONFIG.database || DB_CONFIG.database === 'lumex_db') missingVars.push('MYSQL_DATABASE');
         if (!process.env.MYSQLPASSWORD && !process.env.MYSQL_PASSWORD) missingVars.push('MYSQL_PASSWORD');
 
+        const mask = (str) => {
+            if (!str || str === 'localhost' || str === 'root') return str;
+            return str.substring(0, 3) + '***';
+        };
+
         res.status(500).json({ 
             success: false, 
             message: 'Servidor activo pero BD inactiva', 
-            details: error.message,
+            details: error.message || error.code || String(error),
             diagnostico: {
+                host_detectado: mask(DB_CONFIG.host),
+                usuario_detectado: mask(DB_CONFIG.user),
+                puerto_detectado: DB_CONFIG.port,
+                schema_detectado: mask(DB_CONFIG.database),
                 variables_faltantes: missingVars,
-                sugerencia: 'Verifica las variables de entorno en el panel de Railway y haz clic en "Deploy" o "Apply changes".'
+                sugerencia: 'Si el host es "localhost" o el usuario es "root", significa que Railway no está inyectando tus credenciales reales. Verifica la pestaña Variables y asegúrate de añadir la contraseña.'
             }
         });
     }

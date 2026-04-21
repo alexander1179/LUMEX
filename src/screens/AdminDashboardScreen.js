@@ -1672,14 +1672,15 @@ export default function AdminDashboardScreen({ navigation }) {
                   </View>
                 </View>
 
-                <TouchableOpacity
-                  style={styles.activityCloseDetailButton}
-                  activeOpacity={0.88}
-                  onPress={() => setShowActivityReportDetailModal(false)}
-                >
-                  <Ionicons name="arrow-back-outline" size={16} color="#ffffff" />
-                  <Text style={styles.activityCloseDetailButtonText}>Salir y volver a reportes del usuario</Text>
-                </TouchableOpacity>
+                <View style={{flexDirection: 'row', alignItems: 'center', marginBottom: 20, paddingHorizontal: 4}}>
+                  <TouchableOpacity 
+                    onPress={() => setShowActivityReportDetailModal(false)} 
+                    style={styles.squareBackButton}
+                  >
+                    <Ionicons name="chevron-back" size={24} color="#0f6d78" />
+                  </TouchableOpacity>
+                  <Text style={[styles.modalTitle, {marginBottom: 0}]}>Detalle de Actividad</Text>
+                </View>
               </ScrollView>
             )}
           </View>
@@ -2082,14 +2083,15 @@ export default function AdminDashboardScreen({ navigation }) {
                   <Text style={styles.activityCloseDetailButtonText}>Cargar reporte</Text>
                 </TouchableOpacity>
 
-                <TouchableOpacity
-                  style={styles.activityCloseDetailButton}
-                  activeOpacity={0.88}
-                  onPress={() => setShowReportDetailModal(false)}
-                >
-                  <Ionicons name="arrow-back-outline" size={16} color="#ffffff" />
-                  <Text style={styles.activityCloseDetailButtonText}>Salir y volver a reportes</Text>
-                </TouchableOpacity>
+                <View style={{flexDirection: 'row', alignItems: 'center', marginBottom: 20, paddingHorizontal: 4}}>
+                  <TouchableOpacity 
+                    onPress={() => setShowReportDetailModal(false)} 
+                    style={styles.squareBackButton}
+                  >
+                    <Ionicons name="chevron-back" size={24} color="#0f6d78" />
+                  </TouchableOpacity>
+                  <Text style={[styles.modalTitle, {marginBottom: 0}]}>Detalle del Reporte</Text>
+                </View>
               </ScrollView>
             )}
           </View>
@@ -4047,6 +4049,15 @@ const styles = StyleSheet.create({
     borderColor: '#d4e7ee',
     padding: 16,
     maxHeight: '82%',
+  },
+  squareBackButton: {
+    width: 42,
+    height: 42,
+    borderRadius: 12,
+    backgroundColor: 'rgba(15, 109, 120, 0.1)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
   },
   modalHeaderRow: {
     flexDirection: 'row',

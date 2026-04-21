@@ -518,7 +518,15 @@ export default function AdminPatientRecordsScreen({ route }) {
               showsVerticalScrollIndicator={true}
               persistentScrollbar={true}
             >
-              <Text style={styles.analysisResultTitle}>Resultado del análisis ({user?.nombre || user?.usuario || 'Paciente'})</Text>
+              <View style={{flexDirection: 'row', alignItems: 'center', marginBottom: 18}}>
+                <TouchableOpacity 
+                  onPress={() => setShowAnalysisResultModal(false)} 
+                  style={styles.squareBackButton}
+                >
+                  <Ionicons name="chevron-back" size={24} color="#0f6d78" />
+                </TouchableOpacity>
+                <Text style={[styles.analysisResultTitle, {marginBottom: 0, flex: 1}]}>Resultado del análisis ({user?.nombre || user?.usuario || 'Paciente'})</Text>
+              </View>
 
               <View
                 style={[
@@ -737,6 +745,15 @@ const styles = StyleSheet.create({
   },
   analysisResultScroll: {
     flexGrow: 1,
+  },
+  squareBackButton: {
+    width: 42,
+    height: 42,
+    borderRadius: 12,
+    backgroundColor: 'rgba(15, 109, 120, 0.1)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 10,
   },
   analysisResultScrollContent: {
     paddingTop: 8,

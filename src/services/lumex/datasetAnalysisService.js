@@ -128,6 +128,7 @@ export const saveAnalysisInSupabase = async ({
         datasetPath,
         totalRegistros: parsedDataset.rowCount,
         totalAnomalias: Math.round(parsedDataset.rowCount * 0.1), // Simulación o lógica de servidor
+        visualizationType,
       }),
     });
 

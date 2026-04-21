@@ -10,6 +10,22 @@ const PORT = process.env.PORT || 3000;
 
 // ===== Configuración de Entorno (Debug) =====
 console.log('🛠️ Iniciando servidor en entorno:', process.env.NODE_ENV || 'development');
+
+// Fallback para MYSQL_URL (típico en algunos entornos de Railway/Heroku)
+if (process.env.MYSQL_URL && (!process.env.MYSQLHOST || !process.env.MYSQLDATABASE)) {
+    try {
+        const url = new URL(process.env.MYSQL_URL);
+        process.env.MYSQLHOST = url.hostname;
+        process.env.MYSQLPORT = url.port || '3306';
+        process.env.MYSQLUSER = url.username;
+        process.env.MYSQLPASSWORD = url.password;
+        process.env.MYSQLDATABASE = url.pathname.replace(/^\//, '');
+        console.log('🔗 Variables cargadas desde MYSQL_URL');
+    } catch (e) {
+        console.error('❌ Error parseando MYSQL_URL:', e.message);
+    }
+}
+
 console.log('🔍 Detectando variables de base de datos:');
 console.log('- MYSQLHOST:', process.env.MYSQLHOST ? '✅ Configurado' : '❌ Falta');
 console.log('- MYSQLUSER:', process.env.MYSQLUSER ? '✅ Configurado' : '❌ Falta');

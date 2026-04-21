@@ -162,72 +162,6 @@ app.post('/api/auth/accept-terms', async (req, res) => {
   }
 });
 
-// Recuperar contraseña
-app.post('/api/auth/forgot-password', async (req, res) => {
-  const email = normalizeEmail(req.body?.email);
-  if (!email) return res.status(400).json({ success: false, message: 'El correo es requerido' });
-
-  try {
-    const [rows] = await pool.query('SELECT id_usuario FROM usuarios WHERE email = ? LIMIT 1', [email]);
-    if (rows.length === 0) {
-      return res.status(404).json({ success: false, message: 'Correo no registrado' });
-    }
-
-    const otp = generateOtp();
-    const expiresAt = Date.now() + OTP_EXPIRY_MINUTES * 60000;
-    otpMemCache.set(email, { otp, expiresAt });
-
-    if (transporter) {
-      await transporter.sendMail({
-        from: process.env.SMTP_FROM,
-        to: email,
-        subject: 'Código de recuperación - Lumex',
-        text: `Tu código es: ${otp}\nExpira en ${OTP_EXPIRY_MINUTES} minutos.`,
-        html: buildOtpEmailHtml(otp),
-      });
-    }
-
-    console.log(`🔑 OTP para ${email}: ${otp}`);
-    return res.json({ success: true, message: 'Código enviado correctamente' });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ success: false, message: 'Error enviando código' });
-  }
-});
-
-app.post('/api/auth/verify-token', (req, res) => {
-  const { email, token } = req.body;
-  const normalizedEmail = normalizeEmail(email);
-  const cacheObj = otpMemCache.get(normalizedEmail);
-  
-  if (!cacheObj) return res.status(400).json({ success: false, message: 'No hay código pendiente o expiró.' });
-  if (Date.now() > cacheObj.expiresAt) {
-    otpMemCache.delete(normalizedEmail);
-    return res.status(400).json({ success: false, message: 'El código ha expirado.' });
-  }
-  if (cacheObj.otp !== String(token)) {
-    return res.status(400).json({ success: false, message: 'Código inválido.' });
-  }
-
-  otpMemCache.set(normalizedEmail, { ...cacheObj, verified: true });
-  return res.json({ success: true, message: 'Código verificado correctamente.' });
-});
-
-app.post('/api/auth/reset-password', async (req, res) => {
-  const { email, passwordHash } = req.body;
-  const normalizedEmail = normalizeEmail(email);
-  const cacheObj = otpMemCache.get(normalizedEmail);
-
-  if (!cacheObj || !cacheObj.verified) return res.status(400).json({ success: false, message: 'Verifica el código antes.' });
-
-  try {
-    await pool.query('UPDATE usuarios SET contrasena = ? WHERE email = ?', [passwordHash, normalizedEmail]);
-    otpMemCache.delete(normalizedEmail);
-    return res.json({ success: true, message: 'Contraseña actualizada' });
-  } catch (err) {
-    return res.status(500).json({ success: false, message: 'Error interno.' });
-  }
-});
 
 // ==========================================
 // PAYMENTS & CREDITS
@@ -758,13 +692,11 @@ app.post('/api/auth/verify-token', async (req, res) => {
 
 // Cambiar contraseña real
 app.post('/api/auth/reset-password', async (req, res) => {
-  const { email, newPassword } = req.body;
+  const { email, passwordHash } = req.body; // Cambiado de newPassword a passwordHash para coincidir con la App
   const normalizedEmail = email.trim().toLowerCase();
   
   try {
-    // En una App real aquí deberíamos verificar que el token fue validado antes.
-    // Para el demo, lo permitimos si el email existe.
-    await pool.query('UPDATE usuarios SET contrasena = ? WHERE email = ?', [newPassword, normalizedEmail]);
+    await pool.query('UPDATE usuarios SET contrasena = ? WHERE email = ?', [passwordHash, normalizedEmail]);
     
     // Limpiar OTP después de usarlo
     delete otps[normalizedEmail];

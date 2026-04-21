@@ -26,6 +26,8 @@ export default function ResetPasswordScreen({ route, navigation }) {
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [passwordReqs, setPasswordReqs] = useState({
     length: false,
     uppercase: false,
@@ -115,28 +117,52 @@ export default function ResetPasswordScreen({ route, navigation }) {
             Establece tu nueva clave de acceso para {email}
           </Text>
 
-          <TextInput
-            placeholder="Nueva contraseña"
-            placeholderTextColor="#aaa"
-            secureTextEntry
-            style={[styles.input, { backgroundColor: theme.input, color: theme.inputText, borderColor: 'rgba(15,109,120,0.1)' }]}
-            value={newPassword}
-            onChangeText={(text) => {
-              setNewPassword(text);
-              validatePassword(text);
-            }}
-          />
+          <View style={styles.inputContainer}>
+            <TextInput
+              placeholder="Nueva contraseña"
+              placeholderTextColor="#aaa"
+              secureTextEntry={!showPassword}
+              style={[styles.input, { flex: 1, backgroundColor: theme.input, color: theme.inputText, borderColor: 'rgba(15,109,120,0.1)' }]}
+              value={newPassword}
+              onChangeText={(text) => {
+                setNewPassword(text);
+                validatePassword(text);
+              }}
+            />
+            <TouchableOpacity 
+              onPress={() => setShowPassword(!showPassword)}
+              style={styles.eyeIcon}
+            >
+              <Ionicons 
+                name={showPassword ? "eye" : "eye-off"} 
+                size={22} 
+                color={theme.accent} 
+              />
+            </TouchableOpacity>
+          </View>
 
           <PasswordRequirements requirements={passwordReqs} />
 
-          <TextInput
-            placeholder="Confirmar contraseña"
-            placeholderTextColor="#aaa"
-            secureTextEntry
-            style={[styles.input, { backgroundColor: theme.input, color: theme.inputText, borderColor: 'rgba(15,109,120,0.1)' }]}
-            value={confirmPassword}
-            onChangeText={setConfirmPassword}
-          />
+          <View style={styles.inputContainer}>
+            <TextInput
+              placeholder="Confirmar contraseña"
+              placeholderTextColor="#aaa"
+              secureTextEntry={!showConfirmPassword}
+              style={[styles.input, { flex: 1, backgroundColor: theme.input, color: theme.inputText, borderColor: 'rgba(15,109,120,0.1)' }]}
+              value={confirmPassword}
+              onChangeText={setConfirmPassword}
+            />
+            <TouchableOpacity 
+              onPress={() => setShowConfirmPassword(!showConfirmPassword)}
+              style={styles.eyeIcon}
+            >
+              <Ionicons 
+                name={showConfirmPassword ? "eye" : "eye-off"} 
+                size={22} 
+                color={theme.accent} 
+              />
+            </TouchableOpacity>
+          </View>
 
           <CustomButton
             title={loading ? "Actualizando..." : "Cambiar contraseña"}
@@ -199,11 +225,20 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 10,
   },
+  inputContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 15,
+  },
   input: {
     padding: 15,
     borderRadius: 15,
-    marginBottom: 15,
     fontSize: 16,
     borderWidth: 1,
+  },
+  eyeIcon: {
+    position: 'absolute',
+    right: 15,
+    padding: 5,
   },
 });

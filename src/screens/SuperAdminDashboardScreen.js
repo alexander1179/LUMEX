@@ -333,8 +333,19 @@ export default function SuperAdminDashboardScreen({ navigation }) {
       return (
         <View style={{flex: 1}}>
           <View style={{flexDirection: 'row', alignItems: 'center', marginBottom: 20}}>
-            <TouchableOpacity onPress={() => setCurrentSubView('main')} style={{marginRight: 15, padding: 5}}>
-              <Ionicons name="arrow-back" size={24} color="#0f6d78" />
+            <TouchableOpacity 
+              onPress={() => setCurrentSubView('main')} 
+              style={{
+                width: 45, 
+                height: 45, 
+                borderRadius: 15, 
+                backgroundColor: 'rgba(15,109,120,0.1)', 
+                justifyContent: 'center', 
+                alignItems: 'center',
+                marginRight: 15
+              }}
+            >
+              <Ionicons name="chevron-back" size={24} color="#0f6d78" />
             </TouchableOpacity>
             <Text style={[styles.sectionTitle, {marginBottom: 0, textAlign: 'left'}]}>Selecciona categoría</Text>
           </View>

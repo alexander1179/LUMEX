@@ -6,6 +6,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { fetchAllUsers, updateUser, deleteUser, updateAdminPermission, hashPassword, registerUser } from '../services/lumex/authService';
 import { storageService } from '../services/storage/storageService';
+import { getApiUrl } from '../services/lumex';
 
 const ROLES = [
   { id: 'gestion_personas', label: 'Gestión de Personas', icon: 'people-outline', color: '#0f6d78', description: 'Administración de Usuarios y Personal del Sistema' },
@@ -195,7 +196,8 @@ export default function SuperAdminDashboardScreen({ navigation }) {
           curr.total_pagos += 1;
           curr.monto_total += Number(p.monto) || 0;
         });
-        setGroupedPaymentUsers(Array.from(map.values()));
+        const sortedUsers = Array.from(map.values()).sort((a, b) => b.monto_total - a.monto_total);
+        setGroupedPaymentUsers(sortedUsers);
         setShowPagosUsersModal(true);
       } else {
         Alert.alert('Error', 'No se pudieron cargar los pagos');

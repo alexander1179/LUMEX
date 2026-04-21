@@ -104,22 +104,31 @@ const runMigrations = async () => {
 runMigrations();
 
 // ===== SMTP Configuration =====
+// Normalización de variables SMTP
+const SMTP_CONFIG = {
+    host: process.env.SMTP_HOST || process.env.SMTPHOST,
+    port: process.env.SMTP_PORT || process.env.SMTPPORT,
+    user: process.env.SMTP_USER || process.env.SMTPUSER,
+    pass: process.env.SMTP_PASS || process.env.SMTPPASS,
+    from: process.env.SMTP_FROM || process.env.SMTPFROM
+};
+
 const smtpConfigured = [
-    process.env.SMTP_HOST,
-    process.env.SMTP_PORT,
-    process.env.SMTP_USER,
-    process.env.SMTP_PASS,
-    process.env.SMTP_FROM,
+    SMTP_CONFIG.host,
+    SMTP_CONFIG.port,
+    SMTP_CONFIG.user,
+    SMTP_CONFIG.pass,
+    SMTP_CONFIG.from
 ].every((value) => !!value);
 
 const transporter = smtpConfigured
     ? nodemailer.createTransport({
-        host: process.env.SMTP_HOST,
-        port: Number(process.env.SMTP_PORT),
-        secure: Number(process.env.SMTP_PORT) === 465,
+        host: SMTP_CONFIG.host,
+        port: Number(SMTP_CONFIG.port),
+        secure: Number(SMTP_CONFIG.port) === 465,
         auth: {
-            user: process.env.SMTP_USER,
-            pass: process.env.SMTP_PASS,
+            user: SMTP_CONFIG.user,
+            pass: SMTP_CONFIG.pass,
         },
     })
     : null;
@@ -188,7 +197,43 @@ app.get('/health', async (_req, res) => {
 // AUTH & USERS
 // ==========================================
 app.post('/api/auth/register', async (req, res) => {
-    let { email, username, name, phone, passwordHash, rol } = req.body;
+    let { email, username, name, phone, passwordHash, rol, terminos_aceptados, acceptTerms } = req.body;
+
+    // 1. Validar nombre
+    if (!name || name.trim() === '') {
+        return res.status(400).json({ success: false, message: 'El nombre es requerido.' });
+    }
+
+    // 2. Validar formato de email
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!email || !emailRegex.test(email)) {
+        return res.status(400).json({ success: false, message: 'El formato del email es inválido.' });
+    }
+
+    // 3. Validar username
+    const usernameRegex = /^[^\s]{3,20}$/;
+    if (!username || !usernameRegex.test(username)) {
+        return res.status(400).json({ success: false, message: 'El nombre de usuario debe tener entre 3 y 20 caracteres y no contener espacios.' });
+    }
+
+    // 4. Validar password
+    const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,}$/;
+    if (!passwordHash || !passwordRegex.test(passwordHash)) {
+        return res.status(400).json({ success: false, message: 'La contraseña debe tener al menos 8 caracteres, una mayúscula, una minúscula y un número.' });
+    }
+
+    // 5. Validar teléfono
+    const phoneRegex = /^\+?\d+$/;
+    if (!phone || !phoneRegex.test(String(phone).replace(/\s/g, ''))) {
+        return res.status(400).json({ success: false, message: 'El teléfono es requerido y debe contener solo números.' });
+    }
+
+    // 6. Validar aceptación de términos
+    const accepted = terminos_aceptados === 1 || terminos_aceptados === true || terminos_aceptados === '1' || terminos_aceptados === 'true' || acceptTerms === true || acceptTerms === 1 || acceptTerms === 'true' || acceptTerms === '1';
+    if (!accepted) {
+        return res.status(400).json({ success: false, message: 'Debe aceptar los términos y condiciones.' });
+    }
+
     if (!email && !username) return res.status(400).json({ success: false, message: 'Faltan datos de usuario.' });
 
     const validRoles = ['usuario', 'administrador', 'enfermero', 'doctor'];

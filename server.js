@@ -84,8 +84,42 @@ app.get('/health', async (_req, res) => {
 // AUTH & USERS
 // ==========================================
 app.post('/api/auth/register', async (req, res) => {
-  let { email, username, name, phone, passwordHash, rol } = req.body;
-  if (!email && !username) return res.status(400).json({ success: false, message: 'Faltan datos de usuario.' });
+  let { email, username, name, phone, passwordHash, rol, terminos_aceptados, acceptTerms } = req.body;
+
+  // 1. Validar nombre
+  if (!name || name.trim() === '') {
+    return res.status(400).json({ success: false, message: 'El nombre es requerido.' });
+  }
+
+  // 2. Validar formato de email
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!email || !emailRegex.test(email)) {
+    return res.status(400).json({ success: false, message: 'El formato del email es inválido.' });
+  }
+
+  // 3. Validar username
+  const usernameRegex = /^[^\s]{3,20}$/;
+  if (!username || !usernameRegex.test(username)) {
+    return res.status(400).json({ success: false, message: 'El nombre de usuario debe tener entre 3 y 20 caracteres y no contener espacios.' });
+  }
+
+  // 4. Validar password
+  const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,}$/;
+  if (!passwordHash || !passwordRegex.test(passwordHash)) {
+    return res.status(400).json({ success: false, message: 'La contraseña debe tener al menos 8 caracteres, una mayúscula, una minúscula y un número.' });
+  }
+
+  // 5. Validar teléfono
+  const phoneRegex = /^\+?\d+$/;
+  if (!phone || !phoneRegex.test(String(phone).replace(/\s/g, ''))) {
+    return res.status(400).json({ success: false, message: 'El teléfono es requerido y debe contener solo números.' });
+  }
+
+  // 6. Validar aceptación de términos
+  const accepted = terminos_aceptados === 1 || terminos_aceptados === true || terminos_aceptados === '1' || terminos_aceptados === 'true' || acceptTerms === true || acceptTerms === 1 || acceptTerms === 'true' || acceptTerms === '1';
+  if (!accepted) {
+    return res.status(400).json({ success: false, message: 'Debe aceptar los términos y condiciones.' });
+  }
   
   // Validar rol permitido, si no viene o no es válido, se pone 'usuario' por defecto
   const validRoles = ['usuario', 'administrador', 'enfermero', 'doctor'];

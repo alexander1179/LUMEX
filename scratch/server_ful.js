@@ -72,6 +72,27 @@ pool.on('error', (err) => {
 const runMigrations = async () => {
     try {
         console.log('🔍 Verificando estructura de base de datos...');
+        
+        // 1. Crear tabla usuarios si no existe
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS usuarios (
+                id_usuario INT AUTO_INCREMENT PRIMARY KEY,
+                nombre VARCHAR(255) NOT NULL,
+                email VARCHAR(255) UNIQUE,
+                usuario VARCHAR(255) UNIQUE,
+                contrasena VARCHAR(255) NOT NULL,
+                rol VARCHAR(50) DEFAULT 'usuario',
+                estado VARCHAR(20) DEFAULT 'activo',
+                acepta_terminos TINYINT(1) DEFAULT 0,
+                fecha_registro DATETIME DEFAULT CURRENT_TIMESTAMP,
+                fecha_aceptacion_terminos DATETIME,
+                telefono VARCHAR(20),
+                terminos_aceptados TINYINT(1) DEFAULT 0,
+                analisis_disponibles INT DEFAULT 0
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+        `);
+
+        // 2. Verificar columnas adicionales
         const [columns] = await pool.query('SHOW COLUMNS FROM usuarios');
         const names = columns.map(c => c.Field);
 
@@ -84,13 +105,18 @@ const runMigrations = async () => {
             { name: 'mod_actividad', query: 'ALTER TABLE usuarios ADD COLUMN mod_actividad TINYINT DEFAULT 1' },
             { name: 'mod_alertas', query: 'ALTER TABLE usuarios ADD COLUMN mod_alertas TINYINT DEFAULT 1' },
             { name: 'mod_pagos', query: 'ALTER TABLE usuarios ADD COLUMN mod_pagos TINYINT DEFAULT 1' },
-            { name: 'analisis_disponibles', query: 'ALTER TABLE usuarios ADD COLUMN analisis_disponibles INT DEFAULT 0' }
+            { name: 'acepta_terminos', query: 'ALTER TABLE usuarios ADD COLUMN acepta_terminos TINYINT(1) DEFAULT 0' },
+            { name: 'estado', query: 'ALTER TABLE usuarios ADD COLUMN estado VARCHAR(20) DEFAULT "activo"' }
         ];
 
         for (const meta of migrations) {
             if (!names.includes(meta.name)) {
-                await pool.query(meta.query);
-                console.log(`✅ Columna ${meta.name} añadida`);
+                try {
+                    await pool.query(meta.query);
+                    console.log(`✅ Columna ${meta.name} añadida`);
+                } catch (e) {
+                    console.log(`⚠️ Ignorando error en migración ${meta.name}: ${e.message}`);
+                }
             }
         }
         console.log('🚀 Migraciones completadas.');

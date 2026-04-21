@@ -392,12 +392,22 @@ const MODEL_BY_ANALYSIS = {
 
 app.post('/api/analysis/save', async (req, res) => {
   try {
-    const { userId, analysisType, datasetName, datasetPath, parsedDataset, analysisSummary } = req.body || {};
+    const { 
+      userId, analysisType, datasetName, datasetPath, parsedDataset, 
+      analysisSummary, totalRegistros: rootTotal, totalAnomalias: rootAnomalias,
+      visualizationType 
+    } = req.body || {};
     const numericUserId = Number(userId);
 
     const headers = Array.isArray(parsedDataset?.headers) ? parsedDataset.headers : [];
     const rows = Array.isArray(parsedDataset?.rows) ? parsedDataset.rows : [];
-    const hasSummary = !!analysisSummary?.totalRegistros;
+    
+    // Priorizar valores explícitos o los del resumen
+    const totalRegistros = rootTotal ?? analysisSummary?.totalRegistros ?? rows.length;
+    const totalAnomalias = rootAnomalias ?? analysisSummary?.totalAnomalias ?? 0;
+    const finalVizType = visualizationType || 'histograma';
+
+    const hasSummary = !!(rootTotal || analysisSummary?.totalRegistros);
 
     const conn = await pool.getConnection();
     try {
@@ -414,13 +424,16 @@ app.post('/api/analysis/save', async (req, res) => {
       const [modelInsert] = await conn.query('INSERT INTO modelos (nombre_modelo, descripcion, tipo_modelo, fecha_creacion) VALUES (?, ?, ?, NOW())', [modelConfig.nombre, modelConfig.descripcion, modelConfig.tipo]);
       const [datasetInsert] = await conn.query('INSERT INTO datasets (id_usuario, nombre_archivo, ruta_archivo, fecha_subida) VALUES (?, ?, ?, NOW())', [numericUserId, datasetName || 'dataset.csv', datasetPath || 'movil://dataset']);
 
-      const resultados = hasSummary ? [] : buildResults({ rows, headers });
-      const totalRegistros = hasSummary ? Number(analysisSummary.totalRegistros) : rows.length;
-      const totalAnomalias = hasSummary ? Number(analysisSummary.totalAnomalias) : resultados.reduce((s, r) => s + (r.es_anomalia ? 1 : 0), 0);
+      const resultados = (hasSummary || totalRegistros > 0 && rows.length === 0) ? [] : buildResults({ rows, headers });
+      
+      // Si no tenemos anomalías calculadas pero sí resultados, las calculamos ahora
+      const finalAnomalias = (totalAnomalias === 0 && resultados.length > 0) 
+        ? resultados.reduce((s, r) => s + (r.es_anomalia ? 1 : 0), 0)
+        : totalAnomalias;
 
       const [analisisInsert] = await conn.query(
         'INSERT INTO analisis (id_usuario, id_dataset, id_modelo, fecha_analisis, total_registros, total_anomalias, tipo_analisis, tipo_visualizacion, estado) VALUES (?, ?, ?, NOW(), ?, ?, ?, ?, ?)',
-        [numericUserId, datasetInsert.insertId, modelInsert.insertId, totalRegistros, totalAnomalias, analysisType || 'anomalias', 'histograma', 'completado']
+        [numericUserId, datasetInsert.insertId, modelInsert.insertId, totalRegistros, finalAnomalias, analysisType || 'anomalias', finalVizType, 'completado']
       );
 
       // Descontar 1 crédito al usuario de forma atómica manejando posibles NULLs
@@ -440,7 +453,13 @@ app.post('/api/analysis/save', async (req, res) => {
       
       console.log(`[ANALYSIS SUCCESS] userId=${numericUserId}, used=1, remaining=${creditosRestantes}`);
       
-      res.json({ success: true, idAnalisis: analisisInsert.insertId, totalRegistros, totalAnomalias, creditosRestantes });
+      res.json({ 
+        success: true, 
+        idAnalisis: analisisInsert.insertId, 
+        totalRegistros, 
+        totalAnomalias: finalAnomalias, 
+        creditosRestantes 
+      });
     } catch (err) {
       await conn.rollback();
       throw err;
@@ -650,17 +669,13 @@ app.post('/api/auth/get-user', async (req, res) => {
 
 
 // 404 — Ruta no encontrada
-app.use((req, res) => {
-  res.status(404).json({ success: false, message: `Ruta no encontrada: ${req.method} ${req.url}` });
-});
-
-// 500 — Error global (4 parámetros obligatorios para que Express lo reconozca como error handler)
 // eslint-disable-next-line no-unused-vars
 app.use((err, req, res, next) => {
   console.error('[SERVER ERROR]', err?.message || err);
   res.status(500).json({ success: false, message: err?.message || 'Error interno del servidor' });
 });
 
+// Alias y endpoints de administración (Moviendo aquí para que estén antes del 404)
 app.post('/api/admin/block-user', async (req, res) => {
   const { id_usuario, blocked } = req.body;
   try {
@@ -671,6 +686,7 @@ app.post('/api/admin/block-user', async (req, res) => {
     res.status(500).json({ success: false, message: error.message });
   }
 });
+
 app.post('/admin/block-user', async (req, res) => {
   const { id_usuario, blocked } = req.body;
   try {
@@ -680,6 +696,11 @@ app.post('/admin/block-user', async (req, res) => {
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
+});
+
+// Recuperar contraseña (Consolidado)
+app.post('/api/auth/forgot-password-v2', async (req, res) => {
+    // Mantener este por si acaso se usa en alguna parte específica
 });
 
 // Recuperar contraseña (Generar código)
@@ -752,6 +773,11 @@ app.post('/api/auth/reset-password', async (req, res) => {
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
+});
+
+// 404 — Ruta no encontrada (DEBE IR AL FINAL DE LAS RUTAS)
+app.use((req, res) => {
+  res.status(404).json({ success: false, message: `Ruta no encontrada: ${req.method} ${req.url}` });
 });
 
 const server = app.listen(PORT, '0.0.0.0', () => {

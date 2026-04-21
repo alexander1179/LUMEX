@@ -15,7 +15,6 @@ import { forgotPassword } from '../services/api/authService';
 
 import { colors } from '../styles/colors';
 import { CustomButton } from '../components/common/CustomButton';
-import { AccessQuickNav } from '../components/common/AccessQuickNav';
 
 const { width } = Dimensions.get('window');
 
@@ -153,8 +152,6 @@ export default function ForgotPasswordScreen({ navigation }) {
           </TouchableOpacity>
         </View>
       </Animated.View>
-
-      <AccessQuickNav navigation={navigation} current="usuario" />
     </View>
   );
 }
@@ -162,7 +159,6 @@ export default function ForgotPasswordScreen({ navigation }) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    alignItems: "center",
   },
   header: {
     width: '100%',
@@ -180,9 +176,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   content: {
+    flex: 1,
     width: '100%',
     alignItems: 'center',
-    marginTop: 40,
+    justifyContent: 'center',
+    paddingBottom: 40,
   },
   title: {
     fontSize: 26,

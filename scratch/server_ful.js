@@ -132,7 +132,7 @@ app.use((req, res, next) => {
     const legacyPrefixes = ['/auth', '/admin', '/superadmin', '/analysis', '/payments'];
     const path = req.originalUrl || req.url;
     const hasLegacyPrefix = legacyPrefixes.some(p => path.startsWith(p));
-
+    
     if (hasLegacyPrefix && !path.startsWith('/api/')) {
         console.log(`[ROUTING] Adaptando ruta legacy: ${path} -> /api${path}`);
         req.url = '/api' + path;
@@ -179,44 +179,9 @@ app.get('/health', async (_req, res) => {
 // AUTH & USERS
 // ==========================================
 app.post('/api/auth/register', async (req, res) => {
-    let { email, username, name, phone, passwordHash, rol, terminos_aceptados, acceptTerms } = req.body;
+    let { email, username, name, phone, passwordHash, rol } = req.body;
+    if (!email && !username) return res.status(400).json({ success: false, message: 'Faltan datos de usuario.' });
 
-    // 1. Validar nombre
-    if (!name || name.trim() === '') {
-        return res.status(400).json({ success: false, message: 'El nombre es requerido.' });
-    }
-
-    // 2. Validar formato de email
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!email || !emailRegex.test(email)) {
-        return res.status(400).json({ success: false, message: 'El formato del email es inválido.' });
-    }
-
-    // 3. Validar username
-    const usernameRegex = /^[^\s]{3,20}$/;
-    if (!username || !usernameRegex.test(username)) {
-        return res.status(400).json({ success: false, message: 'El nombre de usuario debe tener entre 3 y 20 caracteres y no contener espacios.' });
-    }
-
-    // 4. Validar password
-    const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,}$/;
-    if (!passwordHash || !passwordRegex.test(passwordHash)) {
-        return res.status(400).json({ success: false, message: 'La contraseña debe tener al menos 8 caracteres, una mayúscula, una minúscula y un número.' });
-    }
-
-    // 5. Validar teléfono
-    const phoneRegex = /^\+?\d+$/;
-    if (!phone || !phoneRegex.test(String(phone).replace(/\s/g, ''))) {
-        return res.status(400).json({ success: false, message: 'El teléfono es requerido y debe contener solo números.' });
-    }
-
-    // 6. Validar aceptación de términos
-    const accepted = terminos_aceptados === 1 || terminos_aceptados === true || terminos_aceptados === '1' || terminos_aceptados === 'true' || acceptTerms === true || acceptTerms === 1 || acceptTerms === 'true' || acceptTerms === '1';
-    if (!accepted) {
-        return res.status(400).json({ success: false, message: 'Debe aceptar los términos y condiciones.' });
-    }
-
-    // Validar rol permitido, si no viene o no es válido, se pone 'usuario' por defecto
     const validRoles = ['usuario', 'administrador', 'enfermero', 'doctor'];
     const finalRole = validRoles.includes(String(rol).toLowerCase()) ? String(rol).toLowerCase() : 'usuario';
 
@@ -246,8 +211,8 @@ app.post('/api/auth/login', async (req, res) => {
         if (rows.length === 0) return res.status(401).json({ success: false, message: 'Usuario no encontrado' });
 
         const user = rows[0];
-
         const isAdmin = ['admin', 'administrador', 'superadmin'].includes(String(user.rol).trim().toLowerCase());
+        
         if (requiredRole === 'admin' && !isAdmin) {
             return res.status(403).json({ success: false, message: 'Solo administradores.' });
         }
@@ -377,14 +342,10 @@ app.post('/api/auth/reset-password', async (req, res) => {
 // ==========================================
 
 app.post('/api/payments/register', async (req, res) => {
-    const { userId, amount, monto, metodoPago, metodo, description, descripcion, credits, creditsToAdd } = req.body;
-
+    const { userId, amount, monto, metodoPago, descripcion, creditsToAdd } = req.body;
     const safeUserId = Number(userId);
-    // Priorizar los nombres enviados por paymentService.js
-    const safeCredits = Number(credits || creditsToAdd || 0);
+    const safeCredits = Number(creditsToAdd || 0);
     const safeMonto = Number(monto || amount || 0);
-    const finalMetodo = metodo || metodoPago || 'Tarjeta';
-    const finalDesc = description || descripcion || `Compra de ${safeCredits} créditos`;
 
     const conn = await pool.getConnection();
     try {
@@ -525,16 +486,16 @@ const MODEL_BY_ANALYSIS = {
 
 app.post('/api/analysis/save', async (req, res) => {
     try {
-        const {
-            userId, analysisType, datasetName, datasetPath, parsedDataset,
+        const { 
+            userId, analysisType, datasetName, datasetPath, parsedDataset, 
             analysisSummary, totalRegistros: rootTotal, totalAnomalias: rootAnomalias,
-            visualizationType
+            visualizationType 
         } = req.body || {};
         const numericUserId = Number(userId);
 
         const headers = Array.isArray(parsedDataset?.headers) ? parsedDataset.headers : [];
         const rows = Array.isArray(parsedDataset?.rows) ? parsedDataset.rows : [];
-
+        
         const totalRegistros = rootTotal ?? analysisSummary?.totalRegistros ?? rows.length;
         const totalAnomalias = rootAnomalias ?? analysisSummary?.totalAnomalias ?? 0;
         const finalVizType = visualizationType || 'histograma';
@@ -559,7 +520,7 @@ app.post('/api/analysis/save', async (req, res) => {
             const [datasetInsert] = await conn.query('INSERT INTO datasets (id_usuario, nombre_archivo, ruta_archivo, fecha_subida) VALUES (?, ?, ?, NOW())', [numericUserId, datasetName || 'dataset.csv', datasetPath || 'movil://dataset']);
 
             const resultados = (hasSummary || (totalRegistros > 0 && rows.length === 0)) ? [] : buildResults({ rows, headers });
-            const finalAnomalias = (totalAnomalias === 0 && resultados.length > 0)
+            const finalAnomalias = (totalAnomalias === 0 && resultados.length > 0) 
                 ? resultados.reduce((s, r) => s + (r.es_anomalia ? 1 : 0), 0)
                 : totalAnomalias;
 
@@ -573,13 +534,7 @@ app.post('/api/analysis/save', async (req, res) => {
             }
 
             await conn.commit();
-            // Obtener créditos actualizados del usuario
-            const [userRow] = await conn.query('SELECT analisis_disponibles FROM usuarios WHERE id_usuario = ?', [numericUserId]);
-            const creditosRestantes = userRow[0]?.analisis_disponibles ?? 0;
-
-            console.log(`[ANALYSIS SUCCESS] userId=${numericUserId}, used=1, remaining=${creditosRestantes}`);
-
-            res.json({ success: true, idAnalisis: analisisInsert.insertId, totalRegistros, totalAnomalias, creditosRestantes });
+            res.json({ success: true, idAnalisis: analisisInsert.insertId, totalRegistros, totalAnomalias: finalAnomalias });
         } catch (err) {
             await conn.rollback();
             throw err;
@@ -587,7 +542,7 @@ app.post('/api/analysis/save', async (req, res) => {
             conn.release();
         }
     } catch (error) {
-        console.error('[ANALYSIS SAVE ERROR]', error.message);
+        console.error(error);
         res.status(500).json({ success: false, message: error.message });
     }
 });
@@ -644,8 +599,6 @@ app.get('/api/superadmin/users', getAllUsersBackoffice);
 
 app.post('/api/superadmin/toggle-admin-permission', async (req, res) => {
     const { id_usuario, field, value } = req.body;
-
-    // Lista blanca de campos permitidos para evitar inyección SQL en el nombre de la columna
     const allowedFields = [
         'puede_gestionar_usuarios', 'permiso_editar', 'permiso_bloquear',
         'mod_nuevo_paciente', 'mod_gestion_usuarios', 'mod_reportes', 'mod_actividad', 'mod_alertas', 'mod_pagos'
@@ -653,7 +606,6 @@ app.post('/api/superadmin/toggle-admin-permission', async (req, res) => {
     if (!allowedFields.includes(field)) {
         return res.status(400).json({ success: false, message: 'Campo de permiso no válido' });
     }
-
     try {
         const query = `UPDATE usuarios SET ${field} = ? WHERE id_usuario = ?`;
         await pool.query(query, [value ? 1 : 0, id_usuario]);
@@ -668,42 +620,14 @@ app.post('/api/admin/update-user', async (req, res) => {
     try {
         let query = 'UPDATE usuarios SET nombre=?, email=?, usuario=?, rol=?, telefono=?';
         let params = [nombre, email, usuario, rol, telefono];
-
         if (passwordHash) {
             query += ', contrasena=?';
             params.push(passwordHash);
         }
-
-        query += ' WHERE id_usuario=?';
-        params.push(id_usuario);
-
-        await pool.query(query, params);
-        res.json({ success: true, message: 'Usuario actualizado con éxito' });
-    } catch (error) {
-        res.status(500).json({ success: false, message: 'Error al actualizar usuario: ' + error.message });
-    }
-});
-app.post('/admin/update-user', async (req, res) => {
-    const { id_usuario, nombre, email, usuario, rol, telefono, passwordHash } = req.body;
-    try {
-        let query = 'UPDATE usuarios SET nombre=?, email=?, usuario=?, rol=?, telefono=?';
-        let params = [nombre, email, usuario, rol, telefono];
-        if (passwordHash) { query += ', contrasena=?'; params.push(passwordHash); }
         query += ' WHERE id_usuario=?';
         params.push(id_usuario);
         await pool.query(query, params);
         res.json({ success: true, message: 'Usuario actualizado con éxito' });
-    } catch (error) { res.status(500).json({ success: false, message: error.message }); }
-});
-
-// Obtener usuario actual (refresco)
-app.post('/api/auth/get-user', async (req, res) => {
-    const { userId } = req.body;
-    try {
-        const [rows] = await pool.query('SELECT * FROM usuarios WHERE id_usuario = ?', [userId]);
-        if (rows.length === 0) return res.status(404).json({ success: false });
-        const { contrasena, ...safeUser } = rows[0];
-        res.json({ success: true, user: safeUser });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
     }
@@ -719,84 +643,31 @@ app.post('/api/admin/block-user', async (req, res) => {
         res.status(500).json({ success: false, message: error.message });
     }
 });
-app.post('/admin/block-user', async (req, res) => {
-    const { id_usuario, blocked } = req.body;
+
+app.delete('/api/admin/user/:id', async (req, res) => {
     try {
-        const estado = blocked ? 'bloqueado' : 'activo';
-        await pool.query('UPDATE usuarios SET estado = ? WHERE id_usuario = ?', [estado, id_usuario]);
-        res.json({ success: true, message: `Usuario ${estado}` });
+        await pool.query('DELETE FROM usuarios WHERE id_usuario = ?', [req.params.id]);
+        res.json({ success: true, message: 'Usuario eliminado' });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
     }
 });
 
-// Recuperar contraseña (Generar código)
-app.post('/api/auth/forgot-password', async (req, res) => {
-    const { email } = req.body;
+app.get('/api/admin/activity', async (req, res) => {
     try {
-        const normalizedEmail = email.trim().toLowerCase();
-        const [rows] = await pool.query('SELECT id_usuario FROM usuarios WHERE email = ?', [normalizedEmail]);
-        if (rows.length === 0) {
-            return res.status(404).json({ success: false, message: 'Correo no registrado' });
-        }
-
-        // Generar código de 6 dígitos
-        const code = Math.floor(100000 + Math.random() * 900000).toString();
-
-        // Guardar en memoria (expira en 15 min)
-        otps[normalizedEmail] = {
-            code,
-            expires: Date.now() + (15 * 60 * 1000)
-        };
-
-        console.log("**************************************************");
-        console.log(`🔑 CÓDIGO PARA: ${normalizedEmail}`);
-        console.log(`👉 CÓDIGO: ${code}`);
-        console.log("**************************************************");
-
-        res.json({ success: true, message: 'Código generado correctamente. Revisa la consola del servidor.' });
-    } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
-    }
-});
-
-// Verificar código
-app.post('/api/auth/verify-token', async (req, res) => {
-    const { email, token } = req.body;
-    const normalizedEmail = email.trim().toLowerCase();
-
-    const stored = otps[normalizedEmail];
-
-    if (!stored) {
-        return res.status(400).json({ success: false, message: 'No hay un código pendiente para este correo' });
-    }
-
-    if (Date.now() > stored.expires) {
-        delete otps[normalizedEmail];
-        return res.status(400).json({ success: false, message: 'El código ha expirado' });
-    }
-
-    if (stored.code !== token) {
-        return res.status(400).json({ success: false, message: 'Código incorrecto' });
-    }
-
-    res.json({ success: true, message: 'Código verificado' });
-});
-
-// Cambiar contraseña real
-app.post('/api/auth/reset-password', async (req, res) => {
-    const { email, newPassword } = req.body;
-    const normalizedEmail = email.trim().toLowerCase();
-
-    try {
-        // En una App real aquí deberíamos verificar que el token fue validado antes.
-        // Para el demo, lo permitimos si el email existe.
-        await pool.query('UPDATE usuarios SET contrasena = ? WHERE email = ?', [newPassword, normalizedEmail]);
-
-        // Limpiar OTP después de usarlo
-        delete otps[normalizedEmail];
-
-        res.json({ success: true, message: 'Contraseña actualizada correctamente' });
+        const query = `
+      SELECT a.*, u.nombre AS usuario_nombre, u.usuario AS usuario_username, u.email AS usuario_email,
+             d.nombre_archivo AS dataset_nombre,
+             m.tipo_modelo, m.descripcion, m.nombre_modelo
+      FROM analisis a
+      LEFT JOIN usuarios u ON a.id_usuario = u.id_usuario
+      LEFT JOIN datasets d ON a.id_dataset = d.id_dataset
+      LEFT JOIN modelos m ON a.id_modelo = m.id_modelo
+      ORDER BY a.fecha_analisis DESC
+      LIMIT 1000
+    `;
+        const [rows] = await pool.query(query);
+        res.json({ success: true, activity: rows });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
     }

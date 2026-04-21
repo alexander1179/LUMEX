@@ -18,7 +18,28 @@ import VerifyTokenScreen from '../screens/VerifyTokenScreen';
 import ResetPasswordScreen from '../screens/ResetPasswordScreen';
 
 
+import { TouchableOpacity, View } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+
 const Stack = createNativeStackNavigator();
+
+const HeaderBackButton = ({ onPress }) => (
+  <TouchableOpacity 
+    onPress={onPress} 
+    style={{
+      width: 38, 
+      height: 38, 
+      borderRadius: 10, 
+      backgroundColor: 'rgba(255,255,255,0.15)', 
+      justifyContent: 'center', 
+      alignItems: 'center',
+      marginLeft: 15,
+      marginRight: 5
+    }}
+  >
+    <Ionicons name="chevron-back" size={22} color="#ffffff" />
+  </TouchableOpacity>
+);
 
 export default function AppNavigator() {
   return (
@@ -81,22 +102,35 @@ export default function AppNavigator() {
       <Stack.Screen
         name="AdminPatientRecords"
         component={AdminPatientRecordsScreen}
-        options={{
+        options={({ navigation }) => ({
           headerShown: true, 
           title: 'Historial',
           headerStyle: { backgroundColor: '#173746' },
-          headerTintColor: '#ffffff'
-        }}
+          headerTintColor: '#ffffff',
+          headerLeft: () => <HeaderBackButton onPress={() => navigation.goBack()} />
+        })}
       />
       <Stack.Screen
         name="AdminPatientTracking"
         component={AdminPatientTrackingScreen}
-        options={{ headerShown: true, title: 'Seguimiento médico' }}
+        options={({ navigation }) => ({ 
+          headerShown: true, 
+          title: 'Seguimiento médico',
+          headerStyle: { backgroundColor: '#173746' },
+          headerTintColor: '#ffffff',
+          headerLeft: () => <HeaderBackButton onPress={() => navigation.goBack()} />
+        })}
       />
       <Stack.Screen
         name="AdminPatientAccess"
         component={AdminPatientAccessScreen}
-        options={{ headerShown: true, title: 'Control de acceso' }}
+        options={({ navigation }) => ({ 
+          headerShown: true, 
+          title: 'Control de acceso',
+          headerStyle: { backgroundColor: '#173746' },
+          headerTintColor: '#ffffff',
+          headerLeft: () => <HeaderBackButton onPress={() => navigation.goBack()} />
+        })}
       />
       <Stack.Screen
         name="Payment"

@@ -2,6 +2,7 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const mysql = require('mysql2/promise');
+const crypto = require('crypto');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -23,7 +24,8 @@ pool.on('error', (err) => {
 });
 
 // Almacenamiento temporal de OTPs (En producción usar Redis o DB)
-const otps = {};
+const otpMemCache = new Map();
+const OTP_EXPIRY_MINUTES = 10;
 
 app.use(cors());
 app.use(express.json());
@@ -104,6 +106,98 @@ app.post('/api/auth/register', async (req, res) => {
   }
 });
 
+// --- ENPOINTS DE NEGOCIO (PAGOS Y ANÁLISIS) ---
+
+app.post('/api/auth/latest-data', async (req, res) => {
+  const { userId } = req.body;
+  try {
+    const [rows] = await pool.query('SELECT id_usuario, nombre, email, usuario, rol, analisis_disponibles, acepta_terminos FROM usuarios WHERE id_usuario = ?', [userId]);
+    if (rows.length === 0) return res.status(404).json({ success: false, message: 'Usuario no encontrado' });
+    res.json({ success: true, user: rows[0] });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+app.post('/api/payments/register', async (req, res) => {
+  const { userId, amount, description, credits, metodo } = req.body;
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    
+    // Insertar pago con UUID generado
+    const paymentId = crypto.randomUUID();
+    await conn.query(
+      'INSERT INTO pagos (id_pago, id_usuario, monto, moneda, descripcion, metodo_pago, estado, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, NOW())',
+      [paymentId, userId, amount, 'USD', description, metodo || 'Tarjeta/PSE', 'completado']
+    );
+
+    // Actualizar créditos
+    await conn.query('UPDATE usuarios SET analisis_disponibles = analisis_disponibles + ? WHERE id_usuario = ?', [credits, userId]);
+
+    await conn.commit();
+    const [updated] = await conn.query('SELECT analisis_disponibles FROM usuarios WHERE id_usuario = ?', [userId]);
+    res.json({ success: true, newCredits: updated[0].analisis_disponibles });
+  } catch (error) {
+    await conn.rollback();
+    res.status(500).json({ success: false, message: error.message });
+  } finally {
+    conn.release();
+  }
+});
+
+app.post('/api/payments/consume', async (req, res) => {
+  const { userId } = req.body;
+  try {
+    const [user] = await pool.query('SELECT analisis_disponibles FROM usuarios WHERE id_usuario = ?', [userId]);
+    if (user.length === 0) return res.status(404).json({ success: false, message: 'Usuario no encontrado' });
+
+    if ((user[0].analisis_disponibles || 0) <= 0) {
+      return res.status(403).json({ success: false, message: 'Créditos insuficientes' });
+    }
+
+    await pool.query('UPDATE usuarios SET analisis_disponibles = analisis_disponibles - 1 WHERE id_usuario = ?', [userId]);
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+app.post('/api/analysis/save', async (req, res) => {
+  const { userId, analysisType, visualizationType, datasetName, datasetPath, totalRegistros, totalAnomalias } = req.body;
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+
+    // 1. Insertar Dataset
+    const [datasetResult] = await conn.query(
+      'INSERT INTO datasets (id_usuario, nombre_archivo, ruta_archivo, fecha_subida, total_filas) VALUES (?, ?, ?, NOW(), ?)',
+      [userId, datasetName, datasetPath || '', totalRegistros || 0]
+    );
+
+    // 2. Insertar Modelo
+    const [modelResult] = await conn.query(
+      'INSERT INTO modelos (tipo_modelo, nombre_modelo, descripcion, fecha_creacion) VALUES (?, ?, ?, NOW())',
+      ['anomalias', 'Modelo Base Lumex', 'Detección de anomalías cardiovascular']
+    );
+
+    // 3. Insertar Análisis
+    const [analysisResult] = await conn.query(
+      'INSERT INTO analisis (id_usuario, id_dataset, id_modelo, fecha_analisis, total_registros, total_anomalias, tipo_analisis, tipo_visualizacion, estado) VALUES (?, ?, ?, NOW(), ?, ?, ?, ?, ?)',
+      [userId, datasetResult.insertId, modelResult.insertId, totalRegistros, totalAnomalias, analysisType || 'anomalias', visualizationType || 'histograma', 'completado']
+    );
+
+    await conn.commit();
+    res.json({ success: true, idAnalisis: analysisResult.insertId, totalAnomalias });
+  } catch (error) {
+    await conn.rollback();
+    console.error('[ANALYSIS SAVE ERROR]', error.message);
+    res.status(500).json({ success: false, message: error.message });
+  } finally {
+    conn.release();
+  }
+});
+
 app.post('/api/analysis/history', async (req, res) => {
   const { userId } = req.body;
   try {
@@ -112,22 +206,26 @@ app.post('/api/analysis/history', async (req, res) => {
              d.nombre_archivo, d.ruta_archivo,
              m.tipo_modelo, m.descripcion, m.nombre_modelo
       FROM analisis a
-      JOIN datasets d ON a.id_dataset = d.id_dataset
-      JOIN modelos m ON a.id_modelo = m.id_modelo
+      LEFT JOIN datasets d ON a.id_dataset = d.id_dataset
+      LEFT JOIN modelos m ON a.id_modelo = m.id_modelo
       WHERE a.id_usuario = ?
-      ORDER BY a.fecha_analisis DESC LIMIT 50
+      ORDER BY a.fecha_analisis DESC
     `;
     const [rows] = await pool.query(query, [userId]);
+    console.log(`[HISTORY] userId=${userId} => ${rows.length} registros`);
     const mapped = rows.map(item => ({
       id_analisis: item.id_analisis,
       fecha_analisis: item.fecha_analisis,
       total_registros: item.total_registros,
       total_anomalias: item.total_anomalias,
-      datasets: { nombre_archivo: item.nombre_archivo, ruta_archivo: item.ruta_archivo },
-      modelos: { tipo_modelo: item.tipo_modelo, descripcion: item.descripcion, nombre_modelo: item.nombre_modelo }
+      nombre_archivo: item.nombre_archivo || `analisis_${item.id_analisis}.csv`,
+      ruta_archivo: item.ruta_archivo,
+      tipo_modelo: item.tipo_modelo,
+      nombre_modelo: item.nombre_modelo,
     }));
     return res.json({ success: true, data: mapped });
   } catch (error) {
+    console.error('[HISTORY ERROR]', error.message);
     return res.status(500).json({ success: false, message: error.message });
   }
 });
@@ -345,18 +443,41 @@ app.post('/api/auth/reset-password', async (req, res) => {
 
 
 
-const server = app.listen(PORT, '0.0.0.0', () => {
-  console.log(`🚀 Servidor MySQL corriendo en:`);
-  console.log(`   - Local: http://localhost:${PORT}`);
-  console.log(`   - Red:   http://192.168.20.141:${PORT}`);
-});
+const startServer = () => {
+  const srv = app.listen(PORT, '0.0.0.0', () => {
+    console.log(`🚀 Servidor MySQL corriendo en:`);
+    console.log(`   - Local: http://localhost:${PORT}`);
+    console.log(`   - Red:   http://192.168.20.142:${PORT}`);
+  });
 
-server.on('error', (err) => {
-  console.error('[SERVER ERROR]', err);
-  if (err.code === 'EADDRINUSE') {
-    console.error(`OJO: El puerto ${PORT} ya está en uso por otro proceso.`);
-  }
-});
+  srv.on('error', (err) => {
+    if (err.code === 'EADDRINUSE') {
+      console.log(`⚠️  Puerto ${PORT} en uso. Liberando...`);
+      try {
+        const { execSync } = require('child_process');
+        // Matar proceso en el puerto en Windows
+        const result = execSync(`netstat -ano | findstr :${PORT} | findstr LISTENING`, { encoding: 'utf8' }).trim();
+        const lines = result.split('\n').filter(Boolean);
+        lines.forEach(line => {
+          const parts = line.trim().split(/\s+/);
+          const pid = parts[parts.length - 1];
+          if (pid && pid !== '0') {
+            try { execSync(`taskkill /PID ${pid} /F`, { stdio: 'ignore' }); } catch (_) {}
+          }
+        });
+        console.log(`✅ Puerto ${PORT} liberado. Reiniciando servidor en 1s...`);
+        setTimeout(startServer, 1000);
+      } catch (killErr) {
+        console.error(`❌ No se pudo liberar el puerto ${PORT}. Cierra el proceso manualmente.`);
+        process.exit(1);
+      }
+    } else {
+      console.error('[SERVER ERROR]', err);
+    }
+  });
+};
+
+startServer();
 
 process.on('unhandledRejection', (reason, promise) => {
   console.error('Unhandled Rejection at:', promise, 'reason:', reason);

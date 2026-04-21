@@ -4,6 +4,7 @@ import {
   ActivityIndicator,
   Alert,
   Animated,
+  Dimensions,
   Image,
   KeyboardAvoidingView,
   Modal,
@@ -30,15 +31,16 @@ import {
   isDatasetFileSupported,
   parseDatasetContent,
   readDatasetAsset,
-  saveAnalysis
-} from '../services/api/datasetAnalysisService';
+  saveAnalysisInSupabase
+} from '../services/lumex/datasetAnalysisService';
 import { 
   registerPayment, 
-  consumeAnalysisCredit 
-} from '../services/api/paymentService';
+  consumeAnalysisCredit,
+  fetchPaymentHistory
+} from '../services/lumex/paymentService';
 import { 
   fetchLatestUserData 
-} from '../services/api/authService';
+} from '../services/lumex/authService';
 
 const { width } = Dimensions.get('window');
 
@@ -452,6 +454,16 @@ export default function MainScreen({ navigation }) {
   const [pendingPlan, setPendingPlan] = useState(null);
   const [paymentMethod, setPaymentMethod] = useState(null);
 
+  // Estados para el flujo de pago restaurados
+  const [showCreditsModal, setShowCreditsModal] = useState(false);
+  const [showPaymentConfirmationModal, setShowPaymentConfirmationModal] = useState(false);
+  const [showPaymentMethodsModal, setShowPaymentMethodsModal] = useState(false);
+  const [showPaymentSuccess, setShowPaymentSuccess] = useState(false);
+  const [selectedPlan, setSelectedPlan] = useState(null);
+  const [selectedPaymentMethod, setSelectedPaymentMethod] = useState(null);
+  const [analisisDisponibles, setAnalisisDisponibles] = useState(0);
+  const [notification, setNotification] = useState({ visible: false, message: '', type: 'info' });
+
   // Adaptador para triggerToast (usa nuestro sistema premium showNotification)
   const triggerToast = (message, type = 'success') => {
     showNotification(message, type);
@@ -495,6 +507,8 @@ export default function MainScreen({ navigation }) {
   const [downloadFormat, setDownloadFormat] = useState('pdf');
 
   const fadeAnim = useRef(new Animated.Value(0)).current;
+  const successMessageAnim = useRef(new Animated.Value(-width)).current;
+  const notificationAnim = useRef(new Animated.Value(-width)).current;
   const analysisExportCardRef = useRef(null);
 
   const currentUserId = Number(user?.id_usuario ?? user?.id ?? null);
@@ -542,6 +556,7 @@ export default function MainScreen({ navigation }) {
     try {
       setIsLoadingHistory(true);
       const history = await fetchAnalysisHistoryByUser(safeUserId);
+      console.log(`[SCREEN] Historial cargado en estado: ${history.length} items`);
       setAnalysisHistory(history);
     } catch (error) {
       console.log('Error loading analysis history:', error);
@@ -869,6 +884,7 @@ export default function MainScreen({ navigation }) {
   };
 
   const triggerSuccessMessage = () => {
+    console.log('[PAYMENT] Disparando banner de exito');
     setShowPaymentSuccess(true);
     successMessageAnim.setValue(-width);
     Animated.sequence([
@@ -884,6 +900,7 @@ export default function MainScreen({ navigation }) {
         useNativeDriver: true,
       }),
     ]).start(() => {
+      console.log('[PAYMENT] Banner de exito finalizado');
       setShowPaymentSuccess(false);
       successMessageAnim.setValue(-width);
       setActiveTab('dataset');
@@ -909,60 +926,61 @@ export default function MainScreen({ navigation }) {
       setNotification({ visible: false, message: '', type: 'info' });
     });
   };
-
+  
+  const purchaseCredits = (uid, type, monto, method) => {
+    const credits = selectedPlan?.credits || 1;
+    return registerPayment(uid, monto, `Plan ${type}`, credits, method);
+  };
+  
   const handlePurchase = async (metodo) => {
     if (!selectedPlan) return;
     
     try {
       setLoading(true);
+      console.log('[PAYMENT] Iniciando pago:', { userId: currentUserId, plan: selectedPlan, metodo });
       const res = await purchaseCredits(
         currentUserId, 
         selectedPlan.type, 
         selectedPlan.monto, 
         metodo
       );
+      console.log('[PAYMENT] Respuesta del servidor:', JSON.stringify(res));
       
       if (res.success) {
-        setAnalisisDisponibles(res.newCredits);
+        const nuevosCreditos = res.newCredits ?? (analisisDisponibles + (selectedPlan?.credits || 1));
+        setAnalisisDisponibles(nuevosCreditos);
         // Actualizar storage local
-        const updatedUser = { ...user, analisis_disponibles: res.newCredits };
+        const updatedUser = { ...user, analisis_disponibles: nuevosCreditos };
         await storageService.saveUser(updatedUser);
         setUser(updatedUser);
         
         setShowPaymentMethodsModal(false);
         setShowPaymentConfirmationModal(false);
-        setShowOutOffCreditsModal(false);
+        setShowCreditsModal(false);
         
+        console.log('[PAYMENT] Mostrando banner de exito...');
         setTimeout(() => {
           triggerSuccessMessage();
-        }, 500);
+        }, 300);
       } else {
-        showNotification(res.message || 'No se pudo procesar el pago');
+        showNotification(res.message || 'No se pudo procesar el pago', 'error');
       }
     } catch (error) {
-      console.error('Error in handlePurchase:', error);
-      showNotification('Fallo en la conexión');
+      console.error('[PAYMENT] Error en handlePurchase:', error);
+      showNotification('Fallo en la conexion con el servidor', 'error');
     } finally {
       setLoading(false);
     }
   };
 
-  const handleLogout = () => {
-    showNotification('Estas seguro de que deseas salir?', [
-      { text: 'Cancelar', style: 'cancel' },
-      {
-        text: 'Salir',
-        style: 'destructive',
-        onPress: async () => {
-          try {
-            await storageService.removeUser();
-            navigation.replace('Login');
-          } catch (error) {
-            console.log('Error logging out:', error);
-          }
-        },
-      },
-    ]);
+  const handleLogout = async () => {
+    try {
+      await storageService.removeUser();
+      navigation.replace('Login');
+    } catch (error) {
+      console.log('Error logging out:', error);
+      showNotification('No se pudo cerrar la sesion correctamente', 'error');
+    }
   };
 
   const handleAnalyze = async () => {
@@ -1586,7 +1604,7 @@ export default function MainScreen({ navigation }) {
         </View>
       )}
       {[...analysisHistory]
-        .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+        .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
         .map((item) => (
         <TouchableOpacity
           key={item.id}
@@ -1757,9 +1775,198 @@ export default function MainScreen({ navigation }) {
 
   const userName = user?.nombre || user?.usuario || 'Usuario';
   const initials = userName.slice(0, 2).toUpperCase();
+ 
+  const renderPagosModals = () => {
+    return (
+      <>
+        {/* Modal 1: Selección de Plan */}
+        <Modal visible={showCreditsModal} transparent animationType="slide">
+          <View style={styles.modalOverlay}>
+            <View style={styles.creditsModalContainer}>
+              <View style={styles.creditsIconBg}>
+                <Ionicons name="flash" size={30} color={T} />
+              </View>
+              <Text style={styles.creditsTitle}>¡Te has quedado sin créditos!</Text>
+              <Text style={styles.creditsSubtitle}>Adquiere un plan para continuar realizando análisis de IA.</Text>
+  
+              <View style={styles.plansRow}>
+                <TouchableOpacity 
+                  style={[styles.planCard, selectedPlan?.type === 'Basico' && styles.planCardActive]} 
+                  activeOpacity={0.8}
+                  onPress={() => {
+                    setSelectedPlan({ type: 'Basico', monto: 5, credits: 1 });
+                    setShowPaymentConfirmationModal(true);
+                  }}
+                >
+                  <Ionicons name="leaf-outline" size={28} color={selectedPlan?.type === 'Basico' ? '#fff' : T} />
+                  <Text style={[styles.planTitle, selectedPlan?.type === 'Basico' && { color: '#fff' }]}>Básico</Text>
+                  <Text style={[styles.planPrice, selectedPlan?.type === 'Basico' && { color: '#fff' }]}>$5 USD</Text>
+                  <Text style={[styles.planDetail, selectedPlan?.type === 'Basico' && { color: '#eaf6f5' }]}>1 Crédito por análisis</Text>
+                </TouchableOpacity>
+  
+                <TouchableOpacity 
+                  style={[styles.planCard, styles.planCardDiamond]} 
+                  activeOpacity={0.8}
+                  onPress={() => {
+                    setSelectedPlan({ type: 'Diamante', monto: 12, credits: 3 });
+                    setShowPaymentConfirmationModal(true);
+                  }}
+                >
+                  <View style={styles.planTopBadge}>
+                    <Text style={styles.planTopBadgeText}>TOP</Text>
+                  </View>
+                  <Ionicons name="diamond-outline" size={32} color="#fff" style={styles.planIcon} />
+                  <Text style={[styles.planTitle, { color: '#fff' }]}>Diamante</Text>
+                  <Text style={[styles.planPrice, { color: '#fff' }]}>$12 USD</Text>
+                  <Text style={[styles.planDetail, { color: '#eaf6f5' }]}>3 Créditos por análisis</Text>
+                </TouchableOpacity>
+              </View>
+  
+              <TouchableOpacity style={styles.closeLink} onPress={() => setShowCreditsModal(false)}>
+                <Text style={styles.closeLinkText}>Cerrar</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Modal>
+  
+        {/* Modal 2: Confirmación */}
+        <Modal visible={showPaymentConfirmationModal} transparent animationType="slide">
+          <View style={styles.modalOverlay}>
+            <View style={[styles.paymentModalContent, { width: '85%' }]}>
+              <View style={styles.paymentIconCircle}>
+                <Ionicons name="help-circle-outline" size={35} color={T} />
+              </View>
+              <Text style={styles.paymentTitle}>¿Deseas realizar la compra?</Text>
+              <Text style={styles.paymentDescription}>
+                Has seleccionado el Plan {selectedPlan?.type} por ${selectedPlan?.monto} USD
+              </Text>
+  
+              <View style={styles.modalButtonsRow}>
+                <TouchableOpacity 
+                   style={[styles.modalActionBtn, styles.modalActionBtnSecondary]} 
+                   onPress={() => setShowPaymentConfirmationModal(false)}
+                >
+                  <Text style={styles.modalActionBtnSecondaryText}>Cancelar</Text>
+                </TouchableOpacity>
+                <TouchableOpacity 
+                  style={[styles.modalActionBtn, styles.modalActionBtnPrimary]}
+                  onPress={() => {
+                    setShowPaymentMethodsModal(true);
+                  }}
+                >
+                  <Text style={styles.modalActionBtnPrimaryText}>Continuar</Text>
+                </TouchableOpacity>
+              </View>
+  
+              <TouchableOpacity style={[styles.closeLink, { marginTop: 15 }]} onPress={() => {
+                setShowPaymentConfirmationModal(false);
+                setShowCreditsModal(false);
+              }}>
+                <Text style={styles.closeLinkText}>Cerrar</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Modal>
+  
+        {/* Modal 3: Métodos de Pago */}
+        <Modal visible={showPaymentMethodsModal} transparent animationType="slide">
+          <View style={styles.modalOverlay}>
+            <View style={styles.paymentModalContent}>
+              <Text style={[styles.paymentTitle, { alignSelf: 'flex-start', marginLeft: 5 }]}>Forma de pago</Text>
+              <Text style={[styles.paymentDescription, { alignSelf: 'flex-start', textAlign: 'left', paddingHorizontal: 5, marginBottom: 15 }]}>
+                Selecciona como deseas pagar tu plan.
+              </Text>
+  
+              <View style={styles.paymentMethodsList}>
+                {['Tarjeta de Credito', 'PSE / Transferencia', 'Nequi / Daviplata', 'PayPal', 'Mercado Pago'].map((method) => (
+                  <TouchableOpacity 
+                    key={method} 
+                    style={[
+                      styles.paymentMethodItem,
+                      selectedPaymentMethod === method && styles.paymentMethodItemSelected
+                    ]}
+                    onPress={() => setSelectedPaymentMethod(method)}
+                  >
+                    <Ionicons 
+                      name={
+                        method.includes('Tarjeta') ? 'card-outline' : 
+                        method.includes('PSE') ? 'swap-horizontal-outline' : 
+                        method.includes('Nequi') ? 'phone-portrait-outline' : 
+                        method.includes('PayPal') ? 'logo-paypal' : 'wallet-outline'
+                      } 
+                      size={20} 
+                      color={selectedPaymentMethod === method ? '#fff' : T} 
+                    />
+                    <Text style={[
+                      styles.paymentMethodText,
+                      selectedPaymentMethod === method && styles.paymentMethodTextSelected
+                    ]}>{method}</Text>
+                    {selectedPaymentMethod === method && (
+                      <Ionicons name="checkmark-circle" size={18} color="#fff" style={{ marginLeft: 'auto' }} />
+                    )}
+                  </TouchableOpacity>
+                ))}
+              </View>
+  
+              <TouchableOpacity 
+                style={[
+                  styles.purchaseButton, 
+                  !selectedPaymentMethod && { opacity: 0.6 }
+                ]}
+                activeOpacity={0.8}
+                onPress={() => {
+                  if (selectedPaymentMethod) {
+                    handlePurchase(selectedPaymentMethod);
+                  } else {
+                    showNotification('Por favor selecciona un método de pago');
+                  }
+                }}
+                disabled={!selectedPaymentMethod || loading}
+              >
+                {loading ? (
+                  <ActivityIndicator color="#fff" />
+                ) : (
+                  <Text style={styles.purchaseButtonText}>Pagar ahora</Text>
+                )}
+              </TouchableOpacity>
+  
+              <TouchableOpacity style={styles.closeLink} onPress={() => setShowPaymentMethodsModal(false)}>
+                <Text style={[styles.closeLinkText, { color: T }]}>Volver</Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity style={styles.closeLink} onPress={() => {
+                setShowPaymentMethodsModal(false);
+                setShowPaymentConfirmationModal(false);
+                setShowCreditsModal(false);
+              }}>
+                <Text style={styles.closeLinkText}>Cerrar</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Modal>
+      </>
+    );
+  };
 
+  const renderPaymentSuccessMessage = () => (
+    <Modal
+      visible={showPaymentSuccess}
+      transparent
+      animationType="none"
+      statusBarTranslucent
+    >
+      <View style={styles.successModalOverlay} pointerEvents="none">
+        <Animated.View style={[styles.successBanner, { transform: [{ translateX: successMessageAnim }] }]}>
+          <Ionicons name="checkmark-circle" size={28} color="#fff" />
+          <Text style={styles.successBannerText}>¡Muchas gracias! Has adquirido tus creditos correctamente.</Text>
+        </Animated.View>
+      </View>
+    </Modal>
+  );
+  
   return (
     <Animated.View style={[styles.screen, { opacity: fadeAnim }]}> 
+      {renderPaymentSuccessMessage()}
       <View style={styles.blob1} pointerEvents="none" />
       <View style={styles.blob2} pointerEvents="none" />
 
@@ -3780,23 +3987,25 @@ const styles = StyleSheet.create({
     fontSize: 13,
   },
   // BANNERS (Premium Look)
+  successModalOverlay: {
+    flex: 1,
+    justifyContent: 'flex-start',
+    paddingTop: 80,
+    paddingHorizontal: 20,
+    backgroundColor: 'transparent',
+  },
   successBanner: {
-    position: 'absolute',
-    top: 50,
-    left: 20,
-    right: 20,
-    height: 60,
-    backgroundColor: '#0f6d78',
-    borderRadius: 15,
     flexDirection: 'row',
     alignItems: 'center',
+    backgroundColor: '#0f6d78',
+    borderRadius: 15,
     paddingHorizontal: 20,
-    zIndex: 9999,
+    paddingVertical: 18,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 8,
-    elevation: 10,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.25,
+    shadowRadius: 10,
+    elevation: 20,
   },
   successBannerText: {
     color: '#ffffff',
@@ -3924,5 +4133,95 @@ const styles = StyleSheet.create({
     color: '#4f666c',
     fontSize: 14,
     fontWeight: '600',
+  },
+  creditsModalContainer: {
+    backgroundColor: '#fff',
+    width: '90%',
+    borderRadius: 22,
+    padding: 24,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.15,
+    shadowRadius: 15,
+    elevation: 8,
+  },
+  creditsIconBg: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: '#f0f7f8',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 16,
+  },
+  creditsTitle: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: '#15333d',
+    textAlign: 'center',
+    marginBottom: 8,
+  },
+  creditsSubtitle: {
+    fontSize: 14,
+    color: '#6e8a8f',
+    textAlign: 'center',
+    marginBottom: 24,
+    paddingHorizontal: 10,
+  },
+  planCard: {
+    flex: 1,
+    backgroundColor: '#f8fbfc',
+    borderRadius: 18,
+    padding: 16,
+    alignItems: 'center',
+    borderWidth: 1.5,
+    borderColor: '#e8f2f4',
+  },
+  planCardActive: {
+    borderColor: '#0f6d78',
+    backgroundColor: '#f0f9fa',
+  },
+  planCardDiamond: {
+    backgroundColor: '#0f6d78',
+    borderColor: '#0f6d78',
+  },
+  planIcon: {
+    marginBottom: 10,
+  },
+  planTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#15333d',
+    marginBottom: 4,
+  },
+  planDetail: {
+    fontSize: 11,
+    color: '#6e8a8f',
+    textAlign: 'center',
+    lineHeight: 14,
+  },
+  planTopBadgeText: {
+    color: '#fff',
+    fontSize: 10,
+    fontWeight: '800',
+  },
+  modalButtonsRow: {
+    flexDirection: 'row',
+    width: '100%',
+    gap: 12,
+    marginTop: 10,
+  },
+  paymentMethodsList: {
+    width: '100%',
+    gap: 10,
+    marginBottom: 20,
+  },
+  paymentMethodItemSelected: {
+    backgroundColor: '#0f6d78',
+    borderColor: '#0f6d78',
+  },
+  paymentMethodTextSelected: {
+    color: '#fff',
   },
 });

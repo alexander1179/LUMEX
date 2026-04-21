@@ -120,10 +120,17 @@ app.post('/api/auth/register', async (req, res) => {
   if (!accepted) {
     return res.status(400).json({ success: false, message: 'Debe aceptar los términos y condiciones.' });
   }
-  
+
   // Validar rol permitido, si no viene o no es válido, se pone 'usuario' por defecto
-  const validRoles = ['usuario', 'administrador', 'enfermero', 'doctor'];
-  const finalRole = validRoles.includes(String(rol).toLowerCase()) ? String(rol).toLowerCase() : 'usuario';
+  //const validRoles = ['usuario', 'administrador', 'enfermero', 'doctor'];
+  //const finalRole = validRoles.includes(String(rol).toLowerCase()) ? String(rol).toLowerCase() : 'usuario';
+
+
+  // Validar rol permitido, si no viene o no es válido, se pone 'usuario' por defecto
+  const validRoles = ['usuario', 'admin', 'superadmin'];
+  const finalRole = validRoles.includes(String(rol).toLowerCase())
+    ? String(rol).toLowerCase()
+    : 'usuario';
 
   try {
     const [existing] = await pool.query('SELECT id_usuario FROM usuarios WHERE email = ? OR usuario = ? LIMIT 1', [email, username]);
@@ -135,7 +142,7 @@ app.post('/api/auth/register', async (req, res) => {
       'INSERT INTO usuarios (nombre, email, usuario, rol, contrasena, telefono, fecha_registro, terminos_aceptados, analisis_disponibles) VALUES (?, ?, ?, ?, ?, ?, NOW(), 1, 0)',
       [name, email || null, username || null, finalRole, passwordHash, phone || null]
     );
-    
+
     const [newUser] = await pool.query('SELECT * FROM usuarios WHERE id_usuario = ?', [result.insertId]);
     return res.json({ success: true, user: newUser[0], message: 'Usuario registrado correctamente' });
   } catch (err) {
@@ -156,11 +163,11 @@ app.post('/api/auth/login', async (req, res) => {
     if (requiredRole === 'admin' && !isAdmin) {
       return res.status(403).json({ success: false, message: 'Solo administradores.' });
     }
-    
+
     if (user.estado === 'bloqueado') {
       return res.status(403).json({ success: false, message: 'Tu cuenta ha sido bloqueada. Contacta al soporte.' });
     }
-    
+
     if (user.contrasena !== passwordHash) {
       return res.status(401).json({ success: false, message: 'Contraseña incorrecta' });
     }
@@ -233,7 +240,7 @@ app.post('/api/auth/verify-token', (req, res) => {
   const { email, token } = req.body;
   const normalizedEmail = normalizeEmail(email);
   const cacheObj = otpMemCache.get(normalizedEmail);
-  
+
   if (!cacheObj) return res.status(400).json({ success: false, message: 'No hay código pendiente o expiró.' });
   if (Date.now() > cacheObj.expiresAt) {
     otpMemCache.delete(normalizedEmail);
@@ -270,7 +277,7 @@ app.post('/api/auth/reset-password', async (req, res) => {
 // Registrar Pago y añadir créditos (Unificado)
 app.post('/api/payments/register', async (req, res) => {
   const { userId, amount, monto, metodoPago, metodo, description, descripcion, credits, creditsToAdd } = req.body;
-  
+
   const safeUserId = Number(userId);
   // Priorizar los nombres enviados por paymentService.js
   const safeCredits = Number(credits || creditsToAdd || 0);
@@ -471,9 +478,9 @@ app.post('/api/analysis/save', async (req, res) => {
       // Obtener créditos actualizados del usuario
       const [userRow] = await conn.query('SELECT analisis_disponibles FROM usuarios WHERE id_usuario = ?', [numericUserId]);
       const creditosRestantes = userRow[0]?.analisis_disponibles ?? 0;
-      
+
       console.log(`[ANALYSIS SUCCESS] userId=${numericUserId}, used=1, remaining=${creditosRestantes}`);
-      
+
       res.json({ success: true, idAnalisis: analisisInsert.insertId, totalRegistros, totalAnomalias, creditosRestantes });
     } catch (err) {
       await conn.rollback();
@@ -616,7 +623,7 @@ app.post('/admin/update-role', async (req, res) => {
 
 app.post('/api/superadmin/toggle-admin-permission', async (req, res) => {
   const { id_usuario, field, value } = req.body;
-  
+
   // Lista blanca de campos permitidos para evitar inyección SQL en el nombre de la columna
   const allowedFields = [
     'puede_gestionar_usuarios', 'permiso_editar', 'permiso_bloquear',
@@ -641,15 +648,15 @@ app.post('/api/admin/update-user', async (req, res) => {
   try {
     let query = 'UPDATE usuarios SET nombre=?, email=?, usuario=?, rol=?, telefono=?';
     let params = [nombre, email, usuario, rol, telefono];
-    
+
     if (passwordHash) {
       query += ', contrasena=?';
       params.push(passwordHash);
     }
-    
+
     query += ' WHERE id_usuario=?';
     params.push(id_usuario);
-    
+
     await pool.query(query, params);
     res.json({ success: true, message: 'Usuario actualizado con éxito' });
   } catch (error) {
@@ -725,10 +732,10 @@ app.post('/api/auth/forgot-password', async (req, res) => {
     if (rows.length === 0) {
       return res.status(404).json({ success: false, message: 'Correo no registrado' });
     }
-    
+
     // Generar código de 6 dígitos
     const code = Math.floor(100000 + Math.random() * 900000).toString();
-    
+
     // Guardar en memoria (expira en 15 min)
     otps[normalizedEmail] = {
       code,
@@ -739,7 +746,7 @@ app.post('/api/auth/forgot-password', async (req, res) => {
     console.log(`🔑 CÓDIGO PARA: ${normalizedEmail}`);
     console.log(`👉 CÓDIGO: ${code}`);
     console.log("**************************************************");
-    
+
     res.json({ success: true, message: 'Código generado correctamente. Revisa la consola del servidor.' });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
@@ -750,22 +757,22 @@ app.post('/api/auth/forgot-password', async (req, res) => {
 app.post('/api/auth/verify-token', async (req, res) => {
   const { email, token } = req.body;
   const normalizedEmail = email.trim().toLowerCase();
-  
+
   const stored = otps[normalizedEmail];
-  
+
   if (!stored) {
     return res.status(400).json({ success: false, message: 'No hay un código pendiente para este correo' });
   }
-  
+
   if (Date.now() > stored.expires) {
     delete otps[normalizedEmail];
     return res.status(400).json({ success: false, message: 'El código ha expirado' });
   }
-  
+
   if (stored.code !== token) {
     return res.status(400).json({ success: false, message: 'Código incorrecto' });
   }
-  
+
   res.json({ success: true, message: 'Código verificado' });
 });
 
@@ -773,15 +780,15 @@ app.post('/api/auth/verify-token', async (req, res) => {
 app.post('/api/auth/reset-password', async (req, res) => {
   const { email, newPassword } = req.body;
   const normalizedEmail = email.trim().toLowerCase();
-  
+
   try {
     // En una App real aquí deberíamos verificar que el token fue validado antes.
     // Para el demo, lo permitimos si el email existe.
     await pool.query('UPDATE usuarios SET contrasena = ? WHERE email = ?', [newPassword, normalizedEmail]);
-    
+
     // Limpiar OTP después de usarlo
     delete otps[normalizedEmail];
-    
+
     res.json({ success: true, message: 'Contraseña actualizada correctamente' });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });

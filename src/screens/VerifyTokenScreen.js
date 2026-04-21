@@ -16,7 +16,6 @@ import { forgotPassword, verifyToken } from '../services/api/authService';
 import { colors } from '../styles/colors';
 import { useCountdown } from '../hooks/useCountdown';
 import { CustomButton } from '../components/common/CustomButton';
-import { AccessQuickNav } from '../components/common/AccessQuickNav';
 import { AUTH_CONFIG } from '../config/authConfig';
 
 const { width } = Dimensions.get('window');
@@ -169,8 +168,6 @@ export default function VerifyTokenScreen({ route, navigation }) {
           />
         </View>
       </View>
-
-      <AccessQuickNav navigation={navigation} current="usuario" />
     </View>
   );
 }
@@ -178,7 +175,6 @@ export default function VerifyTokenScreen({ route, navigation }) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    alignItems: "center",
   },
   header: {
     width: '100%',
@@ -195,9 +191,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   content: {
+    flex: 1,
     width: '100%',
     alignItems: 'center',
-    marginTop: 40,
+    justifyContent: 'center',
+    paddingBottom: 40,
   },
   title: {
     fontSize: 26,

@@ -309,24 +309,26 @@ app.post('/api/auth/deduct-credit', async (req, res) => {
   }
 });
 
-app.get('/api/payments/all', async (req, res) => {
+// Endpoint para el SuperAdmin que necesita ver TODOS los pagos con nombres de usuario específicos
+const getPaymentsBackoffice = async (req, res) => {
   try {
     const query = `
-      SELECT p.*, u.nombre as usuarios_nombre, u.email as usuarios_email
+      SELECT p.*, u.nombre as usuario_nombre, u.email as usuario_email, u.usuario as usuario_username
       FROM pagos p
       LEFT JOIN usuarios u ON p.id_usuario = u.id_usuario
       ORDER BY p.created_at DESC
     `;
     const [rows] = await pool.query(query);
-    const data = rows.map(r => ({
-      ...r,
-      usuarios: { nombre: r.usuarios_nombre, email: r.usuarios_email }
-    }));
-    return res.json({ success: true, data });
+    console.log(`[BACKOFFICE] Enviando ${rows.length} pagos al panel administrativo`);
+    res.json({ success: true, payments: rows, data: rows }); // data para retrocompatibilidad
   } catch (err) {
-    return res.status(500).json({ success: false, message: err.message });
+    res.status(500).json({ success: false, message: err.message });
   }
-});
+};
+
+app.get('/api/payments/all', getPaymentsBackoffice);
+app.get('/api/admin/payments', getPaymentsBackoffice);
+app.get('/admin/payments', getPaymentsBackoffice);
 
 // ==========================================
 // ANALYSIS
@@ -500,15 +502,14 @@ app.post('/api/auth/latest-data', async (req, res) => {
 
 // --- ENDPOINTS DE DASHBOARD Y USUARIOS ---
 
-// Listar usuarios (para SuperAdmin)
-app.get('/api/admin/users', async (req, res) => {
+// Listar todos los usuarios para SuperAdmin (Incluyendo administradores)
+const getAllUsersBackoffice = async (req, res) => {
   try {
     const query = `
       SELECT id_usuario, nombre, email, usuario, rol, estado, fecha_registro, 
              puede_gestionar_usuarios, permiso_editar, permiso_bloquear,
-             mod_nuevo_paciente, mod_gestion_usuarios, mod_reportes, mod_actividad, mod_alertas
+             mod_nuevo_paciente, mod_gestion_usuarios, mod_reportes, mod_actividad, mod_alertas, mod_pagos
       FROM usuarios 
-      WHERE rol NOT IN ('admin', 'administrador', 'superadmin', 'superadministrador') 
       ORDER BY fecha_registro DESC
     `;
     const [rows] = await pool.query(query);
@@ -516,7 +517,41 @@ app.get('/api/admin/users', async (req, res) => {
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
+};
+
+app.get('/api/superadmin/users', getAllUsersBackoffice);
+app.get('/admin/users', getAllUsersBackoffice);
+
+// Listar solo personal/usuarios regulares (Si se requiere un filtro más estricto en algún lado)
+app.get('/api/admin/users', async (req, res) => {
+  try {
+    const query = 'SELECT * FROM usuarios WHERE rol NOT IN (\'superadmin\', \'superadministrador\') ORDER BY id_usuario DESC';
+    const [rows] = await pool.query(query);
+    res.json({ success: true, users: rows });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
 });
+
+// Actividad Global (Análisis realizados)
+const getActivityBackoffice = async (req, res) => {
+  try {
+    const query = `
+      SELECT a.*, u.nombre as usuario_nombre, u.email as usuario_email, u.usuario as usuario_username
+      FROM analisis a
+      LEFT JOIN usuarios u ON a.id_usuario = u.id_usuario
+      ORDER BY a.fecha_analisis DESC
+      LIMIT 100
+    `;
+    const [rows] = await pool.query(query);
+    res.json({ success: true, activity: rows });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+app.get('/api/admin/activity', getActivityBackoffice);
+app.get('/admin/activity', getActivityBackoffice);
 
 // Endpoint de prueba para verificar conexión ojo si no sirve eliminar esta parte completa 
 app.get('/', (req, res) => {
@@ -526,6 +561,16 @@ app.get('/', (req, res) => {
 
 // Actualizar rol
 app.post('/api/admin/update-role', async (req, res) => {
+  const { userId, newRole } = req.body;
+  try {
+    await pool.query('UPDATE usuarios SET rol = ? WHERE id_usuario = ?', [newRole, userId]);
+    res.json({ success: true, message: 'Rol actualizado' });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+app.post('/admin/update-role', async (req, res) => {
+  // Alias para retrocompatibilidad
   const { userId, newRole } = req.body;
   try {
     await pool.query('UPDATE usuarios SET rol = ? WHERE id_usuario = ?', [newRole, userId]);
@@ -558,16 +603,36 @@ app.post('/api/superadmin/toggle-admin-permission', async (req, res) => {
 
 // Actualizar datos completos de usuario
 app.post('/api/admin/update-user', async (req, res) => {
-  const { id_usuario, nombre, email, usuario, rol, telefono } = req.body;
+  const { id_usuario, nombre, email, usuario, rol, telefono, passwordHash } = req.body;
   try {
-    await pool.query(
-      'UPDATE usuarios SET nombre = ?, email = ?, usuario = ?, rol = ?, telefono = ? WHERE id_usuario = ?',
-      [nombre, email, usuario, rol, telefono, id_usuario]
-    );
-    res.json({ success: true, message: 'Usuario actualizado correctamente' });
+    let query = 'UPDATE usuarios SET nombre=?, email=?, usuario=?, rol=?, telefono=?';
+    let params = [nombre, email, usuario, rol, telefono];
+    
+    if (passwordHash) {
+      query += ', contrasena=?';
+      params.push(passwordHash);
+    }
+    
+    query += ' WHERE id_usuario=?';
+    params.push(id_usuario);
+    
+    await pool.query(query, params);
+    res.json({ success: true, message: 'Usuario actualizado con éxito' });
   } catch (error) {
     res.status(500).json({ success: false, message: 'Error al actualizar usuario: ' + error.message });
   }
+});
+app.post('/admin/update-user', async (req, res) => {
+  const { id_usuario, nombre, email, usuario, rol, telefono, passwordHash } = req.body;
+  try {
+    let query = 'UPDATE usuarios SET nombre=?, email=?, usuario=?, rol=?, telefono=?';
+    let params = [nombre, email, usuario, rol, telefono];
+    if (passwordHash) { query += ', contrasena=?'; params.push(passwordHash); }
+    query += ' WHERE id_usuario=?';
+    params.push(id_usuario);
+    await pool.query(query, params);
+    res.json({ success: true, message: 'Usuario actualizado con éxito' });
+  } catch (error) { res.status(500).json({ success: false, message: error.message }); }
 });
 
 // Obtener usuario actual (refresco)
@@ -599,9 +664,19 @@ app.use((err, req, res, next) => {
 app.post('/api/admin/block-user', async (req, res) => {
   const { id_usuario, blocked } = req.body;
   try {
-    const estadoStr = blocked ? 'bloqueado' : 'activo';
-    await pool.query('UPDATE usuarios SET estado = ? WHERE id_usuario = ?', [estadoStr, id_usuario]);
-    res.json({ success: true, message: 'Estado actualizado' });
+    const estado = blocked ? 'bloqueado' : 'activo';
+    await pool.query('UPDATE usuarios SET estado = ? WHERE id_usuario = ?', [estado, id_usuario]);
+    res.json({ success: true, message: `Usuario ${estado}` });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+app.post('/admin/block-user', async (req, res) => {
+  const { id_usuario, blocked } = req.body;
+  try {
+    const estado = blocked ? 'bloqueado' : 'activo';
+    await pool.query('UPDATE usuarios SET estado = ? WHERE id_usuario = ?', [estado, id_usuario]);
+    res.json({ success: true, message: `Usuario ${estado}` });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
@@ -682,7 +757,7 @@ app.post('/api/auth/reset-password', async (req, res) => {
 const server = app.listen(PORT, '0.0.0.0', () => {
   console.log(`🚀 Servidor MySQL corriendo en:`);
   console.log(`   - Local: http://localhost:${PORT}`);
-  console.log(`   - Red:   http://192.168.20.142:${PORT}`);
+  console.log(`   - Red:   http://10.157.25.163:${PORT}`);
 });
 
 server.on('error', (err) => {

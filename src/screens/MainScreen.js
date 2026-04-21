@@ -883,13 +883,13 @@ export default function MainScreen({ navigation }) {
     Animated.sequence([
       Animated.timing(successMessageAnim, {
         toValue: 0,
-        duration: 1000,
+        duration: 600,
         useNativeDriver: true,
       }),
-      Animated.delay(5000),
+      Animated.delay(1500),
       Animated.timing(successMessageAnim, {
         toValue: width,
-        duration: 1000,
+        duration: 600,
         useNativeDriver: true,
       }),
     ]).start(() => {
@@ -987,7 +987,7 @@ export default function MainScreen({ navigation }) {
       const res = await registerPayment(
         safeUserId,
         pendingPlan?.price || 0,
-        `Plan ${pendingPlan?.name || 'creditos'}`,
+        pendingPlan?.name || 'Créditos',
         pendingPlan?.amount || 1,
         paymentMethod
       );

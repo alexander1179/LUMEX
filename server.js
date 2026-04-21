@@ -8,11 +8,8 @@ const crypto = require('crypto');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// ===== Configuración de Entorno (Debug) =====
-console.log('🛠️ Iniciando servidor en entorno:', process.env.NODE_ENV || 'development');
-
-// Fallback para MYSQL_URL (típico en algunos entornos de Railway/Heroku)
-if (process.env.MYSQL_URL && (!process.env.MYSQLHOST || !process.env.MYSQL_HOST)) {
+// Prioridad: MYSQL_URL (si existe, extraemos todo de ahí)
+if (process.env.MYSQL_URL) {
     try {
         const url = new URL(process.env.MYSQL_URL);
         process.env.MYSQLHOST = url.hostname;
@@ -20,7 +17,7 @@ if (process.env.MYSQL_URL && (!process.env.MYSQLHOST || !process.env.MYSQL_HOST)
         process.env.MYSQLUSER = url.username;
         process.env.MYSQLPASSWORD = url.password;
         process.env.MYSQLDATABASE = url.pathname.replace(/^\//, '');
-        console.log('🔗 Variables cargadas desde MYSQL_URL');
+        console.log('🔗 Conexión configurada vía MYSQL_URL');
     } catch (e) {
         console.error('❌ Error parseando MYSQL_URL:', e.message);
     }

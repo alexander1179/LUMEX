@@ -1,3 +1,5 @@
+const bcrypt = require('bcrypt');
+
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
@@ -226,9 +228,11 @@ app.post('/api/auth/register', async (req, res) => {
             return res.status(400).json({ success: false, message: 'El correo o nombre de usuario ya está registrado.' });
         }
 
+        const hashedPassword = await bcrypt.hash(passwordHash, 10);
+
         const [result] = await pool.query(
             'INSERT INTO usuarios (nombre, email, usuario, rol, contrasena, telefono, fecha_registro, terminos_aceptados, analisis_disponibles) VALUES (?, ?, ?, ?, ?, ?, NOW(), 1, 0)',
-            [name, email || null, username || null, finalRole, passwordHash, phone || null]
+            [name, email || null, username || null, finalRole, hashedPassword, phone || null]
         );
 
         const [newUser] = await pool.query('SELECT * FROM usuarios WHERE id_usuario = ?', [result.insertId]);
@@ -256,7 +260,9 @@ app.post('/api/auth/login', async (req, res) => {
             return res.status(403).json({ success: false, message: 'Tu cuenta ha sido bloqueada. Contacta al soporte.' });
         }
 
-        if (user.contrasena !== passwordHash) {
+        const match = await bcrypt.compare(passwordHash, user.contrasena);
+
+        if (!match) {
             return res.status(401).json({ success: false, message: 'Contraseña incorrecta' });
         }
 
@@ -364,7 +370,11 @@ app.post('/api/auth/reset-password', async (req, res) => {
     if (!cacheObj || !cacheObj.verified) return res.status(400).json({ success: false, message: 'Verifica el código antes.' });
 
     try {
-        await pool.query('UPDATE usuarios SET contrasena = ? WHERE email = ?', [passwordHash, normalizedEmail]);
+        const hashedPassword = await bcrypt.hash(passwordHash, 10);
+        await pool.query(
+            'UPDATE usuarios SET contrasena = ? WHERE email = ?',
+            [hashedPassword, normalizedEmail]
+        );
         otpMemCache.delete(normalizedEmail);
         return res.json({ success: true, message: 'Contraseña actualizada' });
     } catch (err) {
@@ -791,7 +801,12 @@ app.post('/api/auth/reset-password', async (req, res) => {
     try {
         // En una App real aquí deberíamos verificar que el token fue validado antes.
         // Para el demo, lo permitimos si el email existe.
-        await pool.query('UPDATE usuarios SET contrasena = ? WHERE email = ?', [newPassword, normalizedEmail]);
+        const hashedPassword = await bcrypt.hash(newPassword, 10);
+
+        await pool.query(
+            'UPDATE usuarios SET contrasena = ? WHERE email = ?',
+            [hashedPassword, normalizedEmail]
+        );
 
         // Limpiar OTP después de usarlo
         delete otps[normalizedEmail];

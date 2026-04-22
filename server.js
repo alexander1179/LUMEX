@@ -82,13 +82,10 @@ const runMigrations = async () => {
             { name: 'mod_actividad', query: 'ALTER TABLE usuarios ADD COLUMN mod_actividad TINYINT DEFAULT 1' },
             { name: 'mod_alertas', query: 'ALTER TABLE usuarios ADD COLUMN mod_alertas TINYINT DEFAULT 1' },
             { name: 'mod_pagos', query: 'ALTER TABLE usuarios ADD COLUMN mod_pagos TINYINT DEFAULT 1' },
-<<<<<<< HEAD
             { name: 'puede_gestionar_usuarios', query: 'ALTER TABLE usuarios ADD COLUMN puede_gestionar_usuarios TINYINT DEFAULT 1' },
             { name: 'acepta_terminos', query: 'ALTER TABLE usuarios ADD COLUMN acepta_terminos TINYINT(1) DEFAULT 0' },
-            { name: 'estado', query: 'ALTER TABLE usuarios ADD COLUMN estado VARCHAR(20) DEFAULT "activo"' }
-=======
+            { name: 'estado', query: 'ALTER TABLE usuarios ADD COLUMN estado VARCHAR(20) DEFAULT "activo"' },
             { name: 'analisis_disponibles', query: 'ALTER TABLE usuarios ADD COLUMN analisis_disponibles INT DEFAULT 0' }
->>>>>>> 5cde9b6455ac72ee5987ed753d8498a97daebf5f
         ];
 
         for (const meta of migrations) {

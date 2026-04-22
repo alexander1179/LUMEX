@@ -76,9 +76,11 @@ export default function PaymentScreen({ navigation }) {
       try {
         const result = await registerPayment(
           userId, 
-          plan.price, 
-          `LUMEX: ${plan.title} (${plan.credits} créditos)`, 
-          plan.credits
+          plan.price,           // amount
+          plan.price,           // monto
+          'Tarjeta',            // metodoPago
+          `LUMEX: ${plan.title} (${plan.credits} créditos)`, // description
+          plan.credits          // creditsToAdd
         );
 
         if (result.success) {

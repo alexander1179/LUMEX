@@ -30,6 +30,8 @@
     "expo-sharing": "~55.0.18",
     "expo-status-bar": "~55.0.5",
     "express": "^5.2.1",
+    "express-rate-limit": "^8.3.2",
+    "helmet": "^8.1.0",
     "i18next": "^25.10.5",
     "mysql2": "^3.22.1",
     "nodemailer": "^8.0.3",

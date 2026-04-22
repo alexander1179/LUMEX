@@ -1,5 +1,5 @@
 // src/screens/MainScreen.js
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -18,6 +18,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useCameraPermissions } from 'expo-camera';
+import { useFocusEffect } from '@react-navigation/native';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Print from 'expo-print';
@@ -509,35 +510,33 @@ export default function MainScreen({ navigation }) {
       duration: 420,
       useNativeDriver: true,
     }).start();
+  }, [fadeAnim]);
 
-    const getUser = async () => {
-      try {
-        const userData = await storageService.getUser();
-        if (userData) {
-          setUser(userData);
-          setProfileAge(userData?.edad ? String(userData.edad) : '');
-          setProfileAddress(userData?.direccion || '');
-          setProfilePhone(userData?.telefono || '');
-
-          const userId = Number(userData?.id_usuario ?? userData?.id ?? null);
-          if (Number.isInteger(userId)) {
-            await loadHistory(userId);
-            // Sincronizar créditos desde el servidor
-            fetchLatestUserData(userId).then(latestData => {
-              if (latestData) setAnalisisDisponibles(latestData.analisis_disponibles || 0);
-            });
+  useFocusEffect(
+    useCallback(() => {
+      const refreshData = async () => {
+        try {
+          const userData = await storageService.getUser();
+          if (userData) {
+            setUser(userData);
+            const userId = Number(userData?.id_usuario ?? userData?.id ?? null);
+            if (Number.isInteger(userId)) {
+              await loadHistory(userId);
+              const latestData = await fetchLatestUserData(userId);
+              if (latestData) {
+                setAnalisisDisponibles(latestData.analisis_disponibles || 0);
+                // Actualizar storage con datos frescos del servidor
+                await storageService.saveUser(latestData);
+              }
+            }
           }
-          setAnalisisDisponibles(userData?.analisis_disponibles || 0);
-        } else {
-          navigation.replace('Login');
+        } catch (error) {
+          console.log('Error refreshing data on focus:', error);
         }
-      } catch (error) {
-        console.log('Error getting user:', error);
-      }
-    };
-
-    getUser();
-  }, [fadeAnim, navigation]);
+      };
+      refreshData();
+    }, [])
+  );
 
   const loadHistory = async (userIdParam) => {
     const safeUserId = Number(userIdParam);

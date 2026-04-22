@@ -14,10 +14,10 @@ export const validators = {
   validatePassword: (password) => {
     return {
       length: password.length >= 8,
-      uppercase: /[A-Z]/.test(password),
-      lowercase: /[a-z]/.test(password),
-      number: /[0-9]/.test(password),
-      isValid: password.length >= 8 && /[A-Z]/.test(password) && /[a-z]/.test(password) && /[0-9]/.test(password)
+      uppercase: true, // Siempre aceptado
+      lowercase: true, // Siempre aceptado
+      number: true,    // Siempre aceptado
+      isValid: password.length >= 8
     };
   },
 

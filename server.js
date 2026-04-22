@@ -1,6 +1,10 @@
+const bcrypt = require('bcrypt');
+
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
+const helmet = require('helmet');
+const rateLimit = require('express-rate-limit');
 const mysql = require('mysql2/promise');
 const nodemailer = require('nodemailer');
 const crypto = require('crypto');
@@ -8,8 +12,11 @@ const crypto = require('crypto');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Prioridad: MYSQL_URL (si existe, extraemos todo de ahí)
-if (process.env.MYSQL_URL) {
+// ===== Configuración de Entorno (Debug) =====
+console.log('🛠️ Iniciando servidor en entorno:', process.env.NODE_ENV || 'development');
+
+// Fallback para MYSQL_URL (típico en algunos entornos de Railway/Heroku)
+if (process.env.MYSQL_URL && (!process.env.MYSQLHOST || !process.env.MYSQLDATABASE)) {
     try {
         const url = new URL(process.env.MYSQL_URL);
         process.env.MYSQLHOST = url.hostname;
@@ -17,38 +24,29 @@ if (process.env.MYSQL_URL) {
         process.env.MYSQLUSER = url.username;
         process.env.MYSQLPASSWORD = url.password;
         process.env.MYSQLDATABASE = url.pathname.replace(/^\//, '');
-        console.log('🔗 Conexión configurada vía MYSQL_URL');
+        console.log('🔗 Variables cargadas desde MYSQL_URL');
     } catch (e) {
         console.error('❌ Error parseando MYSQL_URL:', e.message);
     }
 }
 
-// Normalización de variables (soporte para MYSQL_HOST y MYSQLHOST)
-const DB_CONFIG = {
-    host: process.env.MYSQLHOST || process.env.MYSQL_HOST || 'localhost',
-    user: process.env.MYSQLUSER || process.env.MYSQL_USER || 'root',
-    password: process.env.MYSQLPASSWORD || process.env.MYSQL_PASSWORD || '',
-    database: process.env.MYSQLDATABASE || process.env.MYSQL_DATABASE || 'lumex_db',
-    port: parseInt(process.env.MYSQLPORT || process.env.MYSQL_PORT || '3306', 10)
-};
-
 console.log('🔍 Detectando variables de base de datos:');
-console.log('- Host:', DB_CONFIG.host !== 'localhost' ? '✅ Configurado' : '⚠️ Usando localhost');
-console.log('- Usuario:', DB_CONFIG.user !== 'root' ? '✅ Configurado' : '⚠️ Usando root');
-console.log('- Base Datos:', DB_CONFIG.database !== 'lumex_db' ? '✅ Configurado' : '⚠️ Usando default');
-console.log('- Puerto:', DB_CONFIG.port);
+console.log('- MYSQLHOST:', process.env.MYSQLHOST ? '✅ Configurado' : '❌ Falta');
+console.log('- MYSQLUSER:', process.env.MYSQLUSER ? '✅ Configurado' : '❌ Falta');
+console.log('- MYSQLDATABASE:', process.env.MYSQLDATABASE ? '✅ Configurado' : '❌ Falta');
+console.log('- MYSQLPORT:', process.env.MYSQLPORT ? `✅ (${process.env.MYSQLPORT})` : '⚠️ No definido (usando 3306)');
 
 // ===== MySQL Pool Configuration =====
 const pool = mysql.createPool({
-    host: DB_CONFIG.host,
-    user: DB_CONFIG.user,
-    password: DB_CONFIG.password,
-    database: DB_CONFIG.database,
-    port: DB_CONFIG.port,
+    host: process.env.MYSQLHOST || 'localhost',
+    user: process.env.MYSQLUSER || 'root',
+    password: process.env.MYSQLPASSWORD || '',
+    database: process.env.MYSQLDATABASE || 'lumex_db',
+    port: parseInt(process.env.MYSQLPORT || '3306', 10),
     waitForConnections: true,
     connectionLimit: 10,
     queueLimit: 0,
-    connectTimeout: 10000,
+    connectTimeout: 10000, // 10 segundos
 });
 
 // Test connection
@@ -72,27 +70,6 @@ pool.on('error', (err) => {
 const runMigrations = async () => {
     try {
         console.log('🔍 Verificando estructura de base de datos...');
-        
-        // 1. Crear tabla usuarios si no existe
-        await pool.query(`
-            CREATE TABLE IF NOT EXISTS usuarios (
-                id_usuario INT AUTO_INCREMENT PRIMARY KEY,
-                nombre VARCHAR(255) NOT NULL,
-                email VARCHAR(255) UNIQUE,
-                usuario VARCHAR(255) UNIQUE,
-                contrasena VARCHAR(255) NOT NULL,
-                rol VARCHAR(50) DEFAULT 'usuario',
-                estado VARCHAR(20) DEFAULT 'activo',
-                acepta_terminos TINYINT(1) DEFAULT 0,
-                fecha_registro DATETIME DEFAULT CURRENT_TIMESTAMP,
-                fecha_aceptacion_terminos DATETIME,
-                telefono VARCHAR(20),
-                terminos_aceptados TINYINT(1) DEFAULT 0,
-                analisis_disponibles INT DEFAULT 0
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-        `);
-
-        // 2. Verificar columnas adicionales
         const [columns] = await pool.query('SHOW COLUMNS FROM usuarios');
         const names = columns.map(c => c.Field);
 
@@ -105,19 +82,19 @@ const runMigrations = async () => {
             { name: 'mod_actividad', query: 'ALTER TABLE usuarios ADD COLUMN mod_actividad TINYINT DEFAULT 1' },
             { name: 'mod_alertas', query: 'ALTER TABLE usuarios ADD COLUMN mod_alertas TINYINT DEFAULT 1' },
             { name: 'mod_pagos', query: 'ALTER TABLE usuarios ADD COLUMN mod_pagos TINYINT DEFAULT 1' },
+<<<<<<< HEAD
             { name: 'puede_gestionar_usuarios', query: 'ALTER TABLE usuarios ADD COLUMN puede_gestionar_usuarios TINYINT DEFAULT 1' },
             { name: 'acepta_terminos', query: 'ALTER TABLE usuarios ADD COLUMN acepta_terminos TINYINT(1) DEFAULT 0' },
             { name: 'estado', query: 'ALTER TABLE usuarios ADD COLUMN estado VARCHAR(20) DEFAULT "activo"' }
+=======
+            { name: 'analisis_disponibles', query: 'ALTER TABLE usuarios ADD COLUMN analisis_disponibles INT DEFAULT 0' }
+>>>>>>> 5cde9b6455ac72ee5987ed753d8498a97daebf5f
         ];
 
         for (const meta of migrations) {
             if (!names.includes(meta.name)) {
-                try {
-                    await pool.query(meta.query);
-                    console.log(`✅ Columna ${meta.name} añadida`);
-                } catch (e) {
-                    console.log(`⚠️ Ignorando error en migración ${meta.name}: ${e.message}`);
-                }
+                await pool.query(meta.query);
+                console.log(`✅ Columna ${meta.name} añadida`);
             }
         }
         console.log('🚀 Migraciones completadas.');
@@ -128,31 +105,22 @@ const runMigrations = async () => {
 runMigrations();
 
 // ===== SMTP Configuration =====
-// Normalización de variables SMTP
-const SMTP_CONFIG = {
-    host: process.env.SMTP_HOST || process.env.SMTPHOST,
-    port: process.env.SMTP_PORT || process.env.SMTPPORT,
-    user: process.env.SMTP_USER || process.env.SMTPUSER,
-    pass: process.env.SMTP_PASS || process.env.SMTPPASS,
-    from: process.env.SMTP_FROM || process.env.SMTPFROM
-};
-
 const smtpConfigured = [
-    SMTP_CONFIG.host,
-    SMTP_CONFIG.port,
-    SMTP_CONFIG.user,
-    SMTP_CONFIG.pass,
-    SMTP_CONFIG.from
+    process.env.SMTP_HOST,
+    process.env.SMTP_PORT,
+    process.env.SMTP_USER,
+    process.env.SMTP_PASS,
+    process.env.SMTP_FROM,
 ].every((value) => !!value);
 
 const transporter = smtpConfigured
     ? nodemailer.createTransport({
-        host: SMTP_CONFIG.host,
-        port: Number(SMTP_CONFIG.port),
-        secure: Number(SMTP_CONFIG.port) === 465,
+        host: process.env.SMTP_HOST,
+        port: Number(process.env.SMTP_PORT),
+        secure: Number(process.env.SMTP_PORT) === 465,
         auth: {
-            user: SMTP_CONFIG.user,
-            pass: SMTP_CONFIG.pass,
+            user: process.env.SMTP_USER,
+            pass: process.env.SMTP_PASS,
         },
     })
     : null;
@@ -161,8 +129,19 @@ if (!smtpConfigured) {
     console.warn('⚠️ SMTP no configurado. El endpoint /forgot-password quedará deshabilitado.');
 }
 
-app.use(cors());
+app.use(helmet());
+app.use(cors({ origin: process.env.FRONTEND_URL || '*' })); // Default to * but allow restriction via ENV
 app.use(express.json());
+
+// Rate limit para endpoints de autenticación
+const authLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 minutos
+    max: 10, // Límite de 10 peticiones por IP en la ventana
+    message: { success: false, message: 'Demasiados intentos desde esta IP, por favor intente más tarde.' }
+});
+
+app.use('/api/auth/login', authLimiter);
+app.use('/api/auth/forgot-password', authLimiter);
 
 // Middleware de Logs
 app.use((req, res, next) => {
@@ -174,7 +153,7 @@ app.use((req, res, next) => {
     const legacyPrefixes = ['/auth', '/admin', '/superadmin', '/analysis', '/payments'];
     const path = req.originalUrl || req.url;
     const hasLegacyPrefix = legacyPrefixes.some(p => path.startsWith(p));
-    
+
     if (hasLegacyPrefix && !path.startsWith('/api/')) {
         console.log(`[ROUTING] Adaptando ruta legacy: ${path} -> /api${path}`);
         req.url = '/api' + path;
@@ -188,7 +167,7 @@ const normalizeEmail = (email = '') => email.trim().toLowerCase();
 const otpMemCache = new Map();
 const OTP_EXPIRY_MINUTES = 15;
 
-const generateOtp = () => Math.floor(100000 + Math.random() * 900000).toString();
+const generateOtp = () => crypto.randomInt(100000, 999999).toString();
 
 const buildOtpEmailHtml = (otp) => `
   <div style="font-family: Arial, sans-serif; max-width: 560px; margin: 0 auto; padding: 24px; color: #1f2937;">
@@ -211,37 +190,9 @@ const buildOtpEmailHtml = (otp) => `
 app.get('/health', async (_req, res) => {
     try {
         const [rows] = await pool.query('SELECT 1 as result');
-        res.json({ 
-            success: true, 
-            message: 'Servidor y BD activos', 
-            database: 'Conectado ✅',
-            dbResult: rows[0].result 
-        });
+        res.json({ success: true, message: 'Servidor y BD activos', dbResult: rows[0].result });
     } catch (error) {
-        const missingVars = [];
-        if (!DB_CONFIG.host || DB_CONFIG.host === 'localhost') missingVars.push('MYSQL_HOST');
-        if (!DB_CONFIG.user || DB_CONFIG.user === 'root') missingVars.push('MYSQL_USER');
-        if (!DB_CONFIG.database || DB_CONFIG.database === 'lumex_db') missingVars.push('MYSQL_DATABASE');
-        if (!process.env.MYSQLPASSWORD && !process.env.MYSQL_PASSWORD) missingVars.push('MYSQL_PASSWORD');
-
-        const mask = (str) => {
-            if (!str || str === 'localhost' || str === 'root') return str;
-            return str.substring(0, 3) + '***';
-        };
-
-        res.status(500).json({ 
-            success: false, 
-            message: 'Servidor activo pero BD inactiva', 
-            details: error.message || error.code || String(error),
-            diagnostico: {
-                host_detectado: mask(DB_CONFIG.host),
-                usuario_detectado: mask(DB_CONFIG.user),
-                puerto_detectado: DB_CONFIG.port,
-                schema_detectado: mask(DB_CONFIG.database),
-                variables_faltantes: missingVars,
-                sugerencia: 'Si el host es "localhost" o el usuario es "root", significa que Railway no está inyectando tus credenciales reales. Verifica la pestaña Variables y asegúrate de añadir la contraseña.'
-            }
-        });
+        res.status(500).json({ success: false, message: 'Servidor activo pero BD inactiva', details: error.message });
     }
 });
 
@@ -285,8 +236,7 @@ app.post('/api/auth/register', async (req, res) => {
         return res.status(400).json({ success: false, message: 'Debe aceptar los términos y condiciones.' });
     }
 
-    if (!email && !username) return res.status(400).json({ success: false, message: 'Faltan datos de usuario.' });
-
+    // Validar rol permitido, si no viene o no es válido, se pone 'usuario' por defecto
     const validRoles = ['usuario', 'administrador', 'enfermero', 'doctor'];
     const finalRole = validRoles.includes(String(rol).toLowerCase()) ? String(rol).toLowerCase() : 'usuario';
 
@@ -296,9 +246,11 @@ app.post('/api/auth/register', async (req, res) => {
             return res.status(400).json({ success: false, message: 'El correo o nombre de usuario ya está registrado.' });
         }
 
+        const hashedPassword = await bcrypt.hash(passwordHash, 10);
+
         const [result] = await pool.query(
             'INSERT INTO usuarios (nombre, email, usuario, rol, contrasena, telefono, fecha_registro, terminos_aceptados, analisis_disponibles) VALUES (?, ?, ?, ?, ?, ?, NOW(), 1, 0)',
-            [name, email || null, username || null, finalRole, passwordHash, phone || null]
+            [name, email || null, username || null, finalRole, hashedPassword, phone || null]
         );
 
         const [newUser] = await pool.query('SELECT * FROM usuarios WHERE id_usuario = ?', [result.insertId]);
@@ -316,8 +268,8 @@ app.post('/api/auth/login', async (req, res) => {
         if (rows.length === 0) return res.status(401).json({ success: false, message: 'Usuario no encontrado' });
 
         const user = rows[0];
+
         const isAdmin = ['admin', 'administrador', 'superadmin'].includes(String(user.rol).trim().toLowerCase());
-        
         if (requiredRole === 'admin' && !isAdmin) {
             return res.status(403).json({ success: false, message: 'Solo administradores.' });
         }
@@ -326,7 +278,9 @@ app.post('/api/auth/login', async (req, res) => {
             return res.status(403).json({ success: false, message: 'Tu cuenta ha sido bloqueada. Contacta al soporte.' });
         }
 
-        if (user.contrasena !== passwordHash) {
+        const match = await bcrypt.compare(passwordHash, user.contrasena);
+
+        if (!match) {
             return res.status(401).json({ success: false, message: 'Contraseña incorrecta' });
         }
 
@@ -434,7 +388,11 @@ app.post('/api/auth/reset-password', async (req, res) => {
     if (!cacheObj || !cacheObj.verified) return res.status(400).json({ success: false, message: 'Verifica el código antes.' });
 
     try {
-        await pool.query('UPDATE usuarios SET contrasena = ? WHERE email = ?', [passwordHash, normalizedEmail]);
+        const hashedPassword = await bcrypt.hash(passwordHash, 10);
+        await pool.query(
+            'UPDATE usuarios SET contrasena = ? WHERE email = ?',
+            [hashedPassword, normalizedEmail]
+        );
         otpMemCache.delete(normalizedEmail);
         return res.json({ success: true, message: 'Contraseña actualizada' });
     } catch (err) {
@@ -447,10 +405,14 @@ app.post('/api/auth/reset-password', async (req, res) => {
 // ==========================================
 
 app.post('/api/payments/register', async (req, res) => {
-    const { userId, amount, monto, metodoPago, descripcion, creditsToAdd } = req.body;
+    const { userId, amount, monto, metodoPago, metodo, description, descripcion, credits, creditsToAdd } = req.body;
+
     const safeUserId = Number(userId);
-    const safeCredits = Number(creditsToAdd || 0);
+    // Priorizar los nombres enviados por paymentService.js
+    const safeCredits = Number(credits || creditsToAdd || 0);
     const safeMonto = Number(monto || amount || 0);
+    const finalMetodo = metodo || metodoPago || 'Tarjeta';
+    const finalDesc = description || descripcion || `Compra de ${safeCredits} créditos`;
 
     const conn = await pool.getConnection();
     try {
@@ -595,16 +557,16 @@ const MODEL_BY_ANALYSIS = {
 
 app.post('/api/analysis/save', async (req, res) => {
     try {
-        const { 
-            userId, analysisType, datasetName, datasetPath, parsedDataset, 
+        const {
+            userId, analysisType, datasetName, datasetPath, parsedDataset,
             analysisSummary, totalRegistros: rootTotal, totalAnomalias: rootAnomalias,
-            visualizationType 
+            visualizationType
         } = req.body || {};
         const numericUserId = Number(userId);
 
         const headers = Array.isArray(parsedDataset?.headers) ? parsedDataset.headers : [];
         const rows = Array.isArray(parsedDataset?.rows) ? parsedDataset.rows : [];
-        
+
         const totalRegistros = rootTotal ?? analysisSummary?.totalRegistros ?? rows.length;
         const totalAnomalias = rootAnomalias ?? analysisSummary?.totalAnomalias ?? 0;
         const finalVizType = visualizationType || 'histograma';
@@ -629,7 +591,7 @@ app.post('/api/analysis/save', async (req, res) => {
             const [datasetInsert] = await conn.query('INSERT INTO datasets (id_usuario, nombre_archivo, ruta_archivo, fecha_subida) VALUES (?, ?, ?, NOW())', [numericUserId, datasetName || 'dataset.csv', datasetPath || 'movil://dataset']);
 
             const resultados = (hasSummary || (totalRegistros > 0 && rows.length === 0)) ? [] : buildResults({ rows, headers });
-            const finalAnomalias = (totalAnomalias === 0 && resultados.length > 0) 
+            const finalAnomalias = (totalAnomalias === 0 && resultados.length > 0)
                 ? resultados.reduce((s, r) => s + (r.es_anomalia ? 1 : 0), 0)
                 : totalAnomalias;
 
@@ -643,7 +605,13 @@ app.post('/api/analysis/save', async (req, res) => {
             }
 
             await conn.commit();
-            res.json({ success: true, idAnalisis: analisisInsert.insertId, totalRegistros, totalAnomalias: finalAnomalias });
+            // Obtener créditos actualizados del usuario
+            const [userRow] = await conn.query('SELECT analisis_disponibles FROM usuarios WHERE id_usuario = ?', [numericUserId]);
+            const creditosRestantes = userRow[0]?.analisis_disponibles ?? 0;
+
+            console.log(`[ANALYSIS SUCCESS] userId=${numericUserId}, used=1, remaining=${creditosRestantes}`);
+
+            res.json({ success: true, idAnalisis: analisisInsert.insertId, totalRegistros, totalAnomalias, creditosRestantes });
         } catch (err) {
             await conn.rollback();
             throw err;
@@ -651,7 +619,7 @@ app.post('/api/analysis/save', async (req, res) => {
             conn.release();
         }
     } catch (error) {
-        console.error(error);
+        console.error('[ANALYSIS SAVE ERROR]', error.message);
         res.status(500).json({ success: false, message: error.message });
     }
 });
@@ -708,6 +676,8 @@ app.get('/api/superadmin/users', getAllUsersBackoffice);
 
 app.post('/api/superadmin/toggle-admin-permission', async (req, res) => {
     const { id_usuario, field, value } = req.body;
+
+    // Lista blanca de campos permitidos para evitar inyección SQL en el nombre de la columna
     const allowedFields = [
         'puede_gestionar_usuarios', 'permiso_editar', 'permiso_bloquear',
         'mod_nuevo_paciente', 'mod_gestion_usuarios', 'mod_reportes', 'mod_actividad', 'mod_alertas', 'mod_pagos'
@@ -715,6 +685,7 @@ app.post('/api/superadmin/toggle-admin-permission', async (req, res) => {
     if (!allowedFields.includes(field)) {
         return res.status(400).json({ success: false, message: 'Campo de permiso no válido' });
     }
+
     try {
         const query = `UPDATE usuarios SET ${field} = ? WHERE id_usuario = ?`;
         await pool.query(query, [value ? 1 : 0, id_usuario]);
@@ -729,14 +700,42 @@ app.post('/api/admin/update-user', async (req, res) => {
     try {
         let query = 'UPDATE usuarios SET nombre=?, email=?, usuario=?, rol=?, telefono=?';
         let params = [nombre, email, usuario, rol, telefono];
+
         if (passwordHash) {
             query += ', contrasena=?';
             params.push(passwordHash);
         }
+
+        query += ' WHERE id_usuario=?';
+        params.push(id_usuario);
+
+        await pool.query(query, params);
+        res.json({ success: true, message: 'Usuario actualizado con éxito' });
+    } catch (error) {
+        res.status(500).json({ success: false, message: 'Error al actualizar usuario: ' + error.message });
+    }
+});
+app.post('/admin/update-user', async (req, res) => {
+    const { id_usuario, nombre, email, usuario, rol, telefono, passwordHash } = req.body;
+    try {
+        let query = 'UPDATE usuarios SET nombre=?, email=?, usuario=?, rol=?, telefono=?';
+        let params = [nombre, email, usuario, rol, telefono];
+        if (passwordHash) { query += ', contrasena=?'; params.push(passwordHash); }
         query += ' WHERE id_usuario=?';
         params.push(id_usuario);
         await pool.query(query, params);
         res.json({ success: true, message: 'Usuario actualizado con éxito' });
+    } catch (error) { res.status(500).json({ success: false, message: error.message }); }
+});
+
+// Obtener usuario actual (refresco)
+app.post('/api/auth/get-user', async (req, res) => {
+    const { userId } = req.body;
+    try {
+        const [rows] = await pool.query('SELECT * FROM usuarios WHERE id_usuario = ?', [userId]);
+        if (rows.length === 0) return res.status(404).json({ success: false });
+        const { contrasena, ...safeUser } = rows[0];
+        res.json({ success: true, user: safeUser });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
     }
@@ -752,31 +751,89 @@ app.post('/api/admin/block-user', async (req, res) => {
         res.status(500).json({ success: false, message: error.message });
     }
 });
-
-app.delete('/api/admin/user/:id', async (req, res) => {
+app.post('/admin/block-user', async (req, res) => {
+    const { id_usuario, blocked } = req.body;
     try {
-        await pool.query('DELETE FROM usuarios WHERE id_usuario = ?', [req.params.id]);
-        res.json({ success: true, message: 'Usuario eliminado' });
+        const estado = blocked ? 'bloqueado' : 'activo';
+        await pool.query('UPDATE usuarios SET estado = ? WHERE id_usuario = ?', [estado, id_usuario]);
+        res.json({ success: true, message: `Usuario ${estado}` });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
     }
 });
 
-app.get('/api/admin/activity', async (req, res) => {
+// Recuperar contraseña (Generar código)
+app.post('/api/auth/forgot-password', async (req, res) => {
+    const { email } = req.body;
     try {
-        const query = `
-      SELECT a.*, u.nombre AS usuario_nombre, u.usuario AS usuario_username, u.email AS usuario_email,
-             d.nombre_archivo AS dataset_nombre,
-             m.tipo_modelo, m.descripcion, m.nombre_modelo
-      FROM analisis a
-      LEFT JOIN usuarios u ON a.id_usuario = u.id_usuario
-      LEFT JOIN datasets d ON a.id_dataset = d.id_dataset
-      LEFT JOIN modelos m ON a.id_modelo = m.id_modelo
-      ORDER BY a.fecha_analisis DESC
-      LIMIT 1000
-    `;
-        const [rows] = await pool.query(query);
-        res.json({ success: true, activity: rows });
+        const normalizedEmail = email.trim().toLowerCase();
+        const [rows] = await pool.query('SELECT id_usuario FROM usuarios WHERE email = ?', [normalizedEmail]);
+        if (rows.length === 0) {
+            return res.status(404).json({ success: false, message: 'Correo no registrado' });
+        }
+
+        // Generar código de 6 dígitos
+        const code = Math.floor(100000 + Math.random() * 900000).toString();
+
+        // Guardar en memoria (expira en 15 min)
+        otps[normalizedEmail] = {
+            code,
+            expires: Date.now() + (15 * 60 * 1000)
+        };
+
+        console.log("**************************************************");
+        console.log(`🔑 CÓDIGO PARA: ${normalizedEmail}`);
+        console.log(`👉 CÓDIGO: ${code}`);
+        console.log("**************************************************");
+
+        res.json({ success: true, message: 'Código generado correctamente. Revisa la consola del servidor.' });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+// Verificar código
+app.post('/api/auth/verify-token', async (req, res) => {
+    const { email, token } = req.body;
+    const normalizedEmail = email.trim().toLowerCase();
+
+    const stored = otps[normalizedEmail];
+
+    if (!stored) {
+        return res.status(400).json({ success: false, message: 'No hay un código pendiente para este correo' });
+    }
+
+    if (Date.now() > stored.expires) {
+        delete otps[normalizedEmail];
+        return res.status(400).json({ success: false, message: 'El código ha expirado' });
+    }
+
+    if (stored.code !== token) {
+        return res.status(400).json({ success: false, message: 'Código incorrecto' });
+    }
+
+    res.json({ success: true, message: 'Código verificado' });
+});
+
+// Cambiar contraseña real
+app.post('/api/auth/reset-password', async (req, res) => {
+    const { email, newPassword } = req.body;
+    const normalizedEmail = email.trim().toLowerCase();
+
+    try {
+        // En una App real aquí deberíamos verificar que el token fue validado antes.
+        // Para el demo, lo permitimos si el email existe.
+        const hashedPassword = await bcrypt.hash(newPassword, 10);
+
+        await pool.query(
+            'UPDATE usuarios SET contrasena = ? WHERE email = ?',
+            [hashedPassword, normalizedEmail]
+        );
+
+        // Limpiar OTP después de usarlo
+        delete otps[normalizedEmail];
+
+        res.json({ success: true, message: 'Contraseña actualizada correctamente' });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
     }

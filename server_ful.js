@@ -8,11 +8,8 @@ const crypto = require('crypto');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// ===== Configuración de Entorno (Debug) =====
-console.log('🛠️ Iniciando servidor en entorno:', process.env.NODE_ENV || 'development');
-
-// Fallback para MYSQL_URL (típico en algunos entornos de Railway/Heroku)
-if (process.env.MYSQL_URL && (!process.env.MYSQLHOST || !process.env.MYSQLDATABASE)) {
+// Prioridad: MYSQL_URL (si existe, extraemos todo de ahí)
+if (process.env.MYSQL_URL) {
     try {
         const url = new URL(process.env.MYSQL_URL);
         process.env.MYSQLHOST = url.hostname;
@@ -20,29 +17,38 @@ if (process.env.MYSQL_URL && (!process.env.MYSQLHOST || !process.env.MYSQLDATABA
         process.env.MYSQLUSER = url.username;
         process.env.MYSQLPASSWORD = url.password;
         process.env.MYSQLDATABASE = url.pathname.replace(/^\//, '');
-        console.log('🔗 Variables cargadas desde MYSQL_URL');
+        console.log('🔗 Conexión configurada vía MYSQL_URL');
     } catch (e) {
         console.error('❌ Error parseando MYSQL_URL:', e.message);
     }
 }
 
+// Normalización de variables (soporte para MYSQL_HOST y MYSQLHOST)
+const DB_CONFIG = {
+    host: process.env.MYSQLHOST || process.env.MYSQL_HOST || 'localhost',
+    user: process.env.MYSQLUSER || process.env.MYSQL_USER || 'root',
+    password: process.env.MYSQLPASSWORD || process.env.MYSQL_PASSWORD || '',
+    database: process.env.MYSQLDATABASE || process.env.MYSQL_DATABASE || 'lumex_db',
+    port: parseInt(process.env.MYSQLPORT || process.env.MYSQL_PORT || '3306', 10)
+};
+
 console.log('🔍 Detectando variables de base de datos:');
-console.log('- MYSQLHOST:', process.env.MYSQLHOST ? '✅ Configurado' : '❌ Falta');
-console.log('- MYSQLUSER:', process.env.MYSQLUSER ? '✅ Configurado' : '❌ Falta');
-console.log('- MYSQLDATABASE:', process.env.MYSQLDATABASE ? '✅ Configurado' : '❌ Falta');
-console.log('- MYSQLPORT:', process.env.MYSQLPORT ? `✅ (${process.env.MYSQLPORT})` : '⚠️ No definido (usando 3306)');
+console.log('- Host:', DB_CONFIG.host !== 'localhost' ? '✅ Configurado' : '⚠️ Usando localhost');
+console.log('- Usuario:', DB_CONFIG.user !== 'root' ? '✅ Configurado' : '⚠️ Usando root');
+console.log('- Base Datos:', DB_CONFIG.database !== 'lumex_db' ? '✅ Configurado' : '⚠️ Usando default');
+console.log('- Puerto:', DB_CONFIG.port);
 
 // ===== MySQL Pool Configuration =====
 const pool = mysql.createPool({
-    host: process.env.MYSQLHOST || 'localhost',
-    user: process.env.MYSQLUSER || 'root',
-    password: process.env.MYSQLPASSWORD || '',
-    database: process.env.MYSQLDATABASE || 'lumex_db',
-    port: parseInt(process.env.MYSQLPORT || '3306', 10),
+    host: DB_CONFIG.host,
+    user: DB_CONFIG.user,
+    password: DB_CONFIG.password,
+    database: DB_CONFIG.database,
+    port: DB_CONFIG.port,
     waitForConnections: true,
     connectionLimit: 10,
     queueLimit: 0,
-    connectTimeout: 10000, // 10 segundos
+    connectTimeout: 10000,
 });
 
 // Test connection
@@ -66,6 +72,27 @@ pool.on('error', (err) => {
 const runMigrations = async () => {
     try {
         console.log('🔍 Verificando estructura de base de datos...');
+        
+        // 1. Crear tabla usuarios si no existe
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS usuarios (
+                id_usuario INT AUTO_INCREMENT PRIMARY KEY,
+                nombre VARCHAR(255) NOT NULL,
+                email VARCHAR(255) UNIQUE,
+                usuario VARCHAR(255) UNIQUE,
+                contrasena VARCHAR(255) NOT NULL,
+                rol VARCHAR(50) DEFAULT 'usuario',
+                estado VARCHAR(20) DEFAULT 'activo',
+                acepta_terminos TINYINT(1) DEFAULT 0,
+                fecha_registro DATETIME DEFAULT CURRENT_TIMESTAMP,
+                fecha_aceptacion_terminos DATETIME,
+                telefono VARCHAR(20),
+                terminos_aceptados TINYINT(1) DEFAULT 0,
+                analisis_disponibles INT DEFAULT 0
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+        `);
+
+        // 2. Verificar columnas adicionales
         const [columns] = await pool.query('SHOW COLUMNS FROM usuarios');
         const names = columns.map(c => c.Field);
 
@@ -78,13 +105,18 @@ const runMigrations = async () => {
             { name: 'mod_actividad', query: 'ALTER TABLE usuarios ADD COLUMN mod_actividad TINYINT DEFAULT 1' },
             { name: 'mod_alertas', query: 'ALTER TABLE usuarios ADD COLUMN mod_alertas TINYINT DEFAULT 1' },
             { name: 'mod_pagos', query: 'ALTER TABLE usuarios ADD COLUMN mod_pagos TINYINT DEFAULT 1' },
-            { name: 'analisis_disponibles', query: 'ALTER TABLE usuarios ADD COLUMN analisis_disponibles INT DEFAULT 0' }
+            { name: 'acepta_terminos', query: 'ALTER TABLE usuarios ADD COLUMN acepta_terminos TINYINT(1) DEFAULT 0' },
+            { name: 'estado', query: 'ALTER TABLE usuarios ADD COLUMN estado VARCHAR(20) DEFAULT "activo"' }
         ];
 
         for (const meta of migrations) {
             if (!names.includes(meta.name)) {
-                await pool.query(meta.query);
-                console.log(`✅ Columna ${meta.name} añadida`);
+                try {
+                    await pool.query(meta.query);
+                    console.log(`✅ Columna ${meta.name} añadida`);
+                } catch (e) {
+                    console.log(`⚠️ Ignorando error en migración ${meta.name}: ${e.message}`);
+                }
             }
         }
         console.log('🚀 Migraciones completadas.');
@@ -95,22 +127,31 @@ const runMigrations = async () => {
 runMigrations();
 
 // ===== SMTP Configuration =====
+// Normalización de variables SMTP
+const SMTP_CONFIG = {
+    host: process.env.SMTP_HOST || process.env.SMTPHOST,
+    port: process.env.SMTP_PORT || process.env.SMTPPORT,
+    user: process.env.SMTP_USER || process.env.SMTPUSER,
+    pass: process.env.SMTP_PASS || process.env.SMTPPASS,
+    from: process.env.SMTP_FROM || process.env.SMTPFROM
+};
+
 const smtpConfigured = [
-    process.env.SMTP_HOST,
-    process.env.SMTP_PORT,
-    process.env.SMTP_USER,
-    process.env.SMTP_PASS,
-    process.env.SMTP_FROM,
+    SMTP_CONFIG.host,
+    SMTP_CONFIG.port,
+    SMTP_CONFIG.user,
+    SMTP_CONFIG.pass,
+    SMTP_CONFIG.from
 ].every((value) => !!value);
 
 const transporter = smtpConfigured
     ? nodemailer.createTransport({
-        host: process.env.SMTP_HOST,
-        port: Number(process.env.SMTP_PORT),
-        secure: Number(process.env.SMTP_PORT) === 465,
+        host: SMTP_CONFIG.host,
+        port: Number(SMTP_CONFIG.port),
+        secure: Number(SMTP_CONFIG.port) === 465,
         auth: {
-            user: process.env.SMTP_USER,
-            pass: process.env.SMTP_PASS,
+            user: SMTP_CONFIG.user,
+            pass: SMTP_CONFIG.pass,
         },
     })
     : null;
@@ -169,9 +210,37 @@ const buildOtpEmailHtml = (otp) => `
 app.get('/health', async (_req, res) => {
     try {
         const [rows] = await pool.query('SELECT 1 as result');
-        res.json({ success: true, message: 'Servidor y BD activos', dbResult: rows[0].result });
+        res.json({ 
+            success: true, 
+            message: 'Servidor y BD activos', 
+            database: 'Conectado ✅',
+            dbResult: rows[0].result 
+        });
     } catch (error) {
-        res.status(500).json({ success: false, message: 'Servidor activo pero BD inactiva', details: error.message });
+        const missingVars = [];
+        if (!DB_CONFIG.host || DB_CONFIG.host === 'localhost') missingVars.push('MYSQL_HOST');
+        if (!DB_CONFIG.user || DB_CONFIG.user === 'root') missingVars.push('MYSQL_USER');
+        if (!DB_CONFIG.database || DB_CONFIG.database === 'lumex_db') missingVars.push('MYSQL_DATABASE');
+        if (!process.env.MYSQLPASSWORD && !process.env.MYSQL_PASSWORD) missingVars.push('MYSQL_PASSWORD');
+
+        const mask = (str) => {
+            if (!str || str === 'localhost' || str === 'root') return str;
+            return str.substring(0, 3) + '***';
+        };
+
+        res.status(500).json({ 
+            success: false, 
+            message: 'Servidor activo pero BD inactiva', 
+            details: error.message || error.code || String(error),
+            diagnostico: {
+                host_detectado: mask(DB_CONFIG.host),
+                usuario_detectado: mask(DB_CONFIG.user),
+                puerto_detectado: DB_CONFIG.port,
+                schema_detectado: mask(DB_CONFIG.database),
+                variables_faltantes: missingVars,
+                sugerencia: 'Si el host es "localhost" o el usuario es "root", significa que Railway no está inyectando tus credenciales reales. Verifica la pestaña Variables y asegúrate de añadir la contraseña.'
+            }
+        });
     }
 });
 
@@ -179,7 +248,43 @@ app.get('/health', async (_req, res) => {
 // AUTH & USERS
 // ==========================================
 app.post('/api/auth/register', async (req, res) => {
-    let { email, username, name, phone, passwordHash, rol } = req.body;
+    let { email, username, name, phone, passwordHash, rol, terminos_aceptados, acceptTerms } = req.body;
+
+    // 1. Validar nombre
+    if (!name || name.trim() === '') {
+        return res.status(400).json({ success: false, message: 'El nombre es requerido.' });
+    }
+
+    // 2. Validar formato de email
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!email || !emailRegex.test(email)) {
+        return res.status(400).json({ success: false, message: 'El formato del email es inválido.' });
+    }
+
+    // 3. Validar username
+    const usernameRegex = /^[^\s]{3,20}$/;
+    if (!username || !usernameRegex.test(username)) {
+        return res.status(400).json({ success: false, message: 'El nombre de usuario debe tener entre 3 y 20 caracteres y no contener espacios.' });
+    }
+
+    // 4. Validar password
+    const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,}$/;
+    if (!passwordHash || !passwordRegex.test(passwordHash)) {
+        return res.status(400).json({ success: false, message: 'La contraseña debe tener al menos 8 caracteres, una mayúscula, una minúscula y un número.' });
+    }
+
+    // 5. Validar teléfono
+    const phoneRegex = /^\+?\d+$/;
+    if (!phone || !phoneRegex.test(String(phone).replace(/\s/g, ''))) {
+        return res.status(400).json({ success: false, message: 'El teléfono es requerido y debe contener solo números.' });
+    }
+
+    // 6. Validar aceptación de términos
+    const accepted = terminos_aceptados === 1 || terminos_aceptados === true || terminos_aceptados === '1' || terminos_aceptados === 'true' || acceptTerms === true || acceptTerms === 1 || acceptTerms === 'true' || acceptTerms === '1';
+    if (!accepted) {
+        return res.status(400).json({ success: false, message: 'Debe aceptar los términos y condiciones.' });
+    }
+
     if (!email && !username) return res.status(400).json({ success: false, message: 'Faltan datos de usuario.' });
 
     const validRoles = ['usuario', 'administrador', 'enfermero', 'doctor'];

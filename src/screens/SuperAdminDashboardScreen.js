@@ -14,6 +14,7 @@ import { getApiUrl } from '../services/lumex';
 
 const ROLES = [
   { id: 'gestion_personas', label: 'Gestión de Personas', icon: 'people-outline', color: '#0f6d78', description: 'Administración de Usuarios y Personal del Sistema' },
+  { id: 'reportes_globales', label: 'Usuarios y Reportes', icon: 'clipboard-outline', color: '#2b7896', description: 'Consulta de análisis y reportes de todos los usuarios' },
   { id: 'supervision_pagos', label: 'Supervisión de Pagos', icon: 'card-outline', color: '#e67e22', description: 'Supervisión de transacciones y pagos de usuarios' },
 ];
 
@@ -44,6 +45,7 @@ export default function SuperAdminDashboardScreen({ navigation }) {
   const [showRegisterModal, setShowRegisterModal] = useState(false);
   const [showPermissionsModal, setShowPermissionsModal] = useState(false);
   const [showMyProfileModal, setShowMyProfileModal] = useState(false);
+  const [showReportesGlobalesModal, setShowReportesGlobalesModal] = useState(false);
 
   // Análisis y Reportes (SuperAdmin)
   const [activityRows, setActivityRows] = useState([]);
@@ -183,9 +185,11 @@ export default function SuperAdminDashboardScreen({ navigation }) {
   const isMaster = currentUser?.usuario === 'superadmin01' || currentUser?.id_usuario === 1;
 
   const handleSelectRole = (roleId) => {
-    if (roleId === 'alta_cuenta') {
-      setRegisterFormData({ nombre: '', usuario: '', email: '', telefono: '', password: '', rol: 'usuario' });
-      setShowRegisterModal(true);
+    if (roleId === 'reportes_globales') {
+      // Filtrar solo usuarios finales para reportes clínicos
+      const patients = allUsers.filter(u => String(u.rol || '').toLowerCase() === 'usuario');
+      setFilteredUsers(patients);
+      setShowReportesGlobalesModal(true);
       return;
     }
 
@@ -571,7 +575,66 @@ export default function SuperAdminDashboardScreen({ navigation }) {
         </View>
       </Modal>
 
-      {/* Modal Historial de Análisis */}
+      {/* Modal Usuarios y Reportes (Módulo Independiente) */}
+      <Modal visible={showReportesGlobalesModal} animationType="slide" transparent={true}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContainer}>
+            <View style={styles.modalHeader}>
+              <View>
+                <Text style={styles.modalHeaderTitle}>Usuarios y Reportes</Text>
+                <Text style={styles.modalHeaderSub}>Selecciona un paciente para ver su historial clínico</Text>
+              </View>
+              <TouchableOpacity onPress={() => setShowReportesGlobalesModal(false)}>
+                <Ionicons name="close-circle" size={30} color="#ccc" />
+              </TouchableOpacity>
+            </View>
+            
+            <FlatList
+              data={filteredUsers}
+              keyExtractor={(item) => String(item.id_usuario)}
+              style={{marginTop: 10}}
+              renderItem={({ item }) => (
+                <TouchableOpacity 
+                   style={[styles.userListItem, {borderLeftWidth: 4, borderLeftColor: '#2b7896'}]} 
+                   onPress={() => {
+                     handleOpenAnalysis(item);
+                   }}
+                >
+                   <View style={styles.userInfo}>
+                      <View style={[styles.avatar, {backgroundColor: '#2b7896'}]}>
+                        <Text style={styles.avatarText}>{item.nombre?.charAt(0).toUpperCase() || 'U'}</Text>
+                      </View>
+                      <View style={{marginLeft: 12}}>
+                        <Text style={[styles.userName, {color: '#2b7896'}]}>{item.nombre || item.usuario}</Text>
+                        <Text style={styles.userEmail}>{item.email}</Text>
+                      </View>
+                   </View>
+                   <View style={{flexDirection: 'row', alignItems: 'center', gap: 10}}>
+                      <View style={{backgroundColor: '#f1f7f9', padding: 8, borderRadius: 10}}>
+                        <Ionicons name="chevron-forward" size={20} color="#2b7896" />
+                      </View>
+                   </View>
+                </TouchableOpacity>
+              )}
+              ListEmptyComponent={
+                <View style={{padding: 40, alignItems: 'center'}}>
+                  <Ionicons name="people-outline" size={50} color="#eee" />
+                  <Text style={[styles.emptyText, {marginTop: 10}]}>No se encontraron usuarios finales</Text>
+                </View>
+              }
+            />
+            <View style={{marginTop: 15, borderTopWidth: 1, borderTopColor: '#f0f0f0', paddingTop: 15, alignItems: 'center'}}>
+                <TouchableOpacity 
+                    style={[styles.btnSave, {backgroundColor: '#2b7896', paddingHorizontal: 40}]} 
+                    onPress={() => setShowReportesGlobalesModal(false)}
+                >
+                    <Text style={styles.btnSaveText}>Volver al Inicio</Text>
+                </TouchableOpacity>
+             </View>
+          </View>
+        </View>
+      </Modal>
+
       <Modal visible={showAnalysisModal} animationType="slide" transparent={true}>
         <View style={styles.modalOverlay}>
           <View style={styles.modalContainer}>
@@ -985,13 +1048,15 @@ const styles = StyleSheet.create({
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
   modalContainer: { height: '80%', backgroundColor: '#fff', borderTopLeftRadius: 35, borderTopRightRadius: 35, padding: 25 },
   modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
-  modalHeaderTitle: { fontSize: 19, fontWeight: '800', color: '#15333d', textTransform: 'capitalize' },
+  modalHeaderTitle: { fontSize: 20, fontWeight: 'bold', color: '#15333d' },
+  modalHeaderSub: { fontSize: 13, color: '#6d8a91', marginTop: 2 },
+  modalSubTitle: { fontSize: 13, color: '#6d8a91', marginBottom: 20 },
   userListItem: { flexDirection: 'row', alignItems: 'center', paddingVertical: 15, borderBottomWidth: 1, borderBottomColor: '#f0f0f0' },
   userListAvatar: { width: 45, height: 45, borderRadius: 15, backgroundColor: '#0f6d78', justifyContent: 'center', alignItems: 'center', marginRight: 15 },
   userListAvatarText: { color: '#fff', fontWeight: 'bold', fontSize: 18 },
   userListName: { fontSize: 15, fontWeight: 'bold', color: '#15333d' },
   userListEmail: { fontSize: 12, color: '#777' },
-  emptyText: { textAlign: 'center', marginTop: 50, color: '#999', fontStyle: 'italic' },
+  emptyText: { textAlign: 'center', color: '#999', fontStyle: 'italic' },
   modalOverlayDark: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'center', alignItems: 'center' },
   detailCard: { width: '90%', maxHeight: '85%', backgroundColor: '#fff', borderRadius: 25, padding: 25, shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 15, elevation: 10 },
   detailHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },

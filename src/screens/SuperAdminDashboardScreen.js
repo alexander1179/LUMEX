@@ -1,16 +1,19 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, FlatList, Alert, Modal,
   ActivityIndicator, TextInput, ScrollView, StatusBar, Switch
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import * as Print from 'expo-print';
+import * as Sharing from 'expo-sharing';
+import * as FileSystem from 'expo-file-system/legacy';
+import ViewShot from 'react-native-view-shot';
 import { fetchAllUsers, updateUser, deleteUser, updateAdminPermission, hashPassword, registerUser } from '../services/lumex/authService';
 import { storageService } from '../services/storage/storageService';
 import { getApiUrl } from '../services/lumex';
 
 const ROLES = [
   { id: 'gestion_personas', label: 'Gestión de Personas', icon: 'people-outline', color: '#0f6d78', description: 'Administración de Usuarios y Personal del Sistema' },
-  { id: 'alta_cuenta', label: 'Registro de Personal y Usuarios', icon: 'person-add-outline', color: '#1a7da2', description: 'Alta de nuevas credenciales con asignación de rol jerárquico' },
   { id: 'supervision_pagos', label: 'Supervisión de Pagos', icon: 'card-outline', color: '#e67e22', description: 'Supervisión de transacciones y pagos de usuarios' },
 ];
 
@@ -41,6 +44,16 @@ export default function SuperAdminDashboardScreen({ navigation }) {
   const [showRegisterModal, setShowRegisterModal] = useState(false);
   const [showPermissionsModal, setShowPermissionsModal] = useState(false);
   const [showMyProfileModal, setShowMyProfileModal] = useState(false);
+
+  // Análisis y Reportes (SuperAdmin)
+  const [activityRows, setActivityRows] = useState([]);
+  const [loadingActivity, setLoadingActivity] = useState(false);
+  const [showAnalysisModal, setShowAnalysisModal] = useState(false);
+  const [selectedUserForAnalysis, setSelectedUserForAnalysis] = useState(null);
+  const [showReportDetailModal, setShowReportDetailModal] = useState(false);
+  const [selectedReport, setSelectedReport] = useState(null);
+  const [generatingReport, setGeneratingReport] = useState(false);
+  const reportImageShotRef = useRef(null);
   
   // Pagos y Restricciones
   const [allPayments, setAllPayments] = useState([]);
@@ -74,6 +87,30 @@ export default function SuperAdminDashboardScreen({ navigation }) {
     const user = await storageService.getUser();
     setCurrentUser(user);
     await loadUsers();
+    await loadUserActivity();
+  };
+
+  const loadUserActivity = async () => {
+    setLoadingActivity(true);
+    try {
+      const response = await fetch(`${getApiUrl()}/admin/activity`);
+      const json = await response.json();
+      if (json.success) setActivityRows(json.activity || []);
+    } catch { 
+      // Silencio
+    } finally {
+      setLoadingActivity(false);
+    }
+  };
+
+  const formatDateTime = (value) => {
+    if (!value) return 'Sin datos';
+    const parsed = new Date(value);
+    if (isNaN(parsed.getTime())) return String(value);
+    return parsed.toLocaleString('es-ES', {
+      year: 'numeric', month: '2-digit', day: '2-digit',
+      hour: '2-digit', minute: '2-digit'
+    });
   };
 
   const loadUsers = async () => {
@@ -249,6 +286,71 @@ export default function SuperAdminDashboardScreen({ navigation }) {
       } else { Alert.alert('Error de Guardado', result.message); }
     } catch (err) { Alert.alert('Error', err.message); } 
     finally { setLoading(false); }
+  };
+
+  const handleOpenAnalysis = (user) => {
+    setSelectedUserForAnalysis(user);
+    setShowAnalysisModal(true);
+  };
+
+  const getUserAnalysis = () => {
+    if (!selectedUserForAnalysis) return [];
+    return activityRows.filter(a => String(a.id_usuario) === String(selectedUserForAnalysis.id_usuario));
+  };
+
+  const openReport = (report) => {
+    setSelectedReport(report);
+    setShowReportDetailModal(true);
+  };
+
+  const exportReport = async (format) => {
+    if (!selectedReport) return;
+    setGeneratingReport(true);
+    try {
+      const { 
+        usuario_nombre, usuario_username, total_registros, total_anomalias, 
+        fecha_analisis, dataset_nombre, nombre_modelo, tipo_modelo 
+      } = selectedReport;
+      const rate = total_registros > 0 ? (total_anomalias / total_registros) * 100 : 0;
+      
+      let conclusion = 'El comportamiento general es estable con baja tasa de anomalías.';
+      if (rate >= 30) conclusion = 'Se observa una concentración alta de anomalías. Se recomienda revisión médica urgente.';
+      else if (rate >= 10) conclusion = 'Se identifica un nivel moderado de anomalías. Se sugiere seguimiento clínico.';
+
+      const html = `
+        <html>
+          <body style="font-family: Arial, sans-serif; padding: 40px; color: #15333d;">
+            <h1 style="color: #0f6d78;">Reporte de Análisis Lumex</h1>
+            <p><strong>Paciente:</strong> ${usuario_nombre || usuario_username}</p>
+            <p><strong>Fecha:</strong> ${formatDateTime(fecha_analisis)}</p>
+            <p><strong>Dataset:</strong> ${dataset_nombre || 'N/D'}</p>
+            <p><strong>Modelo:</strong> ${nombre_modelo || tipo_modelo || 'N/D'}</p>
+            <hr/>
+            <h3>Resumen de Resultados</h3>
+            <p>Total Registros: ${total_registros}</p>
+            <p>Total Anomalías: ${total_anomalias}</p>
+            <p>Tasa: ${rate.toFixed(1)}%</p>
+            <div style="background: #f4f8f9; padding: 20px; border-radius: 10px;">
+              <h4>Conclusión Profesional</h4>
+              <p>${conclusion}</p>
+            </div>
+            <p style="margin-top: 50px; font-size: 12px; color: #6d8a91;">Este reporte es un apoyo diagnóstico y debe ser validado por un profesional.</p>
+          </body>
+        </html>
+      `;
+
+      if (format === 'pdf') {
+        const { uri } = await Print.printToFileAsync({ html });
+        await Sharing.shareAsync(uri);
+      } else {
+        const uri = await reportImageShotRef.current.capture();
+        await Sharing.shareAsync(uri);
+      }
+    } catch (e) {
+      Alert.alert('Error', 'No se pudo exportar el reporte');
+    } finally {
+      setGeneratingReport(false);
+    }
   };
 
   const handleDelete = () => {
@@ -446,6 +548,9 @@ export default function SuperAdminDashboardScreen({ navigation }) {
                         </View>
                    </View>
                    <View style={{flexDirection: 'row', alignItems: 'center', gap: 10}}>
+                      <TouchableOpacity onPress={() => handleOpenAnalysis(item)} style={{padding: 8, backgroundColor: '#fdf3e7', borderRadius: 8}}>
+                         <Ionicons name="bar-chart-outline" size={20} color="#e67e22" />
+                      </TouchableOpacity>
                       <TouchableOpacity onPress={() => toggleBlockUser(item)} style={{padding: 8, backgroundColor: item.estado === 'bloqueado' ? '#fbeeee' : '#ecf0f1', borderRadius: 8}}>
                          <Ionicons name={item.estado === 'bloqueado' ? 'lock-closed' : 'lock-open-outline'} size={20} color={item.estado === 'bloqueado' ? '#e74c3c' : '#7f8c8d'} />
                       </TouchableOpacity>
@@ -462,6 +567,88 @@ export default function SuperAdminDashboardScreen({ navigation }) {
                     <Text style={styles.btnSaveText}>Salir</Text>
                 </TouchableOpacity>
              </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Modal Historial de Análisis */}
+      <Modal visible={showAnalysisModal} animationType="slide" transparent={true}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContainer}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalHeaderTitle}>Historial: {selectedUserForAnalysis?.nombre}</Text>
+              <TouchableOpacity onPress={() => setShowAnalysisModal(false)}><Ionicons name="close-circle" size={30} color="#ccc" /></TouchableOpacity>
+            </View>
+            <FlatList
+              data={getUserAnalysis()}
+              keyExtractor={(item) => String(item.id_analisis)}
+              renderItem={({ item }) => (
+                <TouchableOpacity style={styles.analysisItem} onPress={() => openReport(item)}>
+                  <View style={styles.analysisIconBox}><Ionicons name="document-text-outline" size={24} color="#0f6d78" /></View>
+                  <View style={{flex: 1, marginLeft: 12}}>
+                    <Text style={styles.analysisType}>{item.tipo_modelo || 'Análisis de Datos'}</Text>
+                    <Text style={styles.analysisDate}>{formatDateTime(item.fecha_analisis)}</Text>
+                  </View>
+                  <Ionicons name="chevron-forward" size={20} color="#ccc" />
+                </TouchableOpacity>
+              )}
+              ListEmptyComponent={<Text style={styles.emptyText}>Este usuario no tiene análisis registrados.</Text>}
+            />
+          </View>
+        </View>
+      </Modal>
+
+      {/* Modal Detalle de Reporte */}
+      <Modal visible={showReportDetailModal} animationType="fade" transparent={true}>
+        <View style={styles.modalOverlayDark}>
+          <View style={[styles.detailCard, {width: '90%', maxHeight: '90%'}]}>
+            <View style={styles.detailHeader}>
+              <Text style={styles.detailTitle}>Reporte Clínico</Text>
+              <TouchableOpacity onPress={() => setShowReportDetailModal(false)}><Ionicons name="close" size={24} color="#666" /></TouchableOpacity>
+            </View>
+            
+            <ViewShot ref={reportImageShotRef} options={{ format: 'jpg', quality: 0.9 }} style={{backgroundColor: '#fff', padding: 15, borderRadius: 10}}>
+              <ScrollView showsVerticalScrollIndicator={false}>
+                <View style={styles.reportSection}>
+                  <Text style={styles.reportLabel}>Paciente</Text>
+                  <Text style={styles.reportValue}>{selectedReport?.usuario_nombre || selectedReport?.usuario_username}</Text>
+                </View>
+                <View style={styles.reportSection}>
+                  <Text style={styles.reportLabel}>Fecha y Hora</Text>
+                  <Text style={styles.reportValue}>{formatDateTime(selectedReport?.fecha_analisis)}</Text>
+                </View>
+                <View style={styles.reportSection}>
+                  <Text style={styles.reportLabel}>Modelo Utilizado</Text>
+                  <Text style={styles.reportValue}>{selectedReport?.nombre_modelo || selectedReport?.tipo_modelo || 'N/D'}</Text>
+                </View>
+                <View style={[styles.reportSection, {borderBottomWidth: 0}]}>
+                  <Text style={styles.reportLabel}>Resultado del Análisis</Text>
+                  <View style={styles.resultBadge}>
+                    <Text style={styles.resultText}>Anomalías: {selectedReport?.total_anomalias} de {selectedReport?.total_registros}</Text>
+                    <Text style={styles.resultRate}>Tasa: {((Number(selectedReport?.total_anomalias)/Number(selectedReport?.total_registros))*100).toFixed(1)}%</Text>
+                  </View>
+                </View>
+                <View style={styles.conclusionBox}>
+                  <Text style={styles.conclusionTitle}>Conclusión Profesional</Text>
+                  <Text style={styles.conclusionText}>
+                    {Number(selectedReport?.total_anomalias)/Number(selectedReport?.total_registros) >= 0.3 
+                      ? 'Se observa una concentración alta de anomalías. Se recomienda revisión médica urgente.' 
+                      : 'El comportamiento general es estable con baja tasa de anomalías.'}
+                  </Text>
+                </View>
+              </ScrollView>
+            </ViewShot>
+
+            <View style={styles.exportRow}>
+              <TouchableOpacity style={styles.exportBtn} onPress={() => exportReport('pdf')} disabled={generatingReport}>
+                <Ionicons name="document-outline" size={20} color="#fff" />
+                <Text style={styles.exportBtnText}>PDF</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[styles.exportBtn, {backgroundColor: '#e67e22'}]} onPress={() => exportReport('image')} disabled={generatingReport}>
+                <Ionicons name="image-outline" size={20} color="#fff" />
+                <Text style={styles.exportBtnText}>Imagen</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
       </Modal>
@@ -820,6 +1007,22 @@ const styles = StyleSheet.create({
   detailFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderTopWidth: 1, borderTopColor: '#eee', paddingTop: 20 },
   btnDelete: { flexDirection: 'row', alignItems: 'center' },
   btnDeleteText: { color: '#ff3b3b', fontWeight: 'bold', marginLeft: 5 },
+  analysisItem: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#f4f8f9', padding: 15, borderRadius: 15, marginBottom: 12 },
+  analysisIconBox: { width: 45, height: 45, borderRadius: 12, backgroundColor: '#0f6d7820', justifyContent: 'center', alignItems: 'center' },
+  analysisType: { fontSize: 15, fontWeight: 'bold', color: '#15333d' },
+  analysisDate: { fontSize: 12, color: '#6d8a91', marginTop: 2 },
+  reportSection: { borderBottomWidth: 1, borderBottomColor: '#f0f0f0', paddingVertical: 12 },
+  reportLabel: { fontSize: 12, color: '#6d8a91', fontWeight: '600', textTransform: 'uppercase' },
+  reportValue: { fontSize: 16, color: '#15333d', fontWeight: 'bold', marginTop: 4 },
+  resultBadge: { backgroundColor: '#fdf3e7', padding: 12, borderRadius: 10, marginTop: 8 },
+  resultText: { fontSize: 14, color: '#e67e22', fontWeight: 'bold' },
+  resultRate: { fontSize: 13, color: '#0f6d78', marginTop: 2 },
+  conclusionBox: { backgroundColor: '#0f6d7810', padding: 15, borderRadius: 12, marginTop: 20 },
+  conclusionTitle: { fontSize: 14, fontWeight: 'bold', color: '#0f6d78' },
+  conclusionText: { fontSize: 13, color: '#15333d', marginTop: 5, lineHeight: 18 },
+  exportRow: { flexDirection: 'row', justifyContent: 'center', gap: 15, marginTop: 20, borderTopWidth: 1, borderTopColor: '#f0f0f0', paddingTop: 20 },
+  exportBtn: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#0f6d78', paddingHorizontal: 20, paddingVertical: 12, borderRadius: 12 },
+  exportBtnText: { color: '#fff', fontWeight: 'bold' },
   btnSave: { backgroundColor: '#0f6d78', paddingHorizontal: 20, paddingVertical: 12, borderRadius: 12 },
   btnSaveText: { color: '#fff', fontWeight: 'bold' },
   permissionToggleRow: {

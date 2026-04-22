@@ -889,6 +889,7 @@ export default function AdminDashboardScreen({ navigation }) {
   useEffect(() => {
     loadDashboardData();
     loadPaymentsData();
+    loadUserActivity();
 
     const loadSigner = async () => {
       try {

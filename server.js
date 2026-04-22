@@ -738,6 +738,24 @@ app.post('/api/analysis/history', async (req, res) => {
 });
 
 // Admin endpoints
+const getAllActivity = async (req, res) => {
+    try {
+        const query = `
+      SELECT a.*, u.nombre as usuario_nombre, u.usuario as usuario_username, u.email as usuario_email,
+             d.nombre_archivo as dataset_nombre, m.nombre_modelo, m.tipo_modelo
+      FROM analisis a
+      JOIN usuarios u ON a.id_usuario = u.id_usuario
+      LEFT JOIN datasets d ON a.id_dataset = d.id_dataset
+      LEFT JOIN modelos m ON a.id_modelo = m.id_modelo
+      ORDER BY a.fecha_analisis DESC
+    `;
+        const [rows] = await pool.query(query);
+        res.json({ success: true, activity: rows });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
 const getAllUsersBackoffice = async (req, res) => {
     try {
         const query = `
@@ -754,6 +772,7 @@ const getAllUsersBackoffice = async (req, res) => {
     }
 };
 
+app.get('/api/admin/activity', getAllActivity);
 app.get('/api/admin/users', getAllUsersBackoffice);
 app.get('/api/superadmin/users', getAllUsersBackoffice);
 

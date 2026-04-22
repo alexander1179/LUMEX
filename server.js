@@ -69,7 +69,93 @@ pool.on('error', (err) => {
 // ===== Auto Migration =====
 const runMigrations = async () => {
     try {
-        console.log('🔍 Verificando estructura de base de datos...');
+        // 1. Crear tabla usuarios si no existe
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS usuarios (
+                id_usuario INT AUTO_INCREMENT PRIMARY KEY,
+                nombre VARCHAR(255),
+                email VARCHAR(255) UNIQUE,
+                usuario VARCHAR(255) UNIQUE,
+                contrasena VARCHAR(255),
+                telefono VARCHAR(50),
+                rol VARCHAR(50) DEFAULT 'usuario',
+                fecha_registro DATETIME DEFAULT CURRENT_TIMESTAMP,
+                acepta_terminos TINYINT(1) DEFAULT 0,
+                estado VARCHAR(20) DEFAULT 'activo',
+                analisis_disponibles INT DEFAULT 0
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+        `);
+
+        // 2. Crear tabla pagos
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS pagos (
+                id_pago VARCHAR(255) PRIMARY KEY,
+                id_usuario INT,
+                monto DECIMAL(10,2),
+                moneda VARCHAR(10) DEFAULT 'USD',
+                descripcion TEXT,
+                metodo_pago VARCHAR(100),
+                estado VARCHAR(50),
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (id_usuario) REFERENCES usuarios(id_usuario) ON DELETE CASCADE
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+        `);
+
+        // 3. Crear tabla datasets
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS datasets (
+                id_dataset INT AUTO_INCREMENT PRIMARY KEY,
+                id_usuario INT,
+                nombre_archivo VARCHAR(255),
+                ruta_archivo TEXT,
+                fecha_subida DATETIME DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (id_usuario) REFERENCES usuarios(id_usuario) ON DELETE CASCADE
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+        `);
+
+        // 4. Crear tabla modelos
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS modelos (
+                id_modelo INT AUTO_INCREMENT PRIMARY KEY,
+                nombre_modelo VARCHAR(255),
+                descripcion TEXT,
+                tipo_modelo VARCHAR(100),
+                fecha_creacion DATETIME DEFAULT CURRENT_TIMESTAMP
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+        `);
+
+        // 5. Crear tabla analisis
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS analisis (
+                id_analisis INT AUTO_INCREMENT PRIMARY KEY,
+                id_usuario INT,
+                id_dataset INT,
+                id_modelo INT,
+                fecha_analisis DATETIME DEFAULT CURRENT_TIMESTAMP,
+                total_registros INT,
+                total_anomalias INT,
+                tipo_analisis VARCHAR(100),
+                tipo_visualizacion VARCHAR(100),
+                estado VARCHAR(50),
+                FOREIGN KEY (id_usuario) REFERENCES usuarios(id_usuario) ON DELETE CASCADE,
+                FOREIGN KEY (id_dataset) REFERENCES datasets(id_dataset) ON DELETE CASCADE,
+                FOREIGN KEY (id_modelo) REFERENCES modelos(id_modelo) ON DELETE SET NULL
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+        `);
+
+        // 6. Crear tabla resultados
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS resultados (
+                id_resultado INT AUTO_INCREMENT PRIMARY KEY,
+                id_analisis INT,
+                indice_registro INT,
+                error_reconstruccion DOUBLE,
+                es_anomalia TINYINT(1),
+                FOREIGN KEY (id_analisis) REFERENCES analisis(id_analisis) ON DELETE CASCADE
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+        `);
+
+        // Migrar columnas adicionales en usuarios si ya existe
         const [columns] = await pool.query('SHOW COLUMNS FROM usuarios');
         const names = columns.map(c => c.Field);
 
@@ -420,7 +506,7 @@ app.post('/api/payments/register', async (req, res) => {
         const idPago = crypto.randomUUID();
         await conn.query(
             'INSERT INTO pagos (id_pago, id_usuario, monto, moneda, descripcion, metodo_pago, estado, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, NOW())',
-            [idPago, safeUserId, safeMonto, 'USD', descripcion || `Compra de ${safeCredits} créditos`, metodoPago || 'Tarjeta', 'completado']
+            [idPago, safeUserId, safeMonto, 'USD', finalDesc, finalMetodo, 'completado']
         );
 
         await conn.query(

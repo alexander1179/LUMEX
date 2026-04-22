@@ -71,33 +71,31 @@ export default function PaymentScreen({ navigation }) {
 
     setLoading(true);
     
-    // Simulamos un pequeño delay de procesamiento de pasarela
-    setTimeout(async () => {
-      try {
-        const result = await registerPayment(
-          userId, 
-          plan.price,           // amount
-          plan.price,           // monto
-          'Tarjeta',            // metodoPago
-          `LUMEX: ${plan.title} (${plan.credits} créditos)`, // description
-          plan.credits          // creditsToAdd
-        );
+    try {
+      const result = await registerPayment(
+        userId, 
+        plan.price,           // amount
+        plan.price,           // monto
+        'Tarjeta',            // metodoPago
+        `LUMEX: ${plan.title} (${plan.credits} créditos)`, // description
+        plan.credits          // creditsToAdd
+      );
 
-        if (result.success) {
-          Alert.alert(
-            '¡Pago Exitoso!',
-            'la transaccion ha sido realizada con exito. gracias por utilizar nuestros servicios.',
-            [{ text: 'Comenzar Análisis', onPress: () => navigation.goBack() }]
-          );
-        } else {
-          Alert.alert('Error', 'No se pudo procesar el pago en la base de datos.');
-        }
-      } catch (error) {
-        Alert.alert('Error', 'Ocurrió un problema inesperado.');
-      } finally {
-        setLoading(false);
+      if (result.success) {
+        Alert.alert(
+          '¡Pago Exitoso!',
+          result.message || 'La transacción ha sido realizada con éxito. Gracias por utilizar nuestros servicios.',
+          [{ text: 'Comenzar Análisis', onPress: () => navigation.goBack() }]
+        );
+      } else {
+        Alert.alert('Error', result.message || 'No se pudo procesar el pago en la base de datos.');
       }
-    }, 1500);
+    } catch (error) {
+      console.log('Error en handlePayment:', error);
+      Alert.alert('Error', 'Ocurrió un problema inesperado al procesar el pago.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (

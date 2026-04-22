@@ -105,6 +105,7 @@ const runMigrations = async () => {
             { name: 'mod_actividad', query: 'ALTER TABLE usuarios ADD COLUMN mod_actividad TINYINT DEFAULT 1' },
             { name: 'mod_alertas', query: 'ALTER TABLE usuarios ADD COLUMN mod_alertas TINYINT DEFAULT 1' },
             { name: 'mod_pagos', query: 'ALTER TABLE usuarios ADD COLUMN mod_pagos TINYINT DEFAULT 1' },
+            { name: 'puede_gestionar_usuarios', query: 'ALTER TABLE usuarios ADD COLUMN puede_gestionar_usuarios TINYINT DEFAULT 1' },
             { name: 'acepta_terminos', query: 'ALTER TABLE usuarios ADD COLUMN acepta_terminos TINYINT(1) DEFAULT 0' },
             { name: 'estado', query: 'ALTER TABLE usuarios ADD COLUMN estado VARCHAR(20) DEFAULT "activo"' }
         ];
@@ -267,10 +268,9 @@ app.post('/api/auth/register', async (req, res) => {
         return res.status(400).json({ success: false, message: 'El nombre de usuario debe tener entre 3 y 20 caracteres y no contener espacios.' });
     }
 
-    // 4. Validar password
-    const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,}$/;
-    if (!passwordHash || !passwordRegex.test(passwordHash)) {
-        return res.status(400).json({ success: false, message: 'La contraseña debe tener al menos 8 caracteres, una mayúscula, una minúscula y un número.' });
+    // 4. Validar password (ya viene hasheado)
+    if (!passwordHash || passwordHash.length < 40) {
+        return res.status(400).json({ success: false, message: 'La contraseña es inválida o no fue procesada correctamente.' });
     }
 
     // 5. Validar teléfono
@@ -470,7 +470,11 @@ app.post('/api/payments/register', async (req, res) => {
         );
 
         await conn.commit();
-        res.json({ success: true, message: `Se han añadido ${safeCredits} créditos correctamente` });
+        res.json({ 
+            success: true, 
+            message: `¡Pago exitoso! Se han añadido ${safeCredits} créditos a tu cuenta. ¡Gracias por tu compra! Ahora puedes proceder a realizar tus análisis.`,
+            newCredits: safeCredits 
+        });
     } catch (err) {
         await conn.rollback();
         res.status(500).json({ success: false, message: err.message });

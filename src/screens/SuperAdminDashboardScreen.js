@@ -381,7 +381,9 @@ export default function SuperAdminDashboardScreen({ navigation }) {
 
   const getUserAnalysis = () => {
     if (!selectedUserForAnalysis) return [];
-    return activityRows.filter(a => String(a.id_usuario) === String(selectedUserForAnalysis.id_usuario));
+    return activityRows
+      .filter(a => String(a.id_usuario) === String(selectedUserForAnalysis.id_usuario))
+      .sort((a, b) => new Date(b.fecha_analisis) - new Date(a.fecha_analisis));
   };
 
   const openReport = (report) => {
@@ -766,16 +768,20 @@ export default function SuperAdminDashboardScreen({ navigation }) {
             <FlatList
               data={getUserAnalysis()}
               keyExtractor={(item) => String(item.id_analisis)}
-              renderItem={({ item }) => (
-                <TouchableOpacity style={styles.analysisItem} onPress={() => openReport(item)}>
-                  <View style={styles.analysisIconBox}><Ionicons name="document-text-outline" size={24} color="#0f6d78" /></View>
-                  <View style={{flex: 1, marginLeft: 12}}>
-                    <Text style={styles.analysisType}>{item.tipo_modelo || 'Análisis de Datos'}</Text>
-                    <Text style={styles.analysisDate}>{formatDateTime(item.fecha_analisis)}</Text>
-                  </View>
-                  <Ionicons name="chevron-forward" size={20} color="#ccc" />
-                </TouchableOpacity>
-              )}
+              renderItem={({ item, index }) => {
+                const total = getUserAnalysis().length;
+                const analysisNumber = total - index;
+                return (
+                  <TouchableOpacity style={styles.analysisItem} onPress={() => openReport(item)}>
+                    <View style={styles.analysisIconBox}><Ionicons name="document-text-outline" size={24} color="#0f6d78" /></View>
+                    <View style={{flex: 1, marginLeft: 12}}>
+                      <Text style={styles.analysisType}>Análisis #{analysisNumber}</Text>
+                      <Text style={styles.analysisDate}>{formatDateTime(item.fecha_analisis)}</Text>
+                    </View>
+                    <Ionicons name="chevron-forward" size={20} color="#ccc" />
+                  </TouchableOpacity>
+                );
+              }}
               ListEmptyComponent={<Text style={styles.emptyText}>Este usuario no tiene análisis registrados.</Text>}
             />
           </View>

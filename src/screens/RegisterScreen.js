@@ -326,6 +326,7 @@ export default function RegisterScreen({ navigation, route }) {
               value={acepta}
               onValueChange={setAcepta}
               color={acepta ? theme.accent : undefined}
+              disabled={true} // Obligatorio visitar las políticas para que se marque
             />
             <View style={styles.termsTextWrap}>
               <Text style={[styles.checkboxText, { color: theme.mutedText }]}>Acepto las </Text>
@@ -337,14 +338,16 @@ export default function RegisterScreen({ navigation, route }) {
                   username: usuario,
                   password: password
                 };
-                navigation.navigate('Privacy', { formData });
+                navigation.navigate('Privacy', { formData, returnTo: 'Register' });
               }}>
                 <Text style={{
-                  color: theme.accent, 
+                  color: acepta ? '#2e7d32' : theme.accent, 
                   fontSize: 13, 
-                  fontWeight: '700',
+                  fontWeight: '800',
                   textDecorationLine: 'underline'
-                }}>Politicas de Seguridad</Text>
+                }}>
+                  {acepta ? 'Politicas Aceptadas ✓' : 'Politicas de Seguridad'}
+                </Text>
               </TouchableOpacity>
             </View>
           </View>

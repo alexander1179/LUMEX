@@ -16,6 +16,7 @@ import { useTranslation } from 'react-i18next';
 import Checkbox from "expo-checkbox";
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
+import { Modal } from 'react-native';
 import { CustomButton } from '../components/common/CustomButton';
 import { LanguageSelector } from '../components/common/LanguageSelector';
 import { AccessQuickNav } from '../components/common/AccessQuickNav';
@@ -45,6 +46,10 @@ export default function LoginScreen({ navigation }) {
   const [password, setPassword] = useState("");
   const [visible, setVisible] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [showTokenModal, setShowTokenModal] = useState(false);
+  const [token, setToken] = useState("");
+  const [pendingUser, setPendingUser] = useState(null);
+  const [verifyingToken, setVerifyingToken] = useState(false);
 
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(25)).current;
@@ -79,46 +84,56 @@ export default function LoginScreen({ navigation }) {
     }
 
     setLoading(true);
-
     try {
-      const deviceInfo = {
-        platform: 'mobile',
-        version: '1.0',
-        model: 'React Native App'
-      };
-
+      const deviceInfo = { platform: 'mobile', version: '1.0', model: 'React Native App' };
       const result = await loginUser(usuario.trim(), password, true, deviceInfo, {});
 
       if (result.success) {
-        await storageService.saveUser(result.user);
-        
-        const role = String(result.user?.rol || 'usuario').toLowerCase();
-        const welcomeName = result.user?.nombre || result.user?.usuario || 'Portal';
-
-        if (role === 'superadmin' || role === 'superadministrador') {
-          Alert.alert('Acceso Máximo', `Bienvenido(a) Superadministrador: ${welcomeName}`, [
-            { text: 'Entrar', onPress: () => navigation.replace("SuperAdminDashboard") }
-          ]);
-        } else if (role === 'admin' || role === 'administrador') {
-          Alert.alert('Acceso Administrativo', `Bienvenido(a) Administrador(a): ${welcomeName}`, [
-            { text: 'Entrar al Panel', onPress: () => navigation.replace("AdminDashboard") }
-          ]);
-        } else {
-          Alert.alert('Éxito', `Bienvenido: ${welcomeName}`, [
-            { text: 'Ingresar', onPress: () => navigation.replace("Main") }
-          ]);
-        }
+        // En lugar de entrar directo, pedimos el Token
+        setPendingUser(result.user);
+        setShowTokenModal(true);
       } else {
         clearLoginInputs();
         Alert.alert('Error de Acceso', result.message);
       }
-
     } catch (error) {
       clearLoginInputs();
       Alert.alert('Error', 'Error de conexión: ' + error.message);
     } finally {
       setLoading(false);
     }
+  };
+
+  const verifySecurityToken = async () => {
+    if (token.length < 4) {
+      Alert.alert('Token inválido', 'Por favor ingresa el token de seguridad completo.');
+      return;
+    }
+
+    setVerifyingToken(true);
+    // Simulación de verificación de token (En producción esto iría al backend)
+    setTimeout(async () => {
+      setVerifyingToken(false);
+      const welcomeName = pendingUser?.nombre || pendingUser?.usuario || 'Portal';
+      const role = String(pendingUser?.rol || 'usuario').toLowerCase();
+
+      await storageService.saveUser(pendingUser);
+      setShowTokenModal(false);
+
+      if (role === 'superadmin' || role === 'superadministrador') {
+        Alert.alert('Acceso Máximo', `Bienvenido(a) Superadministrador: ${welcomeName}`, [
+          { text: 'Entrar', onPress: () => navigation.replace("SuperAdminDashboard") }
+        ]);
+      } else if (role === 'admin' || role === 'administrador') {
+        Alert.alert('Acceso Administrativo', `Bienvenido(a) Administrador(a): ${welcomeName}`, [
+          { text: 'Entrar al Panel', onPress: () => navigation.replace("AdminDashboard") }
+        ]);
+      } else {
+        Alert.alert('Éxito', `Bienvenido: ${welcomeName}`, [
+          { text: 'Ingresar', onPress: () => navigation.replace("Main") }
+        ]);
+      }
+    }, 1500);
   };
 
   return (
@@ -142,7 +157,7 @@ export default function LoginScreen({ navigation }) {
             </View>
           </View>
 
-          <Text style={[styles.title, { color: theme.title }]}>Lumex Cloud</Text>
+          <Text style={[styles.title, { color: theme.title }]}>Lumex</Text>
           <Text style={[styles.introText, { color: theme.mutedText }]}>Ingresa tus credenciales únicas para acceder a tu plataforma de salud integral.</Text>
 
           <View style={[styles.card, { backgroundColor: theme.card, borderColor: theme.cardBorder }]}>
@@ -197,6 +212,40 @@ export default function LoginScreen({ navigation }) {
           </View>
         </Animated.View>
       </ScrollView>
+
+      <Modal visible={showTokenModal} transparent animationType="fade">
+        <View style={styles.modalOverlay}>
+          <View style={[styles.tokenCard, { backgroundColor: theme.card, borderColor: theme.cardBorder }]}>
+             <View style={styles.tokenIconCircle}>
+                <Ionicons name="shield-checkmark" size={32} color={theme.accent} />
+             </View>
+             <Text style={styles.tokenTitle}>Verificación de Seguridad</Text>
+             <Text style={styles.tokenSub}>Hemos detectado un nuevo inicio de sesión. Por seguridad, ingresa el token enviado a tu dispositivo.</Text>
+             
+             <TextInput
+               style={styles.tokenInput}
+               placeholder="******"
+               placeholderTextColor="#314e60"
+               keyboardType="number-pad"
+               maxLength={6}
+               value={token}
+               onChangeText={setToken}
+             />
+
+             <TouchableOpacity 
+                style={[styles.tokenBtn, {backgroundColor: theme.accent}]} 
+                onPress={verifySecurityToken}
+                disabled={verifyingToken}
+             >
+                <Text style={styles.tokenBtnText}>{verifyingToken ? 'Verificando...' : 'Confirmar Identidad'}</Text>
+             </TouchableOpacity>
+
+             <TouchableOpacity style={{marginTop: 15}} onPress={() => setShowTokenModal(false)}>
+                <Text style={{color: '#6f8d99', fontSize: 13}}>Cancelar</Text>
+             </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
 
       <StatusBar style="light" />
     </View>
@@ -277,5 +326,14 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(24, 198, 205, 0.08)',
     borderWidth: 1, borderColor: 'rgba(24, 198, 205, 0.25)',
   },
-  registerBtnText: { fontSize: 14, fontWeight: '700' }
+  registerBtnText: { fontSize: 14, fontWeight: '700' },
+  // Estilos del Token
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(5, 15, 25, 0.9)', justifyContent: 'center', alignItems: 'center' },
+  tokenCard: { width: '85%', padding: 25, borderRadius: 24, borderWidth: 1, alignItems: 'center' },
+  tokenIconCircle: { width: 64, height: 64, borderRadius: 32, backgroundColor: 'rgba(24, 198, 205, 0.1)', justifyContent: 'center', alignItems: 'center', marginBottom: 15 },
+  tokenTitle: { color: '#fff', fontSize: 18, fontWeight: 'bold', marginBottom: 10 },
+  tokenSub: { color: '#6f8d99', fontSize: 13, textAlign: 'center', marginBottom: 20, lineHeight: 18 },
+  tokenInput: { width: '100%', backgroundColor: 'rgba(11, 25, 38, 0.95)', padding: 15, borderRadius: 14, fontSize: 24, textAlign: 'center', color: '#18c6cd', letterSpacing: 10, marginBottom: 20, borderWidth: 1, borderColor: 'rgba(24, 198, 205, 0.3)' },
+  tokenBtn: { width: '100%', paddingVertical: 15, borderRadius: 14, alignItems: 'center' },
+  tokenBtnText: { color: '#fff', fontWeight: 'bold', fontSize: 16 }
 });

@@ -695,27 +695,46 @@ export default function SuperAdminDashboardScreen({ navigation }) {
             <FlatList
               data={filteredUsers}
               keyExtractor={(item) => String(item.id_usuario)}
-              style={{marginTop: 10}}
+              contentContainerStyle={{padding: 15}}
               renderItem={({ item }) => (
                 <TouchableOpacity 
-                   style={[styles.userListItem, {borderLeftWidth: 4, borderLeftColor: '#2b7896'}]} 
-                   onPress={() => {
-                     handleOpenAnalysis(item);
-                   }}
+                   style={styles.professionalUserCard} 
+                   onPress={() => handleOpenAnalysis(item)}
                 >
-                   <View style={styles.userInfo}>
-                      <View style={[styles.avatar, {backgroundColor: '#2b7896'}]}>
-                        <Text style={styles.avatarText}>{item.nombre?.charAt(0).toUpperCase() || 'U'}</Text>
+                   <View style={styles.cardHeader}>
+                      <View style={styles.avatarContainer}>
+                         <View style={[styles.proAvatar, {backgroundColor: '#e3f2fd'}]}>
+                            <Text style={[styles.proAvatarText, {color: '#1a73e8'}]}>{item.nombre?.charAt(0).toUpperCase() || 'U'}</Text>
+                         </View>
+                         {item.estado === 'activo' && <View style={styles.onlineBadge} />}
                       </View>
-                      <View style={{marginLeft: 12}}>
-                        <Text style={[styles.userName, {color: '#2b7896'}]}>{item.nombre || item.usuario}</Text>
-                        <Text style={styles.userEmail}>{item.email}</Text>
+                      <View style={{flex: 1, marginLeft: 12}}>
+                         <Text style={styles.proUserName}>{item.nombre || item.usuario}</Text>
+                         <View style={{flexDirection: 'row', alignItems: 'center', marginTop: 2}}>
+                            <Ionicons name="mail-outline" size={12} color="#6d8a91" />
+                            <Text style={styles.proUserEmail}>{item.email}</Text>
+                         </View>
+                      </View>
+                      <View style={[styles.roleBadge, {backgroundColor: '#e8f5e9'}]}>
+                         <Text style={[styles.roleBadgeText, {color: '#2e7d32'}]}>PCT</Text>
                       </View>
                    </View>
-                   <View style={{flexDirection: 'row', alignItems: 'center', gap: 10}}>
-                      <View style={{backgroundColor: '#f1f7f9', padding: 8, borderRadius: 10}}>
-                        <Ionicons name="chevron-forward" size={20} color="#2b7896" />
+
+                   <View style={styles.cardDivider} />
+
+                   <View style={styles.cardStats}>
+                      <View style={styles.statItem}>
+                         <Ionicons name="calendar-outline" size={14} color="#6d8a91" />
+                         <Text style={styles.statText}>{item.fecha_registro ? new Date(item.fecha_registro).toLocaleDateString() : 'N/D'}</Text>
                       </View>
+                      <View style={styles.statItem}>
+                         <Ionicons name="call-outline" size={14} color="#6d8a91" />
+                         <Text style={styles.statText}>{item.telefono || 'Sin Tel'}</Text>
+                      </View>
+                      <TouchableOpacity style={styles.viewHisBtn}>
+                         <Text style={styles.viewHisText}>Ver Historial</Text>
+                         <Ionicons name="chevron-forward" size={14} color="#1a73e8" />
+                      </TouchableOpacity>
                    </View>
                 </TouchableOpacity>
               )}
@@ -871,46 +890,36 @@ export default function SuperAdminDashboardScreen({ navigation }) {
                   </View>
                 </View>
                 
-                <View style={{height: 40}} />
-              </ScrollView>
             </ViewShot>
 
-            <View style={{padding: 20, borderTopWidth: 1, borderTopColor: '#f0f0f0', backgroundColor: '#fcfcfc'}}>
-               <Text style={{textAlign: 'center', color: '#6d8a91', fontSize: 13, marginBottom: 15, fontWeight: '600'}}>Selecciona el formato de descarga</Text>
-               <View style={styles.exportRow}>
+            <View style={{padding: 15, borderTopWidth: 1, borderTopColor: '#f0f0f0', backgroundColor: '#fff'}}>
+               <View style={{flexDirection: 'row', gap: 10}}>
                   <TouchableOpacity 
-                    style={[styles.exportBtn, {flex: 1, backgroundColor: '#0f6d78', borderRadius: 10, height: 48}]} 
+                    style={[styles.exportBtn, {flex: 1, backgroundColor: '#f5f8fa', borderWidth: 1, borderColor: '#d0e1e9', height: 44, borderRadius: 12}]} 
+                    onPress={() => setShowReportDetailModal(false)}
+                  >
+                    <Text style={{color: '#2f7a96', fontWeight: 'bold', fontSize: 14}}>Cerrar</Text>
+                  </TouchableOpacity>
+                  
+                  <TouchableOpacity 
+                    style={[styles.exportBtn, {flex: 1, backgroundColor: '#0f6d78', height: 44, borderRadius: 12}]} 
                     onPress={() => exportReport('pdf')}
                     disabled={generatingReport}
                   >
-                    <Ionicons name="document-text" size={20} color="#fff" />
-                    <Text style={styles.exportBtnText}>PDF</Text>
-                    <Ionicons name="checkmark-circle" size={18} color="#fff" style={{marginLeft: 'auto'}} />
-                  </TouchableOpacity>
-                  <TouchableOpacity 
-                    style={[styles.exportBtn, {flex: 1, backgroundColor: '#f4f8f9', borderColor: '#d2e4ea', borderWidth: 1, borderRadius: 10, height: 48}]} 
-                    onPress={() => exportReport('image')}
-                    disabled={generatingReport}
-                  >
-                    <Ionicons name="image-outline" size={20} color="#2f7a96" />
-                    <Text style={[styles.exportBtnText, {color: '#2f7a96'}]}>Imagen</Text>
+                    <Ionicons name="document-text" size={18} color="#fff" />
+                    <Text style={[styles.exportBtnText, {fontSize: 14}]}>Descargar PDF</Text>
+                    {generatingReport && <ActivityIndicator size="small" color="#fff" style={{marginLeft: 5}} />}
                   </TouchableOpacity>
                </View>
 
-               <View style={{flexDirection: 'row', gap: 10, marginTop: 15}}>
+               <View style={{flexDirection: 'row', gap: 10, marginTop: 10}}>
                   <TouchableOpacity 
-                    style={{flex: 1, backgroundColor: '#f4f8f9', paddingVertical: 14, borderRadius: 14, alignItems: 'center'}} 
-                    onPress={() => setShowReportDetailModal(false)}
-                  >
-                    <Text style={{color: '#2f7a96', fontWeight: 'bold', fontSize: 16}}>Cerrar</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity 
-                    style={{flex: 1, backgroundColor: '#0f6d78', paddingVertical: 14, borderRadius: 14, alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 8}} 
-                    onPress={() => exportReport('pdf')}
+                    style={[styles.exportBtn, {flex: 1, backgroundColor: '#fff', borderWidth: 1, borderColor: '#0f6d78', height: 40, borderRadius: 10}]} 
+                    onPress={() => exportReport('image')}
                     disabled={generatingReport}
                   >
-                    <Ionicons name="cloud-download-outline" size={20} color="#fff" />
-                    <Text style={{color: '#fff', fontWeight: 'bold', fontSize: 16}}>Descargar</Text>
+                    <Ionicons name="image-outline" size={16} color="#0f6d78" />
+                    <Text style={{color: '#0f6d78', fontWeight: '600', fontSize: 13, marginLeft: 8}}>Guardar Imagen</Text>
                   </TouchableOpacity>
                </View>
             </View>
@@ -1353,4 +1362,43 @@ const styles = StyleSheet.create({
   roleChipTextActive: {
     color: '#ffffff',
   },
+  // Nuevos Estilos Profesionales
+  professionalUserCard: { 
+    backgroundColor: '#fff', 
+    borderRadius: 20, 
+    padding: 18, 
+    marginBottom: 15, 
+    shadowColor: '#1a73e8', 
+    shadowOffset: { width: 0, height: 4 }, 
+    shadowOpacity: 0.08, 
+    shadowRadius: 10, 
+    elevation: 4, 
+    borderWidth: 1, 
+    borderColor: '#f0f4f8' 
+  },
+  cardHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 15 },
+  avatarContainer: { position: 'relative' },
+  proAvatar: { width: 52, height: 52, borderRadius: 16, justifyContent: 'center', alignItems: 'center' },
+  proAvatarText: { fontSize: 22, fontWeight: 'bold' },
+  onlineBadge: { 
+    position: 'absolute', 
+    bottom: -2, 
+    right: -2, 
+    width: 14, 
+    height: 14, 
+    borderRadius: 7, 
+    backgroundColor: '#4caf50', 
+    borderWidth: 2, 
+    borderColor: '#fff' 
+  },
+  proUserName: { fontSize: 17, fontWeight: '700', color: '#1a2e35' },
+  proUserEmail: { fontSize: 13, color: '#6d8a91', marginLeft: 4 },
+  roleBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8 },
+  roleBadgeText: { fontSize: 10, fontWeight: '800' },
+  cardDivider: { height: 1, backgroundColor: '#f0f4f8', marginBottom: 12 },
+  cardStats: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  statItem: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  statText: { fontSize: 13, color: '#6d8a91', fontWeight: '500' },
+  viewHisBtn: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  viewHisText: { fontSize: 13, color: '#1a73e8', fontWeight: '700' },
 });

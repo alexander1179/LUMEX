@@ -992,11 +992,26 @@ export default function SuperAdminDashboardScreen({ navigation }) {
                 </View>
               </View>
 
-              {isMaster && (
               <View>
-                 <Text style={styles.inputLabel}>Rol del sistema</Text>
-                 <View style={styles.roleSelector}>{['usuario', 'administrador', 'superadministrador'].map((r) => (<TouchableOpacity key={r} style={[styles.roleMiniBtn, localFormData.rol === r && styles.roleMiniBtnActive]} onPress={() => setLocalFormData({...localFormData, rol: r})}><Text style={[styles.roleMiniText, localFormData.rol === r && styles.roleMiniTextActive]}>{r[0].toUpperCase()}</Text></TouchableOpacity>))}</View>
-              </View>)}
+                 <Text style={styles.inputLabel}>Seleccionar Rol del sistema</Text>
+                 <View style={[styles.roleSelector, {flexWrap: 'wrap', gap: 8}]}>
+                    {[
+                      {id: 'usuario', label: 'Pac'},
+                      {id: 'administrador', label: 'Adm'},
+                      {id: 'doctor', label: 'Doc'},
+                      {id: 'enfermero', label: 'Enf'}
+                    ].map((r) => (
+                      <TouchableOpacity 
+                        key={r.id} 
+                        style={[styles.roleMiniBtn, {minWidth: 60}, String(localFormData.rol).toLowerCase() === r.id && styles.roleMiniBtnActive]} 
+                        onPress={() => setLocalFormData({...localFormData, rol: r.id})}
+                      >
+                        <Text style={[styles.roleMiniText, String(localFormData.rol).toLowerCase() === r.id && styles.roleMiniTextActive]}>{r.label}</Text>
+                      </TouchableOpacity>
+                    ))}
+                 </View>
+                 <Text style={{fontSize: 10, color: '#6d8a91', marginTop: 4}}>* Pac: Paciente/Usuario, Adm: Administrador, Doc: Doctor, Enf: Enfermero</Text>
+              </View>
             </ScrollView>
              <View style={styles.detailFooter}><TouchableOpacity style={styles.btnDelete} onPress={handleDelete}><Ionicons name="trash-outline" size={20} color="#ff3b3b" /><Text style={styles.btnDeleteText}>Eliminar</Text></TouchableOpacity><TouchableOpacity style={styles.btnSave} onPress={handleSave}><Text style={styles.btnSaveText}>Guardar</Text></TouchableOpacity></View>
           </View>

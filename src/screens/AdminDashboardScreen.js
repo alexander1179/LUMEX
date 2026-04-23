@@ -85,6 +85,7 @@ export default function AdminDashboardScreen({ navigation }) {
   const [newUsuario, setNewUsuario] = useState('');
   const [newTelefono, setNewTelefono] = useState('');
   const [newPassword, setNewPassword] = useState('');
+  const [acceptTerms, setAcceptTerms] = useState(false);
   const [blockedUsers, setBlockedUsers] = useState({});
   const [showEditModal, setShowEditModal] = useState(false);
   const [editingUser, setEditingUser] = useState(null);
@@ -359,6 +360,7 @@ export default function AdminDashboardScreen({ navigation }) {
     setNewUsuario('');
     setNewTelefono('');
     setNewPassword('');
+    setAcceptTerms(false);
   };
 
   const openEditModal = (user) => {
@@ -986,6 +988,11 @@ export default function AdminDashboardScreen({ navigation }) {
       return;
     }
 
+    if (!acceptTerms) {
+      Alert.alert('Términos y Condiciones', 'Debes aceptar los términos y condiciones antes de registrar al paciente.');
+      return;
+    }
+
     setCreatingUser(true);
     try {
       const result = await registerUser({
@@ -1351,6 +1358,16 @@ export default function AdminDashboardScreen({ navigation }) {
               onChangeText={setNewPassword}
               secureTextEntry
             />
+
+            <View style={{flexDirection: 'row', alignItems: 'center', marginVertical: 10, paddingHorizontal: 5}}>
+               <Switch 
+                 value={acceptTerms} 
+                 onValueChange={setAcceptTerms} 
+                 trackColor={{ false: "#d2e4ea", true: "#2f7a96" }}
+                 thumbColor={acceptTerms ? "#ffffff" : "#f4f3f4"}
+               />
+               <Text style={{marginLeft: 10, color: '#2f7a96', fontSize: 13, flex: 1}}>Acepto los términos, condiciones y políticas de privacidad para el registro de este paciente.</Text>
+            </View>
 
             <View style={styles.modalActions}>
               <TouchableOpacity

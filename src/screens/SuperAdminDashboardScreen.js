@@ -890,6 +890,7 @@ export default function SuperAdminDashboardScreen({ navigation }) {
                   </View>
                 </View>
                 
+              </ScrollView>
             </ViewShot>
 
             <View style={{padding: 15, borderTopWidth: 1, borderTopColor: '#f0f0f0', backgroundColor: '#fff'}}>

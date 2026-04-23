@@ -17,6 +17,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
+import Checkbox from 'expo-checkbox';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
 import * as FileSystem from 'expo-file-system/legacy';
@@ -1362,24 +1363,20 @@ export default function AdminDashboardScreen({ navigation }) {
               secureTextEntry
             />
 
-            <TouchableOpacity 
-               style={{flexDirection: 'row', alignItems: 'center', marginVertical: 15, paddingHorizontal: 5, backgroundColor: '#f0f7f9', padding: 10, borderRadius: 12}}
-               onPress={() => setAcceptTerms(!acceptTerms)}
-               activeOpacity={0.8}
-            >
-               <Switch 
-                 value={acceptTerms} 
-                 onValueChange={setAcceptTerms} 
-                 trackColor={{ false: "#cbdce2", true: "#0f6d78" }}
-                 thumbColor={acceptTerms ? "#ffffff" : "#f4f3f4"}
+            <View style={{flexDirection: 'row', alignItems: 'center', marginVertical: 15, paddingHorizontal: 10, gap: 12}}>
+               <Checkbox
+                 value={acceptTerms}
+                 onValueChange={setAcceptTerms}
+                 color={acceptTerms ? "#0f6d78" : undefined}
+                 style={{ width: 20, height: 20, borderRadius: 5 }}
                />
-               <View style={{flex: 1, marginLeft: 10}}>
-                  <Text style={{color: acceptTerms ? '#0f6d78' : '#7a9aa8', fontSize: 12, fontWeight: acceptTerms ? 'bold' : 'normal'}}>
-                    He leído y acepto los términos, condiciones y políticas de privacidad del paciente.
-                  </Text>
+               <View style={{flex: 1}}>
+                  <Text style={{color: '#7a9aa8', fontSize: 13}}>Acepto las </Text>
+                  <TouchableOpacity onPress={() => {/* Navegar a políticas si es necesario */}}>
+                     <Text style={{color: '#0f6d78', fontWeight: 'bold', textDecorationLine: 'underline'}}>Politicas de Seguridad</Text>
+                  </TouchableOpacity>
                </View>
-               {acceptTerms && <Ionicons name="checkmark-circle" size={20} color="#0f6d78" />}
-            </TouchableOpacity>
+            </View>
 
             <View style={styles.modalActions}>
               <TouchableOpacity

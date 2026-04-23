@@ -157,6 +157,7 @@ export default function RegisterScreen({ navigation, route }) {
         username: usuario.trim().toLowerCase(),
         password: password,
         phone: telefono?.trim() || null,
+        acepta: acepta, // Enviar el estado de aceptación
       };
 
       const result = await registerUser(userData);
@@ -326,15 +327,15 @@ export default function RegisterScreen({ navigation, route }) {
             </TouchableOpacity>
           </View>
 
-          <View style={styles.checkboxRow}>
+          <View style={[styles.checkboxRow, acepta && styles.checkboxRowSuccess]}>
             <Checkbox
               value={acepta}
               onValueChange={setAcepta}
-              color={acepta ? "#155724" : undefined}
-              disabled={true} // Obligatorio visitar las políticas para que se marque
+              color={acepta ? "#1b5e20" : "#78909c"} 
+              disabled={true} 
             />
             <View style={styles.termsTextWrap}>
-              <Text style={[styles.checkboxText, { color: theme.mutedText }]}>Acepto las </Text>
+              <Text style={[styles.checkboxText, { color: acepta ? "#1b5e20" : theme.mutedText, fontWeight: acepta ? '700' : '400' }]}>Acepto las </Text>
               <TouchableOpacity onPress={() => {
                 const formData = {
                   name: nombre,
@@ -347,7 +348,7 @@ export default function RegisterScreen({ navigation, route }) {
                 navigation.navigate('Privacy', { formData, returnTo: 'Register' });
               }}>
                 <Text style={{
-                  color: acepta ? '#2e7d32' : theme.accent, 
+                  color: acepta ? '#1b5e20' : theme.accent, 
                   fontSize: 13, 
                   fontWeight: '800',
                   textDecorationLine: 'underline'
@@ -561,6 +562,11 @@ const styles = StyleSheet.create({
     width: '100%',
     justifyContent: 'center',
     paddingHorizontal: 20
+  },
+  checkboxRowSuccess: {
+    backgroundColor: 'rgba(27, 94, 32, 0.05)',
+    borderRadius: 12,
+    paddingVertical: 5,
   },
   termsTextWrap: {
     flexDirection: 'row',

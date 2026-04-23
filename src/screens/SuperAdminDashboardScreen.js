@@ -18,6 +18,71 @@ const ROLES = [
   { id: 'supervision_pagos', label: 'Supervisión de Pagos', icon: 'card-outline', color: '#e67e22', description: 'Supervisión de transacciones y pagos de usuarios' },
 ];
 
+const FINDINGS_VISUALS = {
+  bajo: {
+    label: 'Hallazgos bajos',
+    summary: 'Se detectaron pocas anomalias frente al total de registros.',
+    guidance: 'Mantener monitoreo periodico y validar tendencias en el tiempo.',
+    color: '#2e9e54',
+    bg: '#eaf7ed',
+  },
+  medio: {
+    label: 'Hallazgos moderados',
+    summary: 'Existe una proporcion relevante de anomalias en el dataset.',
+    guidance: 'Revisar subgrupos y variables con mayor variacion para descartar riesgo.',
+    color: '#e07b21',
+    bg: '#fef3e7',
+  },
+  alto: {
+    label: 'Hallazgos altos',
+    summary: 'Se detecto alta concentracion de anomalias sobre los registros analizados.',
+    guidance: 'Se recomienda revision prioritaria y correlacion con signos clinicos.',
+    color: '#e05a21',
+    bg: '#fceee7',
+  },
+};
+
+const getFindingsVisual = (total, anoms) => {
+  const ratio = total > 0 ? anoms / total : 0;
+  if (ratio >= 0.3) return FINDINGS_VISUALS.alto;
+  if (ratio >= 0.1) return FINDINGS_VISUALS.medio;
+  return FINDINGS_VISUALS.bajo;
+};
+
+const buildSummaryVisualizationImageUri = (type, total, anoms) => {
+  const totalNum = Math.max(1, Number(total || 0));
+  const anomalies = Math.max(0, Math.min(totalNum, Number(anoms || 0)));
+  const normal = Math.max(0, totalNum - anomalies);
+  const anomalyRate = anomalies / totalNum;
+  const QUICKCHART_URL = 'https://quickchart.io/chart';
+
+  let config;
+  if (type === 'histograma') {
+    config = {
+      type: 'bar',
+      data: {
+        labels: ['Normales', 'Anomalias'],
+        datasets: [{ data: [normal, anomalies], backgroundColor: ['#2f7a96', '#e05a21'] }],
+      },
+      options: { plugins: { legend: { display: false } } },
+    };
+  } else {
+    config = {
+      type: 'radar',
+      data: {
+        labels: ['Registros', 'Anomalias', 'Normales', 'Tasa %'],
+        datasets: [{
+          data: [totalNum, anomalies, normal, Math.round(anomalyRate * 100)],
+          borderColor: '#1b5f79',
+          backgroundColor: 'rgba(27,95,121,0.22)',
+        }],
+      },
+      options: { plugins: { legend: { display: false } } },
+    };
+  }
+  return `${QUICKCHART_URL}?width=720&height=360&c=${encodeURIComponent(JSON.stringify(config))}`;
+};
+
 const ROLE_MODULES = [
   { id: 'administrador', label: 'Administradores', icon: 'shield-checkmark-outline', color: '#1a7da2', description: 'Gestión de perfiles administrativos' },
   { id: 'doctor', label: 'Doctores', icon: 'medical-outline', color: '#2b7896', description: 'Gestión de personal médico' },
@@ -694,59 +759,159 @@ export default function SuperAdminDashboardScreen({ navigation }) {
       </Modal>
 
       {/* Modal Detalle de Reporte */}
-      <Modal visible={showReportDetailModal} animationType="fade" transparent={true}>
-        <View style={styles.modalOverlayDark}>
-          <View style={[styles.detailCard, {width: '90%', maxHeight: '90%'}]}>
-            <View style={styles.detailHeader}>
-              <Text style={styles.detailTitle}>Reporte Clínico</Text>
-              <TouchableOpacity onPress={() => setShowReportDetailModal(false)}><Ionicons name="close" size={24} color="#666" /></TouchableOpacity>
-            </View>
-            
-            <ViewShot ref={reportImageShotRef} options={{ format: 'jpg', quality: 0.9 }} style={{backgroundColor: '#fff', padding: 15, borderRadius: 10}}>
-              <ScrollView showsVerticalScrollIndicator={false}>
-                <View style={styles.reportSection}>
-                  <Text style={styles.reportLabel}>Paciente</Text>
-                  <Text style={styles.reportValue}>{selectedReport?.usuario_nombre || selectedReport?.usuario_username}</Text>
+      <Modal visible={showReportDetailModal && !!selectedReport} animationType="fade" transparent={true}>
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContainer, {height: '90%'}]}>
+            <ViewShot ref={reportImageShotRef} options={{ format: 'jpg', quality: 0.9 }} style={{backgroundColor: '#fff', flex: 1}}>
+              <ScrollView 
+                style={{flex: 1}} 
+                contentContainerStyle={{padding: 20}}
+                showsVerticalScrollIndicator={false}
+              >
+                <View style={{flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20}}>
+                   <Text style={{fontSize: 22, fontWeight: 'bold', color: '#15333d'}}>Resultado del analisis</Text>
+                   <TouchableOpacity onPress={() => setShowReportDetailModal(false)}>
+                      <Ionicons name="close" size={28} color="#ccc" />
+                   </TouchableOpacity>
                 </View>
-                <View style={styles.reportSection}>
-                  <Text style={styles.reportLabel}>Fecha y Hora</Text>
-                  <Text style={styles.reportValue}>{formatDateTime(selectedReport?.fecha_analisis)}</Text>
-                </View>
-                <View style={styles.reportSection}>
-                  <Text style={styles.reportLabel}>Modelo Utilizado</Text>
-                  <Text style={styles.reportValue}>{selectedReport?.nombre_modelo || selectedReport?.tipo_modelo || 'N/D'}</Text>
-                </View>
-                <View style={[styles.reportSection, {borderBottomWidth: 0}]}>
-                  <Text style={styles.reportLabel}>Resultado del Análisis</Text>
-                  <View style={styles.resultBadge}>
-                    <Text style={styles.resultText}>Anomalías: {selectedReport?.total_anomalias} de {selectedReport?.total_registros}</Text>
-                    <Text style={styles.resultRate}>Tasa: {((Number(selectedReport?.total_anomalias)/Number(selectedReport?.total_registros))*100).toFixed(1)}%</Text>
+
+                {/* Badge de Hallazgo */}
+                {(() => {
+                   const visual = getFindingsVisual(selectedReport?.total_registros || 0, selectedReport?.total_anomalias || 0);
+                   return (
+                    <View style={[styles.analysisFindingsPill, {backgroundColor: visual.bg, borderColor: visual.color + '55'}]}>
+                       <Ionicons name="pulse" size={14} color={visual.color} />
+                       <Text style={[styles.analysisFindingsPillText, {color: visual.color}]}>{visual.label}</Text>
+                    </View>
+                   );
+                })()}
+
+                {/* Gráfico (Imagen dinámica) */}
+                <Image 
+                  source={{ uri: buildSummaryVisualizationImageUri(selectedReport?.tipo_visualizacion || 'radar', selectedReport?.total_registros, selectedReport?.total_anomalias) }} 
+                  style={styles.analysisResultImage}
+                  resizeMode="contain"
+                />
+
+                <Text style={styles.analysisResultType}>{selectedReport?.tipo_analisis === 'anomalias' ? 'Deteccion de anomalias' : (selectedReport?.tipo_analisis || 'Análisis Clínico')}</Text>
+                <Text style={styles.analysisResultDataset}>Dataset: {selectedReport?.dataset_nombre || 'N/D'}</Text>
+                <Text style={styles.analysisResultDate}>Fecha del examen: {formatDateTime(selectedReport?.fecha_analisis)}</Text>
+
+                <Text style={styles.analysisResultDescription}>
+                   {getFindingsVisual(selectedReport?.total_registros || 0, selectedReport?.total_anomalias || 0).summary}
+                </Text>
+                <Text style={styles.analysisResultGuidance}>
+                   {getFindingsVisual(selectedReport?.total_registros || 0, selectedReport?.total_anomalias || 0).guidance}
+                </Text>
+
+                {/* Tabla de Información */}
+                <View style={styles.analysisResultInfoList}>
+                  <View style={styles.analysisResultInfoRow}>
+                    <Text style={styles.analysisResultInfoLabel}>Tipo de analisis</Text>
+                    <Text style={styles.analysisResultInfoValue}>{selectedReport?.tipo_analisis === 'anomalias' ? 'Deteccion de anomalias' : (selectedReport?.tipo_analisis || 'Análisis')}</Text>
+                  </View>
+                  <View style={styles.analysisResultInfoRow}>
+                    <Text style={styles.analysisResultInfoLabel}>Nombre del dataset</Text>
+                    <Text style={styles.analysisResultInfoValue}>{selectedReport?.dataset_nombre || 'Laura'}</Text>
+                  </View>
+                  <View style={styles.analysisResultInfoRow}>
+                    <Text style={styles.analysisResultInfoLabel}>Fecha del examen</Text>
+                    <Text style={styles.analysisResultInfoValue}>{formatDateTime(selectedReport?.fecha_analisis)}</Text>
+                  </View>
+                  <View style={styles.analysisResultInfoRow}>
+                    <Text style={styles.analysisResultInfoLabel}>Estado</Text>
+                    <Text style={styles.analysisResultInfoValue}>completado</Text>
+                  </View>
+                  <View style={styles.analysisResultInfoRow}>
+                    <Text style={styles.analysisResultInfoLabel}>Parametro solicitado</Text>
+                    <Text style={styles.analysisResultInfoValue}>{selectedReport?.tipo_visualizacion || 'Matriz de correlacion'}</Text>
+                  </View>
+                  <View style={[styles.analysisResultInfoRow, {borderBottomWidth: 0}]}>
+                    <Text style={styles.analysisResultInfoLabel}>Nivel de hallazgo</Text>
+                    <Text style={styles.analysisResultInfoValue}>{getFindingsVisual(selectedReport?.total_registros || 0, selectedReport?.total_anomalias || 0).label}</Text>
                   </View>
                 </View>
+
+                {/* Grid de Métricas */}
+                <View style={styles.analysisResultMetrics}>
+                   <View style={styles.analysisMetricItem}>
+                      <Text style={styles.analysisMetricLabel}>Registros</Text>
+                      <Text style={styles.analysisMetricValue}>{selectedReport?.total_registros}</Text>
+                   </View>
+                   <View style={styles.analysisMetricItem}>
+                      <Text style={styles.analysisMetricLabel}>Anomalias</Text>
+                      <Text style={styles.analysisMetricValue}>{selectedReport?.total_anomalias}</Text>
+                   </View>
+                   <View style={styles.analysisMetricItem}>
+                      <Text style={styles.analysisMetricLabel}>ID Analisis</Text>
+                      <Text style={styles.analysisMetricValue}>{selectedReport?.id_analisis}</Text>
+                   </View>
+                   <View style={styles.analysisMetricItem}>
+                      <Text style={styles.analysisMetricLabel}>Tasa anomalias</Text>
+                      <Text style={styles.analysisMetricValue}>{((Number(selectedReport?.total_anomalias)/Number(selectedReport?.total_registros))*100).toFixed(1)}%</Text>
+                   </View>
+                </View>
+
+                {/* CONCLUSIÓN PROFESIONAL (Exclusivo SuperAdmin) */}
                 <View style={styles.conclusionBox}>
-                  <Text style={styles.conclusionTitle}>VALORACIÓN MÉDICA SUGERIDA</Text>
+                  <Text style={styles.conclusionTitle}>CONCLUSIÓN PROFESIONAL PARA SUPERADMIN</Text>
                   <Text style={styles.conclusionText}>
                     {getReportInterpretation(selectedReport?.total_registros || 0, selectedReport?.total_anomalias || 0)}
                   </Text>
+                  <View style={{marginTop: 10, padding: 10, backgroundColor: '#fff', borderRadius: 8, borderStyle: 'dashed', borderWidth: 1, borderColor: '#0f6d78'}}>
+                      <Text style={{fontSize: 11, color: '#0f6d78', fontStyle: 'italic'}}>
+                        Nota: Esta sección de diagnóstico avanzado solo es visible para el nivel jerárquico de Superadministrador.
+                      </Text>
+                  </View>
                 </View>
+                
+                <View style={{height: 40}} />
               </ScrollView>
             </ViewShot>
 
-            <View style={styles.exportRow}>
-              <TouchableOpacity style={styles.exportBtn} onPress={() => exportReport('pdf')} disabled={generatingReport}>
-                <Ionicons name="document-outline" size={20} color="#fff" />
-                <Text style={styles.exportBtnText}>PDF</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={[styles.exportBtn, {backgroundColor: '#e67e22'}]} onPress={() => exportReport('image')} disabled={generatingReport}>
-                <Ionicons name="image-outline" size={20} color="#fff" />
-                <Text style={styles.exportBtnText}>Imagen</Text>
-              </TouchableOpacity>
+            <View style={{padding: 20, borderTopWidth: 1, borderTopColor: '#f0f0f0', backgroundColor: '#fcfcfc'}}>
+               <Text style={{textAlign: 'center', color: '#6d8a91', fontSize: 13, marginBottom: 15, fontWeight: '600'}}>Selecciona el formato de descarga</Text>
+               <View style={styles.exportRow}>
+                  <TouchableOpacity 
+                    style={[styles.exportBtn, {flex: 1, backgroundColor: '#0f6d78', borderRadius: 10, height: 48}]} 
+                    onPress={() => exportReport('pdf')}
+                    disabled={generatingReport}
+                  >
+                    <Ionicons name="document-text" size={20} color="#fff" />
+                    <Text style={styles.exportBtnText}>PDF</Text>
+                    <Ionicons name="checkmark-circle" size={18} color="#fff" style={{marginLeft: 'auto'}} />
+                  </TouchableOpacity>
+                  <TouchableOpacity 
+                    style={[styles.exportBtn, {flex: 1, backgroundColor: '#f4f8f9', borderColor: '#d2e4ea', borderWidth: 1, borderRadius: 10, height: 48}]} 
+                    onPress={() => exportReport('image')}
+                    disabled={generatingReport}
+                  >
+                    <Ionicons name="image-outline" size={20} color="#2f7a96" />
+                    <Text style={[styles.exportBtnText, {color: '#2f7a96'}]}>Imagen</Text>
+                  </TouchableOpacity>
+               </View>
+
+               <View style={{flexDirection: 'row', gap: 10, marginTop: 15}}>
+                  <TouchableOpacity 
+                    style={{flex: 1, backgroundColor: '#f4f8f9', paddingVertical: 14, borderRadius: 14, alignItems: 'center'}} 
+                    onPress={() => setShowReportDetailModal(false)}
+                  >
+                    <Text style={{color: '#2f7a96', fontWeight: 'bold', fontSize: 16}}>Cerrar</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity 
+                    style={{flex: 1, backgroundColor: '#0f6d78', paddingVertical: 14, borderRadius: 14, alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 8}} 
+                    onPress={() => exportReport('pdf')}
+                    disabled={generatingReport}
+                  >
+                    <Ionicons name="cloud-download-outline" size={20} color="#fff" />
+                    <Text style={{color: '#fff', fontWeight: 'bold', fontSize: 16}}>Descargar</Text>
+                  </TouchableOpacity>
+               </View>
             </View>
           </View>
         </View>
       </Modal>
 
-      {/* Modal Permisos */}
       <Modal visible={showPermissionsModal} animationType="slide" transparent={true}>
         <View style={styles.modalOverlay}>
           <View style={[styles.modalContainer, {height: '90%'}]}>
@@ -1102,6 +1267,22 @@ const styles = StyleSheet.create({
   detailFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderTopWidth: 1, borderTopColor: '#eee', paddingTop: 20 },
   btnDelete: { flexDirection: 'row', alignItems: 'center' },
   btnDeleteText: { color: '#ff3b3b', fontWeight: 'bold', marginLeft: 5 },
+  analysisFindingsPill: { flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, borderWidth: 1, gap: 6, marginBottom: 15 },
+  analysisFindingsPillText: { fontSize: 12, fontWeight: '800', textTransform: 'uppercase' },
+  analysisResultImage: { width: '100%', height: 180, borderRadius: 14, marginBottom: 20, borderWidth: 1, borderColor: '#eaf6f5', backgroundColor: '#f8fbfc' },
+  analysisResultType: { fontSize: 18, fontWeight: '700', color: '#0f6d78', marginBottom: 4 },
+  analysisResultDataset: { fontSize: 14, color: '#4f666c', marginBottom: 4 },
+  analysisResultDate: { fontSize: 13, color: '#7aa8b5', marginBottom: 16 },
+  analysisResultDescription: { fontSize: 15, color: '#1a3b45', lineHeight: 22, fontWeight: '500', marginBottom: 10 },
+  analysisResultGuidance: { fontSize: 14, color: '#4f666c', lineHeight: 20, marginBottom: 24, fontStyle: 'italic' },
+  analysisResultInfoList: { backgroundColor: '#f8fbfc', borderRadius: 14, borderWidth: 1, borderColor: '#e2f0f4', padding: 16, gap: 12, marginBottom: 24 },
+  analysisResultInfoRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: '#eaf6f5' },
+  analysisResultInfoLabel: { fontSize: 12, color: '#7aa8b5', flex: 1 },
+  analysisResultInfoValue: { fontSize: 12, fontWeight: '600', color: '#0a2229', flex: 1, textAlign: 'right' },
+  analysisResultMetrics: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 20 },
+  analysisMetricItem: { flex: 1, minWidth: '45%', backgroundColor: '#ffffff', borderRadius: 14, borderWidth: 1, borderColor: '#e2f0f4', padding: 12, alignItems: 'center' },
+  analysisMetricLabel: { fontSize: 10, color: '#7aa8b5', marginBottom: 4, fontWeight: '600', textTransform: 'uppercase' },
+  analysisMetricValue: { fontSize: 20, fontWeight: '800', color: '#0f6d78' },
   analysisItem: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#f4f8f9', padding: 15, borderRadius: 15, marginBottom: 12 },
   analysisIconBox: { width: 45, height: 45, borderRadius: 12, backgroundColor: '#0f6d7820', justifyContent: 'center', alignItems: 'center' },
   analysisType: { fontSize: 15, fontWeight: 'bold', color: '#15333d' },
@@ -1112,7 +1293,7 @@ const styles = StyleSheet.create({
   resultBadge: { backgroundColor: '#fdf3e7', padding: 12, borderRadius: 10, marginTop: 8 },
   resultText: { fontSize: 14, color: '#e67e22', fontWeight: 'bold' },
   resultRate: { fontSize: 13, color: '#0f6d78', marginTop: 2 },
-  conclusionBox: { backgroundColor: '#0f6d7810', padding: 15, borderRadius: 12, marginTop: 20 },
+  conclusionBox: { backgroundColor: '#0f6d7810', padding: 15, borderRadius: 12, marginTop: 20, borderLeftWidth: 4, borderLeftColor: '#0f6d78' },
   conclusionTitle: { fontSize: 14, fontWeight: 'bold', color: '#0f6d78' },
   conclusionText: { fontSize: 13, color: '#15333d', marginTop: 5, lineHeight: 18 },
   exportRow: { flexDirection: 'row', justifyContent: 'center', gap: 15, marginTop: 20, borderTopWidth: 1, borderTopColor: '#f0f0f0', paddingTop: 20 },

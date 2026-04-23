@@ -1595,45 +1595,49 @@ export default function MainScreen({ navigation }) {
       )}
       {[...analysisHistory]
         .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-        .map((item) => (
-        <TouchableOpacity
-          key={item.id}
-          style={styles.historyCard}
-          activeOpacity={0.85}
-          onPress={() => {
-            const visualizationMeta = getVisualizationOption(item.visualizationType);
-            setAnalysisResultSummary({
-              selectedAnalysis: FIXED_ANALYSIS_TYPE,
-              selectedAnalysisLabel: formatAnalysisLabel(FIXED_ANALYSIS_TYPE),
-              visualizationType: item.visualizationType,
-              visualizationLabel: visualizationMeta.label,
-              visualizationImageUri: buildSummaryVisualizationImageUri(item.visualizationType, item.totalRecords, item.anomalies),
-              datasetName: item.name,
-              idAnalisis: item.idAnalisis,
-              totalRegistros: item.totalRecords,
-              totalAnomalias: item.anomalies,
-              analysisDate: item.date,
-              status: item.status,
-              findingsLabel: getFindingsVisualFromCounts(item.totalRecords, item.anomalies).label,
-              source: 'history',
-            });
-            setShowAnalysisResultModal(true);
-          }}
-        >
-          <View style={[styles.historyStatusBar, { backgroundColor: item.status === 'completado' ? '#2e9e54' : '#e05a21' }]} />
-          <View style={styles.historyCardBody}>
-            <View style={styles.historyTop}>
-              <Ionicons name="document-attach-outline" size={20} color={T} />
-              <Text style={styles.historyName} numberOfLines={1}>Dataset: {item.name}</Text>
-              <View style={styles.historyIdBadge}>
-                <Text style={styles.historyIdBadgeText}>Analisis #{item.idAnalisis}</Text>
+        .map((item, index) => {
+          const total = analysisHistory.length;
+          const displayIndex = total - index;
+          return (
+            <TouchableOpacity
+              key={item.id}
+              style={styles.historyCard}
+              activeOpacity={0.85}
+              onPress={() => {
+                const visualizationMeta = getVisualizationOption(item.visualizationType);
+                setAnalysisResultSummary({
+                  selectedAnalysis: FIXED_ANALYSIS_TYPE,
+                  selectedAnalysisLabel: formatAnalysisLabel(FIXED_ANALYSIS_TYPE),
+                  visualizationType: item.visualizationType,
+                  visualizationLabel: visualizationMeta.label,
+                  visualizationImageUri: buildSummaryVisualizationImageUri(item.visualizationType, item.totalRecords, item.anomalies),
+                  datasetName: item.name,
+                  idAnalisis: item.idAnalisis,
+                  totalRegistros: item.totalRecords,
+                  totalAnomalias: item.anomalies,
+                  analysisDate: item.date,
+                  status: item.status,
+                  findingsLabel: getFindingsVisualFromCounts(item.totalRecords, item.anomalies).label,
+                  source: 'history',
+                });
+                setShowAnalysisResultModal(true);
+              }}
+            >
+              <View style={[styles.historyStatusBar, { backgroundColor: item.status === 'completado' ? '#2e9e54' : '#e05a21' }]} />
+              <View style={styles.historyCardBody}>
+                <View style={styles.historyTop}>
+                  <Ionicons name="document-attach-outline" size={20} color={T} />
+                  <Text style={styles.historyName} numberOfLines={1}>Dataset: {item.name}</Text>
+                  <View style={styles.historyIdBadge}>
+                    <Text style={styles.historyIdBadgeText}>Analisis #{displayIndex}</Text>
+                  </View>
+                </View>
+                <Text style={styles.historyDateText}>Fecha: {formatDate(item.date)}</Text>
               </View>
-            </View>
-            <Text style={styles.historyDateText}>Fecha: {formatDate(item.date)}</Text>
-          </View>
-          <Ionicons name="chevron-forward-outline" size={16} color="#9ab4b8" />
-        </TouchableOpacity>
-      ))}
+              <Ionicons name="chevron-forward-outline" size={16} color="#9ab4b8" />
+            </TouchableOpacity>
+          );
+        })}
     </ScrollView>
   );
 

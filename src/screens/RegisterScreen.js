@@ -1,5 +1,6 @@
 // src/screens/RegisterScreen.js
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
 import {
   Text,
   TextInput,
@@ -68,23 +69,27 @@ export default function RegisterScreen({ navigation, route }) {
     ]).start();
   }, [fadeAnim, logoScaleAnim, cardSlideAnim]);
 
-  // Restaurar estado si viene de la pantalla de Privacidad
-  useEffect(() => {
-    if (route.params?.formData) {
-      const { name, email: savedEmail, phone, username, password: savedPassword } = route.params.formData;
-      if (name) setNombre(name);
-      if (savedEmail) setEmail(savedEmail);
-      if (phone) setTelefono(phone);
-      if (username) setUsuario(username);
-      if (savedPassword) {
-        setPassword(savedPassword);
-        validatePassword(savedPassword);
+  // Restaurar estado cada vez que la pantalla gana enfoque
+  useFocusEffect(
+    useCallback(() => {
+      if (route.params?.formData) {
+        const { name, email: savedEmail, phone, username, password: savedPassword, confirmPassword: savedConfirm } = route.params.formData;
+        if (name) setNombre(name);
+        if (savedEmail) setEmail(savedEmail);
+        if (phone) setTelefono(phone);
+        if (username) setUsuario(username);
+        if (savedPassword) {
+          setPassword(savedPassword);
+          validatePassword(savedPassword);
+        }
+        if (savedConfirm) setConfirmPassword(savedConfirm);
       }
-    }
-    if (route.params?.accepted === true) {
-      setAcepta(true);
-    }
-  }, [route.params]);
+      
+      if (route.params?.accepted === true) {
+        setAcepta(true);
+      }
+    }, [route.params])
+  );
 
   const theme = {
     background: '#eaf6f5',
@@ -336,7 +341,8 @@ export default function RegisterScreen({ navigation, route }) {
                   email: email,
                   phone: telefono,
                   username: usuario,
-                  password: password
+                  password: password,
+                  confirmPassword: confirmPassword,
                 };
                 navigation.navigate('Privacy', { formData, returnTo: 'Register' });
               }}>

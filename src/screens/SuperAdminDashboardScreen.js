@@ -115,6 +115,17 @@ export default function SuperAdminDashboardScreen({ navigation }) {
     });
   };
 
+  const getReportInterpretation = (total, anoms) => {
+    const rate = total > 0 ? (anoms / total) * 100 : 0;
+    if (rate >= 30) {
+      return 'CONCLUSIÓN PROFESIONAL: Se observa una concentración ALTA de anomalías en el conjunto de datos analizado. Se recomienda una revisión médica exhaustiva y validación de los registros atípicos mediante pruebas complementarias antes de proceder con el diagnóstico definitivo.';
+    }
+    if (rate >= 10) {
+      return 'CONCLUSIÓN PROFESIONAL: Se identifica un nivel MODERADO de anomalías. Se sugiere realizar una verificación focalizada de los casos marcados por el modelo y mantener un seguimiento clínico estrecho del paciente.';
+    }
+    return 'CONCLUSIÓN PROFESIONAL: El comportamiento general de los datos es ESTABLE, con una baja tasa de anomalías detectadas. Se recomienda mantener el monitoreo periódico estándar para seguimiento preventivo.';
+  };
+
   const loadUsers = async () => {
     setLoading(true);
     try {
@@ -315,30 +326,54 @@ export default function SuperAdminDashboardScreen({ navigation }) {
         usuario_nombre, usuario_username, total_registros, total_anomalias, 
         fecha_analisis, dataset_nombre, nombre_modelo, tipo_modelo 
       } = selectedReport;
-      const rate = total_registros > 0 ? (total_anomalias / total_registros) * 100 : 0;
       
-      let conclusion = 'El comportamiento general es estable con baja tasa de anomalías.';
-      if (rate >= 30) conclusion = 'Se observa una concentración alta de anomalías. Se recomienda revisión médica urgente.';
-      else if (rate >= 10) conclusion = 'Se identifica un nivel moderado de anomalías. Se sugiere seguimiento clínico.';
+      const conclusion = getReportInterpretation(total_registros, total_anomalias);
+      const rate = total_registros > 0 ? (total_anomalias / total_registros) * 100 : 0;
 
       const html = `
         <html>
-          <body style="font-family: Arial, sans-serif; padding: 40px; color: #15333d;">
-            <h1 style="color: #0f6d78;">Reporte de Análisis Lumex</h1>
-            <p><strong>Paciente:</strong> ${usuario_nombre || usuario_username}</p>
-            <p><strong>Fecha:</strong> ${formatDateTime(fecha_analisis)}</p>
-            <p><strong>Dataset:</strong> ${dataset_nombre || 'N/D'}</p>
-            <p><strong>Modelo:</strong> ${nombre_modelo || tipo_modelo || 'N/D'}</p>
-            <hr/>
-            <h3>Resumen de Resultados</h3>
-            <p>Total Registros: ${total_registros}</p>
-            <p>Total Anomalías: ${total_anomalias}</p>
-            <p>Tasa: ${rate.toFixed(1)}%</p>
-            <div style="background: #f4f8f9; padding: 20px; border-radius: 10px;">
-              <h4>Conclusión Profesional</h4>
-              <p>${conclusion}</p>
+          <body style="font-family: 'Helvetica', Arial, sans-serif; padding: 50px; color: #15333d; line-height: 1.6;">
+            <div style="border-bottom: 2px solid #0f6d78; padding-bottom: 20px; margin-bottom: 30px;">
+              <h1 style="color: #0f6d78; margin: 0; font-size: 28px;">REPORTE CLÍNICO LUMEX</h1>
+              <p style="color: #6d8a91; margin: 5px 0 0 0;">Análisis de Inteligencia Artificial para Apoyo Diagnóstico</p>
             </div>
-            <p style="margin-top: 50px; font-size: 12px; color: #6d8a91;">Este reporte es un apoyo diagnóstico y debe ser validado por un profesional.</p>
+
+            <table style="width: 100%; border-collapse: collapse; margin-bottom: 30px;">
+              <tr>
+                <td style="padding: 10px 0; border-bottom: 1px solid #f0f0f0;"><strong>Paciente:</strong></td>
+                <td style="padding: 10px 0; border-bottom: 1px solid #f0f0f0;">${usuario_nombre || usuario_username}</td>
+              </tr>
+              <tr>
+                <td style="padding: 10px 0; border-bottom: 1px solid #f0f0f0;"><strong>Fecha de Emisión:</strong></td>
+                <td style="padding: 10px 0; border-bottom: 1px solid #f0f0f0;">${formatDateTime(new Date())}</td>
+              </tr>
+              <tr>
+                <td style="padding: 10px 0; border-bottom: 1px solid #f0f0f0;"><strong>Fecha del Análisis:</strong></td>
+                <td style="padding: 10px 0; border-bottom: 1px solid #f0f0f0;">${formatDateTime(fecha_analisis)}</td>
+              </tr>
+              <tr>
+                <td style="padding: 10px 0; border-bottom: 1px solid #f0f0f0;"><strong>Técnica Utilizada:</strong></td>
+                <td style="padding: 10px 0; border-bottom: 1px solid #f0f0f0;">${nombre_modelo || tipo_modelo || 'Análisis Estadístico'}</td>
+              </tr>
+            </table>
+
+            <h3 style="color: #0f6d78; border-left: 4px solid #0f6d78; padding-left: 10px;">Resultados Cualitativos</h3>
+            <div style="background: #f4f8f9; padding: 25px; border-radius: 15px; margin-top: 15px;">
+              <p style="margin: 0; font-size: 18px;"><strong>Tasa de Detección:</strong> ${rate.toFixed(2)}%</p>
+              <p style="margin: 10px 0 0 0; color: #5d7f8d;">Hallazgos: se detectaron ${total_anomalias} eventos fuera de rango en un total de ${total_registros} registros analizados.</p>
+            </div>
+
+            <div style="margin-top: 40px; padding: 25px; border: 1px solid #d9eaf1; border-radius: 15px;">
+              <h4 style="color: #0f6d78; margin-top: 0;">VALORACIÓN MÉDICA SUGERIDA</h4>
+              <p style="font-style: italic; color: #15333d;">${conclusion}</p>
+            </div>
+
+            <div style="margin-top: 60px; text-align: center;">
+              <p style="font-size: 11px; color: #95a5a6; border-top: 1px solid #eee; pt: 20px;">
+                Este documento es generado automáticamente por la plataforma LUMEX mediante modelos de aprendizaje profundo.
+                Debe ser interpretado por un médico colegiado dentro del contexto clínico del paciente.
+              </p>
+            </div>
           </body>
         </html>
       `;
@@ -689,11 +724,9 @@ export default function SuperAdminDashboardScreen({ navigation }) {
                   </View>
                 </View>
                 <View style={styles.conclusionBox}>
-                  <Text style={styles.conclusionTitle}>Conclusión Profesional</Text>
+                  <Text style={styles.conclusionTitle}>VALORACIÓN MÉDICA SUGERIDA</Text>
                   <Text style={styles.conclusionText}>
-                    {Number(selectedReport?.total_anomalias)/Number(selectedReport?.total_registros) >= 0.3 
-                      ? 'Se observa una concentración alta de anomalías. Se recomienda revisión médica urgente.' 
-                      : 'El comportamiento general es estable con baja tasa de anomalías.'}
+                    {getReportInterpretation(selectedReport?.total_registros || 0, selectedReport?.total_anomalias || 0)}
                   </Text>
                 </View>
               </ScrollView>

@@ -1362,15 +1362,24 @@ export default function AdminDashboardScreen({ navigation }) {
               secureTextEntry
             />
 
-            <View style={{flexDirection: 'row', alignItems: 'center', marginVertical: 10, paddingHorizontal: 5}}>
+            <TouchableOpacity 
+               style={{flexDirection: 'row', alignItems: 'center', marginVertical: 15, paddingHorizontal: 5, backgroundColor: '#f0f7f9', padding: 10, borderRadius: 12}}
+               onPress={() => setAcceptTerms(!acceptTerms)}
+               activeOpacity={0.8}
+            >
                <Switch 
                  value={acceptTerms} 
                  onValueChange={setAcceptTerms} 
-                 trackColor={{ false: "#d2e4ea", true: "#2f7a96" }}
+                 trackColor={{ false: "#cbdce2", true: "#0f6d78" }}
                  thumbColor={acceptTerms ? "#ffffff" : "#f4f3f4"}
                />
-               <Text style={{marginLeft: 10, color: '#2f7a96', fontSize: 13, flex: 1}}>Acepto los términos, condiciones y políticas de privacidad para el registro de este paciente.</Text>
-            </View>
+               <View style={{flex: 1, marginLeft: 10}}>
+                  <Text style={{color: acceptTerms ? '#0f6d78' : '#7a9aa8', fontSize: 12, fontWeight: acceptTerms ? 'bold' : 'normal'}}>
+                    He leído y acepto los términos, condiciones y políticas de privacidad del paciente.
+                  </Text>
+               </View>
+               {acceptTerms && <Ionicons name="checkmark-circle" size={20} color="#0f6d78" />}
+            </TouchableOpacity>
 
             <View style={styles.modalActions}>
               <TouchableOpacity

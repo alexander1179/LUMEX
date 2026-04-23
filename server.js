@@ -331,9 +331,10 @@ app.post('/api/auth/register', async (req, res) => {
 
         const hashedPassword = await bcrypt.hash(passwordHash, 10);
 
+        // Si aceptó términos, guardamos la fecha también
         const [result] = await pool.query(
-            'INSERT INTO usuarios (nombre, email, usuario, rol, contrasena, telefono, fecha_registro, terminos_aceptados, analisis_disponibles) VALUES (?, ?, ?, ?, ?, ?, NOW(), 1, 0)',
-            [name, email || null, username || null, finalRole, hashedPassword, phone || null]
+            'INSERT INTO usuarios (nombre, email, usuario, rol, contrasena, telefono, fecha_registro, acepta_terminos, fecha_aceptacion_terminos, analisis_disponibles) VALUES (?, ?, ?, ?, ?, ?, NOW(), ?, ?, 0)',
+            [name, email || null, username || null, finalRole, hashedPassword, phone || null, accepted ? 1 : 0, accepted ? new Date() : null]
         );
 
         const [newUser] = await pool.query('SELECT * FROM usuarios WHERE id_usuario = ?', [result.insertId]);

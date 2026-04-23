@@ -20,7 +20,7 @@ import { Modal } from 'react-native';
 import { CustomButton } from '../components/common/CustomButton';
 import { LanguageSelector } from '../components/common/LanguageSelector';
 import { AccessQuickNav } from '../components/common/AccessQuickNav';
-import { loginUser, acceptSecurityTerms } from '../services/api/authService';
+import { loginUser, acceptSecurityTerms, forgotPassword, verifyToken } from '../services/api/authService';
 
 import { storageService } from '../services/storage/storageService';
 
@@ -48,7 +48,6 @@ export default function LoginScreen({ navigation }) {
   const [loading, setLoading] = useState(false);
   const [showTokenModal, setShowTokenModal] = useState(false);
   const [token, setToken] = useState("");
-  const [correctToken, setCorrectToken] = useState("");
   const [pendingUser, setPendingUser] = useState(null);
   const [verifyingToken, setVerifyingToken] = useState(false);
 
@@ -90,15 +89,15 @@ export default function LoginScreen({ navigation }) {
       const result = await loginUser(usuario.trim(), password, true, deviceInfo, {});
 
       if (result.success) {
-        // Generar un Token aleatorio para la simulación (Ya que no hay backend SMTP configurado para 2FA aún)
-        const demoToken = Math.floor(100000 + Math.random() * 900000).toString();
-        setCorrectToken(demoToken);
+        // En lugar de entrar directo, solicitamos al servidor que envíe el token de seguridad oficial
+        // Reutilizamos el sistema de forgotPassword para enviar el email con el código
+        const emailResult = await forgotPassword(result.user.email);
         
-        // Notificar al usuario (Simulación de llegada de correo/SMS)
-        Alert.alert(
-          'Token de Seguridad', 
-          `Lumex: Tu código de acceso seguro es: ${demoToken}\n\n(En producción este código se enviaría por email/SMS al usuario)`
-        );
+        if (!emailResult.success) {
+           Alert.alert('Seguridad Lumex', 'No pudimos enviarte el token de seguridad. ' + emailResult.message);
+           setLoading(false);
+           return;
+        }
 
         setPendingUser(result.user);
         setShowTokenModal(true);
@@ -115,33 +114,42 @@ export default function LoginScreen({ navigation }) {
   };
 
   const verifySecurityToken = async () => {
-    if (token !== correctToken) {
-      Alert.alert('Token incorrecto', 'El código ingresado no coincide. Intenta de nuevo.');
+    if (token.length < 4) {
+      Alert.alert('Token incompleto', 'Por favor ingresa el token de seguridad recibido.');
       return;
     }
 
     setVerifyingToken(true);
-    setTimeout(async () => {
-      setVerifyingToken(false);
-      const welcomeName = pendingUser?.nombre || pendingUser?.usuario || 'Portal';
-      const role = String(pendingUser?.rol || 'usuario').toLowerCase();
+    try {
+      // Verificar el token oficialmente contra el servidor
+      const result = await verifyToken(pendingUser.email, token);
 
-      await storageService.saveUser(pendingUser);
-      setShowTokenModal(false);
-      
-      // Limpiar campos para la próxima vez
-      setUsuario("");
-      setPassword("");
-      setToken("");
+      if (result.success) {
+        const role = String(pendingUser?.rol || 'usuario').toLowerCase();
 
-      if (role === 'superadmin' || role === 'superadministrador' || role === 'master') {
-        navigation.replace("SuperAdminDashboard");
-      } else if (role === 'admin' || role === 'administrador') {
-        navigation.replace("AdminDashboard");
+        await storageService.saveUser(pendingUser);
+        setShowTokenModal(false);
+        
+        // Limpiar campos para la próxima vez
+        setUsuario("");
+        setPassword("");
+        setToken("");
+
+        if (role === 'superadmin' || role === 'superadministrador' || role === 'master') {
+          navigation.replace("SuperAdminDashboard");
+        } else if (role === 'admin' || role === 'administrador') {
+          navigation.replace("AdminDashboard");
+        } else {
+          navigation.replace("Main");
+        }
       } else {
-        navigation.replace("Main");
+        Alert.alert('Token incorrecto', 'El código ingresado es inválido o ha expirado.');
       }
-    }, 1000);
+    } catch (error) {
+      Alert.alert('Error', 'No pudimos verificar el token: ' + error.message);
+    } finally {
+      setVerifyingToken(false);
+    }
   };
 
   const handleCancelToken = () => {
@@ -150,7 +158,6 @@ export default function LoginScreen({ navigation }) {
     setPassword("");
     setToken("");
     setPendingUser(null);
-    setCorrectToken("");
     Alert.alert('Sesión Cancelada', 'Por seguridad, se han borrado tus credenciales ingresadas.');
   };
 

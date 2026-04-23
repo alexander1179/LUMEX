@@ -718,7 +718,6 @@ export default function PrivacyScreen({ navigation, route }) {
         {t('privacy.version')}
       </Text>
     </ScrollView>
-      <AccessQuickNav navigation={navigation} current="usuario" />
     </View>
   );
 }

@@ -65,10 +65,25 @@ const genBtnStyles = {
   text: { color: '#ffffff', fontSize: 15, fontWeight: '700' },
 };
 
-export default function AdminDashboardScreen({ navigation }) {
+export default function AdminDashboardScreen({ navigation, route }) {
   const [activeTab, setActiveTab] = useState('inicio');
   const [me, setMe] = useState(null);
   const [usuariosRegistrados, setUsuariosRegistrados] = useState(0);
+
+  useEffect(() => {
+    if (route.params?.accepted) {
+      setAcceptTerms(true);
+      if (route.params?.formData) {
+        const { name, email, username, phone, password } = route.params.formData;
+        if (name) setNewNombre(name);
+        if (email) setNewEmail(email);
+        if (username) setNewUsuario(username);
+        if (phone) setNewTelefono(phone);
+        if (password) setNewPassword(password);
+      }
+      setShowCreateModal(true);
+    }
+  }, [route.params]);
   const [usuarios, setUsuarios] = useState([]);
   const [loadingUsuarios, setLoadingUsuarios] = useState(true);
   const [selectedUsuario, setSelectedUsuario] = useState(null);
@@ -1372,7 +1387,18 @@ export default function AdminDashboardScreen({ navigation }) {
                />
                <View style={{flex: 1}}>
                   <Text style={{color: '#7a9aa8', fontSize: 13}}>Acepto las </Text>
-                  <TouchableOpacity onPress={() => {/* Navegar a políticas si es necesario */}}>
+                  <TouchableOpacity onPress={() => {
+                     navigation.navigate('Privacy', { 
+                        returnTo: 'AdminDashboard',
+                        formData: {
+                           name: newNombre,
+                           email: newEmail,
+                           username: newUsuario,
+                           phone: newTelefono,
+                           password: newPassword
+                        }
+                     });
+                  }}>
                      <Text style={{color: '#0f6d78', fontWeight: 'bold', textDecorationLine: 'underline'}}>Politicas de Seguridad</Text>
                   </TouchableOpacity>
                </View>

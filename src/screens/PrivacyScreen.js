@@ -697,7 +697,7 @@ export default function PrivacyScreen({ navigation, route }) {
             { backgroundColor: isChecked ? "#0f6d78" : "#c8d8dc" }
           ]}
           disabled={!isChecked}
-          onPress={() => navigation.navigate("Register", { 
+          onPress={() => navigation.navigate(route.params?.returnTo || "Register", { 
             formData: route.params?.formData, 
             accepted: true 
           })}

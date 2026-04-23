@@ -82,7 +82,17 @@ const runMigrations = async () => {
                 fecha_registro DATETIME DEFAULT CURRENT_TIMESTAMP,
                 acepta_terminos TINYINT(1) DEFAULT 0,
                 estado VARCHAR(20) DEFAULT 'activo',
-                analisis_disponibles INT DEFAULT 0
+                analisis_disponibles INT DEFAULT 0,
+                permiso_editar TINYINT DEFAULT 0,
+                permiso_bloquear TINYINT DEFAULT 0,
+                mod_nuevo_paciente TINYINT DEFAULT 0,
+                mod_gestion_usuarios TINYINT DEFAULT 0,
+                mod_reportes TINYINT DEFAULT 0,
+                mod_actividad TINYINT DEFAULT 0,
+                mod_alertas TINYINT DEFAULT 0,
+                mod_pagos TINYINT DEFAULT 0,
+                puede_gestionar_usuarios TINYINT DEFAULT 0,
+                fecha_aceptacion_terminos DATETIME NULL
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
         `);
 
@@ -160,16 +170,17 @@ const runMigrations = async () => {
         const names = columns.map(c => c.Field);
 
         const migrations = [
-            { name: 'permiso_editar', query: 'ALTER TABLE usuarios ADD COLUMN permiso_editar TINYINT DEFAULT 1' },
-            { name: 'permiso_bloquear', query: 'ALTER TABLE usuarios ADD COLUMN permiso_bloquear TINYINT DEFAULT 1' },
-            { name: 'mod_nuevo_paciente', query: 'ALTER TABLE usuarios ADD COLUMN mod_nuevo_paciente TINYINT DEFAULT 1' },
-            { name: 'mod_gestion_usuarios', query: 'ALTER TABLE usuarios ADD COLUMN mod_gestion_usuarios TINYINT DEFAULT 1' },
-            { name: 'mod_reportes', query: 'ALTER TABLE usuarios ADD COLUMN mod_reportes TINYINT DEFAULT 1' },
-            { name: 'mod_actividad', query: 'ALTER TABLE usuarios ADD COLUMN mod_actividad TINYINT DEFAULT 1' },
-            { name: 'mod_alertas', query: 'ALTER TABLE usuarios ADD COLUMN mod_alertas TINYINT DEFAULT 1' },
-            { name: 'mod_pagos', query: 'ALTER TABLE usuarios ADD COLUMN mod_pagos TINYINT DEFAULT 1' },
-            { name: 'puede_gestionar_usuarios', query: 'ALTER TABLE usuarios ADD COLUMN puede_gestionar_usuarios TINYINT DEFAULT 1' },
+            { name: 'permiso_editar', query: 'ALTER TABLE usuarios ADD COLUMN permiso_editar TINYINT DEFAULT 0' },
+            { name: 'permiso_bloquear', query: 'ALTER TABLE usuarios ADD COLUMN permiso_bloquear TINYINT DEFAULT 0' },
+            { name: 'mod_nuevo_paciente', query: 'ALTER TABLE usuarios ADD COLUMN mod_nuevo_paciente TINYINT DEFAULT 0' },
+            { name: 'mod_gestion_usuarios', query: 'ALTER TABLE usuarios ADD COLUMN mod_gestion_usuarios TINYINT DEFAULT 0' },
+            { name: 'mod_reportes', query: 'ALTER TABLE usuarios ADD COLUMN mod_reportes TINYINT DEFAULT 0' },
+            { name: 'mod_actividad', query: 'ALTER TABLE usuarios ADD COLUMN mod_actividad TINYINT DEFAULT 0' },
+            { name: 'mod_alertas', query: 'ALTER TABLE usuarios ADD COLUMN mod_alertas TINYINT DEFAULT 0' },
+            { name: 'mod_pagos', query: 'ALTER TABLE usuarios ADD COLUMN mod_pagos TINYINT DEFAULT 0' },
+            { name: 'puede_gestionar_usuarios', query: 'ALTER TABLE usuarios ADD COLUMN puede_gestionar_usuarios TINYINT DEFAULT 0' },
             { name: 'acepta_terminos', query: 'ALTER TABLE usuarios ADD COLUMN acepta_terminos TINYINT(1) DEFAULT 0' },
+            { name: 'fecha_aceptacion_terminos', query: 'ALTER TABLE usuarios ADD COLUMN fecha_aceptacion_terminos DATETIME NULL' },
             { name: 'estado', query: 'ALTER TABLE usuarios ADD COLUMN estado VARCHAR(20) DEFAULT "activo"' },
             { name: 'analisis_disponibles', query: 'ALTER TABLE usuarios ADD COLUMN analisis_disponibles INT DEFAULT 0' }
         ];
@@ -331,9 +342,8 @@ app.post('/api/auth/register', async (req, res) => {
 
         const hashedPassword = await bcrypt.hash(passwordHash, 10);
 
-        // Si aceptó términos, guardamos la fecha también
         const [result] = await pool.query(
-            'INSERT INTO usuarios (nombre, email, usuario, rol, contrasena, telefono, fecha_registro, acepta_terminos, fecha_aceptacion_terminos, analisis_disponibles) VALUES (?, ?, ?, ?, ?, ?, NOW(), ?, ?, 0)',
+            'INSERT INTO usuarios (nombre, email, usuario, rol, contrasena, telefono, fecha_registro, acepta_terminos, fecha_aceptacion_terminos, analisis_disponibles, permiso_editar, permiso_bloquear, mod_nuevo_paciente, mod_gestion_usuarios, mod_reportes, mod_actividad, mod_alertas, mod_pagos, puede_gestionar_usuarios) VALUES (?, ?, ?, ?, ?, ?, NOW(), ?, ?, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)',
             [name, email || null, username || null, finalRole, hashedPassword, phone || null, accepted ? 1 : 0, accepted ? new Date() : null]
         );
 

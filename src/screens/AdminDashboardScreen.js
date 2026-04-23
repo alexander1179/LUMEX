@@ -1020,6 +1020,7 @@ export default function AdminDashboardScreen({ navigation, route }) {
         username: newUsuario.trim().toLowerCase(),
         phone: newTelefono.trim() || null,
         password: newPassword,
+        accepted: acceptTerms
       });
 
       if (!result.success) {

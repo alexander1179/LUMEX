@@ -27,7 +27,8 @@ export const registerUser = async (userData) => {
       username: userData.username.trim().toLowerCase(),
       name: userData.name,
       phone: userData.phone,
-      passwordHash
+      passwordHash,
+      terminos_aceptados: !!userData.accepted
     };
 
     const { data, ok } = await getApiClient('/api/auth/register', {

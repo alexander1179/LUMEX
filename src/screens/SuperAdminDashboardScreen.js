@@ -552,9 +552,6 @@ export default function SuperAdminDashboardScreen({ navigation }) {
                         </View>
                    </View>
                    <View style={{flexDirection: 'row', alignItems: 'center', gap: 10}}>
-                      <TouchableOpacity onPress={() => handleOpenAnalysis(item)} style={{padding: 8, backgroundColor: '#fdf3e7', borderRadius: 8}}>
-                         <Ionicons name="bar-chart-outline" size={20} color="#e67e22" />
-                      </TouchableOpacity>
                       <TouchableOpacity onPress={() => toggleBlockUser(item)} style={{padding: 8, backgroundColor: item.estado === 'bloqueado' ? '#fbeeee' : '#ecf0f1', borderRadius: 8}}>
                          <Ionicons name={item.estado === 'bloqueado' ? 'lock-closed' : 'lock-open-outline'} size={20} color={item.estado === 'bloqueado' ? '#e74c3c' : '#7f8c8d'} />
                       </TouchableOpacity>

@@ -29,8 +29,9 @@ export default function PrivacyScreen({ navigation, route }) {
   useEffect(() => {
     const initialize = async () => {
       await loadSavedLanguage();
+      // Solo redireccionar a Main si NO venimos de una pantalla que requiere aceptación (como Admin o Registro)
       const user = await storageService.checkLogin();
-      if (user) {
+      if (user && !route.params?.formData && !route.params?.returnTo) {
         navigation.replace("Main");
       }
     };

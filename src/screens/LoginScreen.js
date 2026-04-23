@@ -48,6 +48,7 @@ export default function LoginScreen({ navigation }) {
   const [loading, setLoading] = useState(false);
   const [showTokenModal, setShowTokenModal] = useState(false);
   const [token, setToken] = useState("");
+  const [correctToken, setCorrectToken] = useState("");
   const [pendingUser, setPendingUser] = useState(null);
   const [verifyingToken, setVerifyingToken] = useState(false);
 
@@ -89,7 +90,16 @@ export default function LoginScreen({ navigation }) {
       const result = await loginUser(usuario.trim(), password, true, deviceInfo, {});
 
       if (result.success) {
-        // En lugar de entrar directo, pedimos el Token
+        // Generar un Token aleatorio para la simulación (Ya que no hay backend SMTP configurado para 2FA aún)
+        const demoToken = Math.floor(100000 + Math.random() * 900000).toString();
+        setCorrectToken(demoToken);
+        
+        // Notificar al usuario (Simulación de llegada de correo/SMS)
+        Alert.alert(
+          'Token de Seguridad', 
+          `Lumex: Tu código de acceso seguro es: ${demoToken}\n\n(En producción este código se enviaría por email/SMS al usuario)`
+        );
+
         setPendingUser(result.user);
         setShowTokenModal(true);
       } else {
@@ -105,13 +115,12 @@ export default function LoginScreen({ navigation }) {
   };
 
   const verifySecurityToken = async () => {
-    if (token.length < 4) {
-      Alert.alert('Token inválido', 'Por favor ingresa el token de seguridad completo.');
+    if (token !== correctToken) {
+      Alert.alert('Token incorrecto', 'El código ingresado no coincide. Intenta de nuevo.');
       return;
     }
 
     setVerifyingToken(true);
-    // Simulación de verificación de token (En producción esto iría al backend)
     setTimeout(async () => {
       setVerifyingToken(false);
       const welcomeName = pendingUser?.nombre || pendingUser?.usuario || 'Portal';
@@ -119,21 +128,30 @@ export default function LoginScreen({ navigation }) {
 
       await storageService.saveUser(pendingUser);
       setShowTokenModal(false);
+      
+      // Limpiar campos para la próxima vez
+      setUsuario("");
+      setPassword("");
+      setToken("");
 
-      if (role === 'superadmin' || role === 'superadministrador') {
-        Alert.alert('Acceso Máximo', `Bienvenido(a) Superadministrador: ${welcomeName}`, [
-          { text: 'Entrar', onPress: () => navigation.replace("SuperAdminDashboard") }
-        ]);
+      if (role === 'superadmin' || role === 'superadministrador' || role === 'master') {
+        navigation.replace("SuperAdminDashboard");
       } else if (role === 'admin' || role === 'administrador') {
-        Alert.alert('Acceso Administrativo', `Bienvenido(a) Administrador(a): ${welcomeName}`, [
-          { text: 'Entrar al Panel', onPress: () => navigation.replace("AdminDashboard") }
-        ]);
+        navigation.replace("AdminDashboard");
       } else {
-        Alert.alert('Éxito', `Bienvenido: ${welcomeName}`, [
-          { text: 'Ingresar', onPress: () => navigation.replace("Main") }
-        ]);
+        navigation.replace("Main");
       }
-    }, 1500);
+    }, 1000);
+  };
+
+  const handleCancelToken = () => {
+    setShowTokenModal(false);
+    setUsuario("");
+    setPassword("");
+    setToken("");
+    setPendingUser(null);
+    setCorrectToken("");
+    Alert.alert('Sesión Cancelada', 'Por seguridad, se han borrado tus credenciales ingresadas.');
   };
 
   return (
@@ -240,8 +258,8 @@ export default function LoginScreen({ navigation }) {
                 <Text style={styles.tokenBtnText}>{verifyingToken ? 'Verificando...' : 'Confirmar Identidad'}</Text>
              </TouchableOpacity>
 
-             <TouchableOpacity style={{marginTop: 15}} onPress={() => setShowTokenModal(false)}>
-                <Text style={{color: '#6f8d99', fontSize: 13}}>Cancelar</Text>
+             <TouchableOpacity style={{marginTop: 15, padding: 10}} onPress={handleCancelToken}>
+                <Text style={{color: '#ff4d4d', fontSize: 14, fontWeight: 'bold'}}>Cancelar y Salir</Text>
              </TouchableOpacity>
           </View>
         </View>

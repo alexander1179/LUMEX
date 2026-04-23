@@ -331,9 +331,15 @@ export default function SuperAdminDashboardScreen({ navigation }) {
   };
 
   const handleSelectUser = (user) => {
-    if (!isMaster && (user.rol === 'administrador' || user.rol === 'superadministrador')) {
-      Alert.alert("Acceso Restringido", "No tienes permisos jerárquicos."); return;
+    const targetRol = String(user.rol || '').toLowerCase();
+    
+    // Solo el Master puede editar a otros Superadministradores
+    if (!isMaster && (targetRol === 'superadministrador' || targetRol === 'superadmin')) {
+      Alert.alert("Acceso Restringido", "Solo el administrador principal puede gestionar otras cuentas de nivel Superadministrador."); 
+      return;
     }
+    
+    // Cualquier Superadministrador que acceda a este panel puede editar Administradores y Usuarios
     setEditingUser(user);
     setLocalFormData({ ...user });
     setShowDetailModal(true);

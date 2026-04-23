@@ -727,14 +727,13 @@ export default function SuperAdminDashboardScreen({ navigation }) {
                          <Ionicons name="calendar-outline" size={14} color="#6d8a91" />
                          <Text style={styles.statText}>{item.fecha_registro ? new Date(item.fecha_registro).toLocaleDateString() : 'N/D'}</Text>
                       </View>
-                      <View style={styles.statItem}>
-                         <Ionicons name="call-outline" size={14} color="#6d8a91" />
-                         <Text style={styles.statText}>{item.telefono || 'Sin Tel'}</Text>
-                      </View>
-                      <TouchableOpacity style={styles.viewHisBtn}>
-                         <Text style={styles.viewHisText}>Ver Historial</Text>
-                         <Ionicons name="chevron-forward" size={14} color="#1a73e8" />
-                      </TouchableOpacity>
+                      <TouchableOpacity 
+                          style={styles.viewHisBtn}
+                          onPress={() => handleOpenAnalysis(item)}
+                       >
+                          <Text style={styles.viewHisText}>Ver Historial</Text>
+                          <Ionicons name="chevron-forward" size={14} color="#1a73e8" />
+                       </TouchableOpacity>
                    </View>
                 </TouchableOpacity>
               )}

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, FlatList, Alert, Modal,
-  ActivityIndicator, TextInput, ScrollView, StatusBar, Switch
+  ActivityIndicator, TextInput, ScrollView, StatusBar, Switch, Image
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as Print from 'expo-print';

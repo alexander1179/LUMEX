@@ -81,7 +81,7 @@ export default function RegisterScreen({ navigation, route }) {
         validatePassword(savedPassword);
       }
     }
-    if (route.params?.accepted) {
+    if (route.params?.accepted === true) {
       setAcepta(true);
     }
   }, [route.params]);
@@ -325,7 +325,7 @@ export default function RegisterScreen({ navigation, route }) {
             <Checkbox
               value={acepta}
               onValueChange={setAcepta}
-              color={acepta ? theme.accent : undefined}
+              color={acepta ? "#155724" : undefined}
               disabled={true} // Obligatorio visitar las políticas para que se marque
             />
             <View style={styles.termsTextWrap}>

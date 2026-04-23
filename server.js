@@ -875,6 +875,23 @@ app.post('/admin/block-user', async (req, res) => {
     }
 });
 
+// ELIMINAR USUARIO DEFINITIVAMENTE
+const deleteUser = async (req, res) => {
+    const { userId } = req.params;
+    try {
+        const [result] = await pool.query('DELETE FROM usuarios WHERE id_usuario = ?', [userId]);
+        if (result.affectedRows === 0) {
+            return res.status(404).json({ success: false, message: 'Usuario no encontrado o ya eliminado.' });
+        }
+        res.json({ success: true, message: 'Usuario eliminado definitivamente del sistema.' });
+    } catch (error) {
+        res.status(500).json({ success: false, message: 'Error interno: ' + error.message });
+    }
+};
+
+app.delete('/api/admin/user/:userId', deleteUser);
+app.delete('/admin/user/:userId', deleteUser);
+
 // Recuperar contraseña (Generar código)
 app.post('/api/auth/forgot-password', async (req, res) => {
     const { email } = req.body;

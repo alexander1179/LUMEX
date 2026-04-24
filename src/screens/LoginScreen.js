@@ -101,6 +101,11 @@ export default function LoginScreen({ navigation }) {
 
         setPendingUser(result.user);
         setShowTokenModal(true);
+        
+        if (emailResult.devOtp) {
+          Alert.alert('Modo Desarrollo / Local', emailResult.message);
+          setToken(emailResult.devOtp); // Autocompletar el token para facilidad
+        }
       } else {
         clearLoginInputs();
         Alert.alert('Error de Acceso', result.message);

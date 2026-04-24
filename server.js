@@ -472,9 +472,10 @@ app.post('/api/auth/forgot-password', async (req, res) => {
         if (!transporter) {
             console.error(`⚠️ [SMTP ERROR] No se puede enviar OTP a ${email} porque SMTP no está configurado.`);
             console.log(`👉 OTP generado para pruebas: ${otp}`);
-            return res.status(503).json({ 
-                success: false, 
-                message: 'El servicio de correo no está configurado en el servidor. Contacta al administrador.' 
+            return res.json({ 
+                success: true, 
+                message: 'No hay SMTP configurado. Revisa la consola o ingresa este código por defecto.',
+                devOtp: otp 
             });
         }
 

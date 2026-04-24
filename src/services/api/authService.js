@@ -88,7 +88,7 @@ export const forgotPassword = async (email) => {
     if (!ok || !resData?.success) {
       return { success: false, message: resData?.message || 'Error enviando correo' };
     }
-    return { success: true, message: resData.message, email };
+    return { success: true, message: resData.message, email, devOtp: resData.devOtp };
   } catch (error) {
     return { success: false, message: error.message };
   }

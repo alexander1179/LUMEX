@@ -857,7 +857,7 @@ app.post('/api/superadmin/toggle-admin-permission', async (req, res) => {
     }
 });
 
-app.post('/api/admin/update-user', async (req, res) => {
+const updateUserHandler = async (req, res) => {
     const { id_usuario, nombre, email, usuario, rol, telefono, passwordHash } = req.body;
     try {
         let query = 'UPDATE usuarios SET nombre=?, email=?, usuario=?, rol=?, telefono=?';
@@ -872,23 +872,23 @@ app.post('/api/admin/update-user', async (req, res) => {
         params.push(id_usuario);
 
         await pool.query(query, params);
+
+        // Registrar en Auditoría
+        await logAudit(
+            id_usuario, 
+            'Actualización de Perfil', 
+            `Perfil de usuario modificado (Rol asignado: ${rol})`, 
+            req
+        );
+
         res.json({ success: true, message: 'Usuario actualizado con éxito' });
     } catch (error) {
         res.status(500).json({ success: false, message: 'Error al actualizar usuario: ' + error.message });
     }
-});
-app.post('/admin/update-user', async (req, res) => {
-    const { id_usuario, nombre, email, usuario, rol, telefono, passwordHash } = req.body;
-    try {
-        let query = 'UPDATE usuarios SET nombre=?, email=?, usuario=?, rol=?, telefono=?';
-        let params = [nombre, email, usuario, rol, telefono];
-        if (passwordHash) { query += ', contrasena=?'; params.push(passwordHash); }
-        query += ' WHERE id_usuario=?';
-        params.push(id_usuario);
-        await pool.query(query, params);
-        res.json({ success: true, message: 'Usuario actualizado con éxito' });
-    } catch (error) { res.status(500).json({ success: false, message: error.message }); }
-});
+};
+
+app.post('/api/admin/update-user', updateUserHandler);
+app.post('/admin/update-user', updateUserHandler);
 
 // Obtener usuario actual (refresco)
 app.post('/api/auth/get-user', async (req, res) => {

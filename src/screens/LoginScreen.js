@@ -103,11 +103,8 @@ export default function LoginScreen({ navigation }) {
         setShowTokenModal(true);
         
         if (emailResult.devOtp) {
-          Alert.alert(
-            'Modo Desarrollo / Local', 
-            `${emailResult.message}\n\nTOKEN DE SEGURIDAD: ${emailResult.devOtp}`
-          );
-          setToken(emailResult.devOtp); // Autocompletar el token para facilidad
+          // El token ya no se muestra al usuario en pantalla, solo en la consola del servidor backend.
+          setToken(emailResult.devOtp); // Mantiene el autocompletado en el input para facilidad local silenciosa
         }
       } else {
         clearLoginInputs();

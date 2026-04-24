@@ -469,21 +469,35 @@ app.post('/api/auth/forgot-password', async (req, res) => {
         const expiresAt = Date.now() + OTP_EXPIRY_MINUTES * 60000;
         otpMemCache.set(email, { otp, expiresAt });
 
-        if (transporter) {
-            await transporter.sendMail({
-                from: process.env.SMTP_FROM,
-                to: email,
-                subject: 'Código de recuperación - Lumex',
-                text: `Tu código es: ${otp}\nExpira en ${OTP_EXPIRY_MINUTES} minutos.`,
-                html: buildOtpEmailHtml(otp),
+        if (!transporter) {
+            console.error(`⚠️ [SMTP ERROR] No se puede enviar OTP a ${email} porque SMTP no está configurado.`);
+            console.log(`👉 OTP generado para pruebas: ${otp}`);
+            return res.status(503).json({ 
+                success: false, 
+                message: 'El servicio de correo no está configurado en el servidor. Contacta al administrador.' 
             });
         }
 
-        console.log(`🔑 OTP para ${email}: ${otp}`);
-        return res.json({ success: true, message: 'Código enviado correctamente' });
+        try {
+            await transporter.sendMail({
+                from: process.env.SMTP_FROM,
+                to: email,
+                subject: 'Código de seguridad - Lumex',
+                text: `Tu código es: ${otp}\nExpira en ${OTP_EXPIRY_MINUTES} minutos.`,
+                html: buildOtpEmailHtml(otp),
+            });
+            console.log(`✅ OTP enviado por correo a ${email}`);
+            return res.json({ success: true, message: 'Código enviado correctamente a tu correo' });
+        } catch (mailError) {
+            console.error(`❌ [MAIL ERROR] Fallo al enviar correo a ${email}:`, mailError.message);
+            return res.status(500).json({ 
+                success: false, 
+                message: 'Error al enviar el correo electrónico. Inténtalo más tarde.' 
+            });
+        }
     } catch (err) {
         console.error(err);
-        res.status(500).json({ success: false, message: 'Error enviando código' });
+        res.status(500).json({ success: false, message: 'Error interno al procesar recuperación' });
     }
 });
 
@@ -943,83 +957,6 @@ app.get('/api/superadmin/audit-logs', async (req, res) => {
 
 app.delete('/api/admin/user/:userId', deleteUser);
 app.delete('/admin/user/:userId', deleteUser);
-
-// Recuperar contraseña (Generar código)
-app.post('/api/auth/forgot-password', async (req, res) => {
-    const { email } = req.body;
-    try {
-        const normalizedEmail = email.trim().toLowerCase();
-        const [rows] = await pool.query('SELECT id_usuario FROM usuarios WHERE email = ?', [normalizedEmail]);
-        if (rows.length === 0) {
-            return res.status(404).json({ success: false, message: 'Correo no registrado' });
-        }
-
-        // Generar código de 6 dígitos
-        const code = Math.floor(100000 + Math.random() * 900000).toString();
-
-        // Guardar en memoria (expira en 15 min)
-        otps[normalizedEmail] = {
-            code,
-            expires: Date.now() + (15 * 60 * 1000)
-        };
-
-        console.log("**************************************************");
-        console.log(`🔑 CÓDIGO PARA: ${normalizedEmail}`);
-        console.log(`👉 CÓDIGO: ${code}`);
-        console.log("**************************************************");
-
-        res.json({ success: true, message: 'Código generado correctamente. Revisa la consola del servidor.' });
-    } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
-    }
-});
-
-// Verificar código
-app.post('/api/auth/verify-token', async (req, res) => {
-    const { email, token } = req.body;
-    const normalizedEmail = email.trim().toLowerCase();
-
-    const stored = otps[normalizedEmail];
-
-    if (!stored) {
-        return res.status(400).json({ success: false, message: 'No hay un código pendiente para este correo' });
-    }
-
-    if (Date.now() > stored.expires) {
-        delete otps[normalizedEmail];
-        return res.status(400).json({ success: false, message: 'El código ha expirado' });
-    }
-
-    if (stored.code !== token) {
-        return res.status(400).json({ success: false, message: 'Código incorrecto' });
-    }
-
-    res.json({ success: true, message: 'Código verificado' });
-});
-
-// Cambiar contraseña real
-app.post('/api/auth/reset-password', async (req, res) => {
-    const { email, newPassword } = req.body;
-    const normalizedEmail = email.trim().toLowerCase();
-
-    try {
-        // En una App real aquí deberíamos verificar que el token fue validado antes.
-        // Para el demo, lo permitimos si el email existe.
-        const hashedPassword = await bcrypt.hash(newPassword, 10);
-
-        await pool.query(
-            'UPDATE usuarios SET contrasena = ? WHERE email = ?',
-            [hashedPassword, normalizedEmail]
-        );
-
-        // Limpiar OTP después de usarlo
-        delete otps[normalizedEmail];
-
-        res.json({ success: true, message: 'Contraseña actualizada correctamente' });
-    } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
-    }
-});
 
 // Final Handlers
 app.use((req, res) => {

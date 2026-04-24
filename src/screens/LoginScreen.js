@@ -103,7 +103,10 @@ export default function LoginScreen({ navigation }) {
         setShowTokenModal(true);
         
         if (emailResult.devOtp) {
-          Alert.alert('Modo Desarrollo / Local', emailResult.message);
+          Alert.alert(
+            'Modo Desarrollo / Local', 
+            `${emailResult.message}\n\nTOKEN DE SEGURIDAD: ${emailResult.devOtp}`
+          );
           setToken(emailResult.devOtp); // Autocompletar el token para facilidad
         }
       } else {

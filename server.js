@@ -903,26 +903,28 @@ app.post('/api/auth/get-user', async (req, res) => {
     }
 });
 
-app.post('/api/admin/block-user', async (req, res) => {
+const blockUserHandler = async (req, res) => {
     const { id_usuario, blocked } = req.body;
     try {
         const estado = blocked ? 'bloqueado' : 'activo';
         await pool.query('UPDATE usuarios SET estado = ? WHERE id_usuario = ?', [estado, id_usuario]);
+        
+        // Registrar en Auditoría
+        await logAudit(
+            id_usuario, 
+            blocked ? 'Bloqueo de Usuario' : 'Desbloqueo de Usuario', 
+            `El administrador ha marcado la cuenta como: ${estado}`, 
+            req
+        );
+
         res.json({ success: true, message: `Usuario ${estado}` });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
     }
-});
-app.post('/admin/block-user', async (req, res) => {
-    const { id_usuario, blocked } = req.body;
-    try {
-        const estado = blocked ? 'bloqueado' : 'activo';
-        await pool.query('UPDATE usuarios SET estado = ? WHERE id_usuario = ?', [estado, id_usuario]);
-        res.json({ success: true, message: `Usuario ${estado}` });
-    } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
-    }
-});
+};
+
+app.post('/api/admin/block-user', blockUserHandler);
+app.post('/admin/block-user', blockUserHandler);
 
 // ELIMINAR USUARIO DEFINITIVAMENTE
 const deleteUser = async (req, res) => {

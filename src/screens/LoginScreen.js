@@ -99,13 +99,9 @@ export default function LoginScreen({ navigation }) {
            return;
         }
 
+        // Mostrar el modal; el token solo está en consola y el usuario debe ingresarlo.
         setPendingUser(result.user);
         setShowTokenModal(true);
-        
-        if (emailResult.devOtp) {
-          // El token ya no se muestra al usuario en pantalla, solo en la consola del servidor backend.
-          setToken(emailResult.devOtp); // Mantiene el autocompletado en el input para facilidad local silenciosa
-        }
       } else {
         clearLoginInputs();
         Alert.alert('Error de Acceso', result.message);

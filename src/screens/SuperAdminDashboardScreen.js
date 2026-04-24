@@ -92,6 +92,7 @@ const ROLE_MODULES = [
 
 const TABS = [
   { key: 'inicio', label: 'Inicio', icon: 'home-outline' },
+  { key: 'auditoria', label: 'Auditoría', icon: 'shield-half-outline' },
   { key: 'ajustes', label: 'Ajustes', icon: 'settings-outline' },
 ];
 
@@ -139,6 +140,16 @@ export default function SuperAdminDashboardScreen({ navigation }) {
   const [registerFormData, setRegisterFormData] = useState({ nombre: '', usuario: '', email: '', telefono: '', password: '', rol: 'usuario' });
   const [isRegistering, setIsRegistering] = useState(false);
 
+  // Auditoría
+  const [auditLogs, setAuditLogs] = useState([]);
+  const [loadingAudit, setLoadingAudit] = useState(false);
+
+  useEffect(() => {
+    if (activeTab === 'auditoria') {
+      loadAuditLogs();
+    }
+  }, [activeTab]);
+
   // Perfil
   const [profileNombre, setProfileNombre] = useState('');
   const [profileEmail, setProfileEmail] = useState('');
@@ -167,6 +178,19 @@ export default function SuperAdminDashboardScreen({ navigation }) {
       // Silencio
     } finally {
       setLoadingActivity(false);
+    }
+  };
+
+  const loadAuditLogs = async () => {
+    setLoadingAudit(true);
+    try {
+      const response = await fetch(`${getApiUrl()}/superadmin/audit-logs`);
+      const json = await response.json();
+      if (json.success) setAuditLogs(json.logs || []);
+    } catch {
+      //
+    } finally {
+      setLoadingAudit(false);
     }
   };
 
@@ -613,6 +637,81 @@ export default function SuperAdminDashboardScreen({ navigation }) {
     </View>
   );
 
+  const getActionColor = (action) => {
+    const a = (action || '').toLowerCase();
+    if (a.includes('eliminación')) return '#e74c3c';
+    if (a.includes('permiso')) return '#f39c12';
+    if (a.includes('registro')) return '#2ecc71';
+    if (a.includes('login')) return '#3498db';
+    if (a.includes('actualización')) return '#9b59b6';
+    return '#7f8c8d';
+  };
+
+  const renderAuditoria = () => (
+    <View style={{flex: 1}}>
+      <View style={styles.moduleHeader}>
+        <Text style={styles.moduleTitle}>Registro de Auditoría</Text>
+        <Text style={styles.moduleDescription}>
+          Historial detallado de todas las acciones críticas ejecutadas en la plataforma Lumex.
+        </Text>
+      </View>
+
+      <TouchableOpacity 
+        style={styles.refreshButton}
+        onPress={loadAuditLogs}
+        disabled={loadingAudit}
+      >
+        <Ionicons name="refresh-outline" size={16} color="#fff" />
+        <Text style={styles.refreshButtonText}>{loadingAudit ? 'Actualizando...' : 'Actualizar Historial'}</Text>
+      </TouchableOpacity>
+
+      {loadingAudit ? (
+        <ActivityIndicator size="large" color="#0f6d78" style={{ marginTop: 40 }} />
+      ) : auditLogs.length === 0 ? (
+        <View style={styles.emptyState}>
+          <Ionicons name="documents-outline" size={40} color="#ccc" />
+          <Text style={styles.emptyText}>No hay registros de auditoría aún.</Text>
+        </View>
+      ) : (
+        <View style={styles.auditList}>
+          {auditLogs.map((log, idx) => (
+            <View key={`audit-${log.id_log || idx}`} style={styles.auditCard}>
+              <View style={styles.auditCardHeader}>
+                <View style={[styles.actionBadge, { backgroundColor: getActionColor(log.accion) }]}>
+                  <Text style={styles.actionBadgeText}>{log.accion}</Text>
+                </View>
+                <Text style={styles.auditTime}>{formatDateTime(log.fecha)}</Text>
+              </View>
+              
+              <Text style={styles.auditDetails}>{log.detalles}</Text>
+              
+              <View style={styles.auditFooter}>
+                <View style={styles.auditUser}>
+                  <Ionicons name="person-outline" size={12} color="#7f8c8d" />
+                  <Text style={styles.auditUserText}>
+                    {log.usuario_nombre || log.usuario_username || 'Sistema/Admin'}
+                  </Text>
+                </View>
+                {log.ip_address && (
+                  <View style={styles.auditIP}>
+                    <Ionicons name="globe-outline" size={12} color="#7f8c8d" />
+                    <Text style={styles.auditIPText}>{log.ip_address}</Text>
+                  </View>
+                )}
+              </View>
+            </View>
+          ))}
+        </View>
+      )}
+    </View>
+  );
+
+  const renderTabContent = () => {
+    if (activeTab === 'auditoria') return renderAuditoria();
+    if (activeTab === 'ajustes') return renderAjustes();
+    return renderInicio();
+  };
+
   return (
     <View style={styles.container}>
       <StatusBar barStyle="light-content" />
@@ -627,7 +726,7 @@ export default function SuperAdminDashboardScreen({ navigation }) {
       </View>
 
       <ScrollView contentContainerStyle={styles.mainContent}>
-         {activeTab === 'inicio' ? renderInicio() : renderAjustes()}
+         {renderTabContent()}
       </ScrollView>
 
       <View style={styles.bottomBar}>
@@ -1408,3 +1507,112 @@ const styles = StyleSheet.create({
   viewHisBtn: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   viewHisText: { fontSize: 13, color: '#1a73e8', fontWeight: '700' },
 });
+  tabScrollContainer: {
+    padding: 20,
+    flex: 1,
+  },
+  moduleHeader: {
+    marginBottom: 20,
+  },
+  moduleTitle: {
+    fontSize: 22,
+    fontWeight: '800',
+    color: '#0f6d78',
+    marginBottom: 5,
+  },
+  moduleDescription: {
+    fontSize: 14,
+    color: '#7f8c8d',
+    lineHeight: 20,
+  },
+  refreshButton: {
+    flexDirection: 'row',
+    backgroundColor: '#0f6d78',
+    paddingVertical: 10,
+    paddingHorizontal: 15,
+    borderRadius: 8,
+    alignSelf: 'flex-start',
+    alignItems: 'center',
+    marginBottom: 20,
+    gap: 8,
+  },
+  refreshButtonText: {
+    color: '#fff',
+    fontWeight: '600',
+    fontSize: 13,
+  },
+  auditList: {
+    gap: 12,
+    paddingBottom: 40,
+  },
+  auditCard: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: '#eee',
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 5,
+  },
+  auditCardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  actionBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 6,
+  },
+  actionBadgeText: {
+    color: '#fff',
+    fontSize: 11,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+  },
+  auditTime: {
+    fontSize: 12,
+    color: '#95a5a6',
+  },
+  auditDetails: {
+    fontSize: 14,
+    color: '#2c3e50',
+    lineHeight: 20,
+    marginBottom: 12,
+  },
+  auditFooter: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    borderTopWidth: 1,
+    borderTopColor: '#f5f5f5',
+    paddingTop: 10,
+  },
+  auditUser: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+  },
+  auditUserText: {
+    fontSize: 12,
+    color: '#7f8c8d',
+    fontWeight: '500',
+  },
+  auditIP: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+  },
+  auditIPText: {
+    fontSize: 11,
+    color: '#bdc3c7',
+  },
+  emptyState: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 60,
+    gap: 10,
+  },

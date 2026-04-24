@@ -165,6 +165,19 @@ const runMigrations = async () => {
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
         `);
 
+        // 7. Crear tabla audit_logs
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS audit_logs (
+                id_log INT AUTO_INCREMENT PRIMARY KEY,
+                id_usuario INT,
+                accion VARCHAR(255),
+                detalles TEXT,
+                ip_address VARCHAR(45),
+                fecha DATETIME DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (id_usuario) REFERENCES usuarios(id_usuario) ON DELETE SET NULL
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+        `);
+
         // Migrar columnas adicionales en usuarios si ya existe
         const [columns] = await pool.query('SHOW COLUMNS FROM usuarios');
         const names = columns.map(c => c.Field);
@@ -197,6 +210,19 @@ const runMigrations = async () => {
     }
 };
 runMigrations();
+
+// Helper para registro de auditoría
+const logAudit = async (userId, action, details, req = null) => {
+    try {
+        const ip = req ? (req.headers['x-forwarded-for'] || req.socket.remoteAddress) : null;
+        await pool.query(
+            'INSERT INTO audit_logs (id_usuario, accion, detalles, ip_address, fecha) VALUES (?, ?, ?, ?, NOW())',
+            [userId || null, action, details || '', ip]
+        );
+    } catch (error) {
+        console.error('⚠️ [AUDIT ERROR]:', error.message);
+    }
+};
 
 // ===== SMTP Configuration =====
 const smtpConfigured = [
@@ -347,6 +373,8 @@ app.post('/api/auth/register', async (req, res) => {
             [name, email || null, username || null, finalRole, hashedPassword, phone || null, accepted ? 1 : 0, accepted ? new Date() : null]
         );
 
+        await logAudit(result.insertId, 'Registro', `Nuevo usuario registrado: ${username} (${finalRole})`, req);
+
         const [newUser] = await pool.query('SELECT * FROM usuarios WHERE id_usuario = ?', [result.insertId]);
         return res.json({ success: true, user: newUser[0], message: 'Usuario registrado correctamente' });
     } catch (err) {
@@ -380,6 +408,9 @@ app.post('/api/auth/login', async (req, res) => {
 
         const termsAccepted = !!user.acepta_terminos;
         const { contrasena, ...safeUser } = user;
+
+        await logAudit(user.id_usuario, 'Login', `Inicio de sesión exitoso (${user.rol})`, req);
+
         return res.json({ success: true, user: safeUser, termsAccepted });
     } catch (err) {
         console.error(err);
@@ -802,6 +833,9 @@ app.post('/api/superadmin/toggle-admin-permission', async (req, res) => {
     try {
         const query = `UPDATE usuarios SET ${field} = ? WHERE id_usuario = ?`;
         await pool.query(query, [value ? 1 : 0, id_usuario]);
+
+        await logAudit(null, 'Cambio de Permiso', `Permiso ${field} cambiado a ${value} para usuario ID ${id_usuario}`, req);
+
         res.json({ success: true, message: `Permiso ${field} actualizado` });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
@@ -883,11 +917,29 @@ const deleteUser = async (req, res) => {
         if (result.affectedRows === 0) {
             return res.status(404).json({ success: false, message: 'Usuario no encontrado o ya eliminado.' });
         }
+
+        await logAudit(userId, 'Eliminación Definitiva', 'Usuario eliminado del sistema', req);
+
         res.json({ success: true, message: 'Usuario eliminado definitivamente del sistema.' });
     } catch (error) {
         res.status(500).json({ success: false, message: 'Error interno: ' + error.message });
     }
 };
+
+app.get('/api/superadmin/audit-logs', async (req, res) => {
+    try {
+        const query = `
+            SELECT l.*, u.nombre as usuario_nombre, u.usuario as usuario_username 
+            FROM audit_logs l 
+            LEFT JOIN usuarios u ON l.id_usuario = u.id_usuario 
+            ORDER BY l.fecha DESC LIMIT 100
+        `;
+        const [rows] = await pool.query(query);
+        res.json({ success: true, logs: rows });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
 
 app.delete('/api/admin/user/:userId', deleteUser);
 app.delete('/admin/user/:userId', deleteUser);

@@ -1506,7 +1506,6 @@ const styles = StyleSheet.create({
   statText: { fontSize: 13, color: '#6d8a91', fontWeight: '500' },
   viewHisBtn: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   viewHisText: { fontSize: 13, color: '#1a73e8', fontWeight: '700' },
-});
   tabScrollContainer: {
     padding: 20,
     flex: 1,
@@ -1616,3 +1615,4 @@ const styles = StyleSheet.create({
     marginTop: 60,
     gap: 10,
   },
+});

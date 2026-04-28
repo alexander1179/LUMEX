@@ -84,10 +84,8 @@ const buildSummaryVisualizationImageUri = (type, total, anoms) => {
 };
 
 const ROLE_MODULES = [
-  { id: 'administrador', label: 'Administradores', icon: 'shield-checkmark-outline', color: '#1a7da2', description: 'Gestión de perfiles administrativos' },
-  { id: 'doctor', label: 'Doctores', icon: 'medical-outline', color: '#2b7896', description: 'Gestión de personal médico' },
-  { id: 'enfermero', label: 'Enfermeros', icon: 'heart-outline', color: '#10ac84', description: 'Gestión de personal de enfermería' },
-  { id: 'usuario', label: 'Usuarios', icon: 'people-outline', color: '#0f6d78', description: 'Pacientes y usuarios finales' },
+  { id: 'administrador', label: 'Adm', icon: 'shield-checkmark-outline', color: '#1a7da2', description: 'Gestión de perfiles administrativos' },
+  { id: 'usuario', label: 'Pac', icon: 'people-outline', color: '#0f6d78', description: 'Pacientes y usuarios finales' },
 ];
 
 const TABS = [
@@ -802,7 +800,7 @@ export default function SuperAdminDashboardScreen({ navigation }) {
                   <View style={{ flex: 1 }}>
                         <Text style={[styles.userListName, item.estado === 'bloqueado' && { textDecorationLine: 'line-through', color: '#999' }]}>{item.nombre || item.usuario}</Text>
                         <View style={{backgroundColor: item.estado === 'bloqueado' ? '#fbeeee' : '#e8f4f9', alignSelf: 'flex-start', paddingHorizontal: 6, paddingVertical: 1, borderRadius: 4, marginTop: 2}}>
-                            <Text style={{fontSize: 9, color: item.estado === 'bloqueado' ? '#e74c3c' : '#0f6d78', fontWeight: 'bold', textTransform: 'uppercase'}}>{item.estado === 'bloqueado' ? 'BLOQUEADO' : item.rol}</Text>
+                            <Text style={{fontSize: 9, color: item.estado === 'bloqueado' ? '#e74c3c' : '#0f6d78', fontWeight: 'bold', textTransform: 'uppercase'}}>{item.estado === 'bloqueado' ? 'BLOQUEADO' : (String(item.rol).toLowerCase() === 'usuario' ? 'PAC' : 'ADM')}</Text>
                         </View>
                    </View>
                    <View style={{flexDirection: 'row', alignItems: 'center', gap: 10}}>
@@ -864,7 +862,7 @@ export default function SuperAdminDashboardScreen({ navigation }) {
                          </View>
                       </View>
                       <View style={[styles.roleBadge, {backgroundColor: '#e8f5e9'}]}>
-                         <Text style={[styles.roleBadgeText, {color: '#2e7d32'}]}>PCT</Text>
+                         <Text style={[styles.roleBadgeText, {color: '#2e7d32'}]}>PAC</Text>
                       </View>
                    </View>
 
@@ -1158,20 +1156,18 @@ export default function SuperAdminDashboardScreen({ navigation }) {
                  <View style={[styles.roleSelector, {flexWrap: 'wrap', gap: 8}]}>
                     {[
                       {id: 'usuario', label: 'Pac'},
-                      {id: 'administrador', label: 'Adm'},
-                      {id: 'doctor', label: 'Doc'},
-                      {id: 'enfermero', label: 'Enf'}
+                      {id: 'administrador', label: 'Adm'}
                     ].map((r) => (
                       <TouchableOpacity 
                         key={r.id} 
-                        style={[styles.roleMiniBtn, {minWidth: 60}, String(localFormData.rol).toLowerCase() === r.id && styles.roleMiniBtnActive]} 
+                        style={[styles.roleMiniBtn, {minWidth: 80}, String(localFormData.rol).toLowerCase() === r.id && styles.roleMiniBtnActive]} 
                         onPress={() => setLocalFormData({...localFormData, rol: r.id})}
                       >
                         <Text style={[styles.roleMiniText, String(localFormData.rol).toLowerCase() === r.id && styles.roleMiniTextActive]}>{r.label}</Text>
                       </TouchableOpacity>
                     ))}
                  </View>
-                 <Text style={{fontSize: 10, color: '#6d8a91', marginTop: 4}}>* Pac: Paciente/Usuario, Adm: Administrador, Doc: Doctor, Enf: Enfermero</Text>
+                 <Text style={{fontSize: 10, color: '#6d8a91', marginTop: 4}}>* Pac: Paciente/Usuario, Adm: Administrador</Text>
               </View>
             </ScrollView>
              <View style={styles.detailFooter}><TouchableOpacity style={styles.btnDelete} onPress={handleDelete}><Ionicons name="trash-outline" size={20} color="#ff3b3b" /><Text style={styles.btnDeleteText}>Eliminar</Text></TouchableOpacity><TouchableOpacity style={styles.btnSave} onPress={handleSave}><Text style={styles.btnSaveText}>Guardar</Text></TouchableOpacity></View>
@@ -1213,14 +1209,17 @@ export default function SuperAdminDashboardScreen({ navigation }) {
                 
                 <Text style={styles.inputLabel}>Rol de Sistema</Text>
                 <View style={[styles.roleSelector, {flexWrap: 'wrap'}]}>
-                    {['usuario', 'administrador', 'enfermero', 'doctor'].map(r => (
+                    {[
+                      {id: 'usuario', label: 'PAC'},
+                      {id: 'administrador', label: 'ADM'}
+                    ].map(r => (
                         <TouchableOpacity 
-                            key={r} 
-                            style={[styles.roleChip, registerFormData.rol === r && styles.roleChipActive, {marginBottom: 8}]} 
-                            onPress={() => setRegisterFormData({...registerFormData, rol: r})}
+                            key={r.id} 
+                            style={[styles.roleChip, registerFormData.rol === r.id && styles.roleChipActive, {marginBottom: 8}]} 
+                            onPress={() => setRegisterFormData({...registerFormData, rol: r.id})}
                         >
-                            <Text style={[styles.roleChipText, registerFormData.rol === r && styles.roleChipTextActive]}>
-                                {r.toUpperCase()}
+                            <Text style={[styles.roleChipText, registerFormData.rol === r.id && styles.roleChipTextActive]}>
+                                {r.label}
                             </Text>
                         </TouchableOpacity>
                     ))}

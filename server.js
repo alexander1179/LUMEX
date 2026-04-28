@@ -214,10 +214,21 @@ runMigrations();
 // Helper para registro de auditoría
 const logAudit = async (userId, action, details, req = null) => {
     try {
+        let rolePrefix = '';
+        if (userId) {
+            const [userRows] = await pool.query('SELECT rol FROM usuarios WHERE id_usuario = ?', [userId]);
+            if (userRows.length > 0) {
+                const role = userRows[0].rol;
+                rolePrefix = `[${role.toUpperCase()}] `;
+            }
+        }
+
         const ip = req ? (req.headers['x-forwarded-for'] || req.socket.remoteAddress) : null;
+        const finalDetails = `${rolePrefix}${details || ''}`;
+
         await pool.query(
             'INSERT INTO audit_logs (id_usuario, accion, detalles, ip_address, fecha) VALUES (?, ?, ?, ?, NOW())',
-            [userId || null, action, details || '', ip]
+            [userId || null, action, finalDetails, ip]
         );
     } catch (error) {
         console.error('⚠️ [AUDIT ERROR]:', error.message);
@@ -373,7 +384,7 @@ app.post('/api/auth/register', async (req, res) => {
             [name, email || null, username || null, finalRole, hashedPassword, phone || null, accepted ? 1 : 0, accepted ? new Date() : null]
         );
 
-        await logAudit(result.insertId, 'Registro', `Nuevo usuario registrado: ${username} (${finalRole})`, req);
+        await logAudit(result.insertId, 'Registro', `Registro de cuenta para ${finalRole.toUpperCase()} ${name} (Usuario: ${username})`, req);
 
         const [newUser] = await pool.query('SELECT * FROM usuarios WHERE id_usuario = ?', [result.insertId]);
         return res.json({ success: true, user: newUser[0], message: 'Usuario registrado correctamente' });
@@ -845,11 +856,20 @@ app.post('/api/superadmin/toggle-admin-permission', async (req, res) => {
     }
 
     try {
+        // Obtener info del usuario objetivo para el log
+        const [targetRows] = await pool.query('SELECT nombre, rol FROM usuarios WHERE id_usuario = ?', [id_usuario]);
+        const target = targetRows[0] || { nombre: 'Desconocido', rol: 'N/D' };
+
         const query = `UPDATE usuarios SET ${field} = ? WHERE id_usuario = ?`;
         await pool.query(query, [value ? 1 : 0, id_usuario]);
 
-        // Registrar quién hizo el cambio
-        await logAudit(executorId, 'Cambio de Permiso', `Se cambió el permiso "${field}" a ${value ? 'Activo' : 'Inactivo'} para el usuario ID ${id_usuario}`, req);
+        // Registrar quién hizo el cambio con info detallada del objetivo
+        await logAudit(
+            executorId, 
+            'Cambio de Permiso', 
+            `Permiso "${field}" cambiado a ${value ? 'Activo' : 'Inactivo'} para el ${target.rol.toUpperCase()} ${target.nombre}`, 
+            req
+        );
 
         res.json({ success: true, message: `Permiso ${field} actualizado` });
     } catch (error) {
@@ -877,7 +897,7 @@ const updateUserHandler = async (req, res) => {
         await logAudit(
             executorId || id_usuario, 
             'Actualización de Perfil', 
-            `Perfil de usuario ${usuario} modificado (ID: ${id_usuario}, Rol: ${rol})`, 
+            `Perfil de ${rol.toUpperCase()} ${nombre} modificado (Usuario: ${usuario})`, 
             req
         );
 
@@ -906,14 +926,18 @@ app.post('/api/auth/get-user', async (req, res) => {
 const blockUserHandler = async (req, res) => {
     const { id_usuario, blocked, executorId } = req.body;
     try {
+        // Obtener info del usuario objetivo
+        const [targetRows] = await pool.query('SELECT nombre, rol FROM usuarios WHERE id_usuario = ?', [id_usuario]);
+        const target = targetRows[0] || { nombre: 'Desconocido', rol: 'N/D' };
+
         const estado = blocked ? 'bloqueado' : 'activo';
         await pool.query('UPDATE usuarios SET estado = ? WHERE id_usuario = ?', [estado, id_usuario]);
         
-        // Registrar quién bloqueó/desbloqueó
+        // Registrar quién bloqueó/desbloqueó con info detallada
         await logAudit(
             executorId, 
             blocked ? 'Bloqueo de Usuario' : 'Desbloqueo de Usuario', 
-            `El administrador ha marcado la cuenta (ID: ${id_usuario}) como: ${estado}`, 
+            `La cuenta de ${target.nombre} (${target.rol.toUpperCase()}) fue marcada como: ${estado}`, 
             req
         );
 
@@ -931,12 +955,16 @@ const deleteUser = async (req, res) => {
     const { userId } = req.params;
     const { executorId } = req.query; // Pasamos executorId por query param en DELETE
     try {
+        // Obtener info ANTES de borrar
+        const [targetRows] = await pool.query('SELECT nombre, rol FROM usuarios WHERE id_usuario = ?', [userId]);
+        const target = targetRows[0] || { nombre: 'Desconocido', rol: 'N/D' };
+
         const [result] = await pool.query('DELETE FROM usuarios WHERE id_usuario = ?', [userId]);
         if (result.affectedRows === 0) {
             return res.status(404).json({ success: false, message: 'Usuario no encontrado o ya eliminado.' });
         }
 
-        await logAudit(executorId, 'Eliminación Definitiva', `Usuario ID ${userId} eliminado del sistema`, req);
+        await logAudit(executorId, 'Eliminación Definitiva', `El ${target.rol.toUpperCase()} ${target.nombre} ha sido eliminado definitivamente del sistema`, req);
 
         res.json({ success: true, message: 'Usuario eliminado definitivamente del sistema.' });
     } catch (error) {

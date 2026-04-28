@@ -847,6 +847,10 @@ app.get('/api/superadmin/users', getAllUsersBackoffice);
 app.post('/api/superadmin/toggle-admin-permission', async (req, res) => {
     const { id_usuario, field, value, executorId } = req.body;
 
+    if (!executorId) {
+        return res.status(400).json({ success: false, message: 'ACTUALIZA TU APP: La aplicación no está enviando tu ID (executorId).' });
+    }
+
     const allowedFields = [
         'puede_gestionar_usuarios', 'permiso_editar', 'permiso_bloquear',
         'mod_nuevo_paciente', 'mod_gestion_usuarios', 'mod_reportes', 'mod_actividad', 'mod_alertas', 'mod_pagos'
@@ -925,6 +929,10 @@ app.post('/api/auth/get-user', async (req, res) => {
 
 const blockUserHandler = async (req, res) => {
     const { id_usuario, blocked, executorId } = req.body;
+    
+    if (!executorId) {
+        return res.status(400).json({ success: false, message: 'ACTUALIZA TU APP: La aplicación no está enviando tu ID (executorId).' });
+    }
     try {
         // Obtener info del usuario objetivo
         const [targetRows] = await pool.query('SELECT nombre, rol FROM usuarios WHERE id_usuario = ?', [id_usuario]);
@@ -954,6 +962,10 @@ app.post('/admin/block-user', blockUserHandler);
 const deleteUser = async (req, res) => {
     const { userId } = req.params;
     const { executorId } = req.query; // Pasamos executorId por query param en DELETE
+    
+    if (!executorId) {
+        return res.status(400).json({ success: false, message: 'ACTUALIZA TU APP: La aplicación no está enviando tu ID (executorId).' });
+    }
     try {
         // Obtener info ANTES de borrar
         const [targetRows] = await pool.query('SELECT nombre, rol FROM usuarios WHERE id_usuario = ?', [userId]);

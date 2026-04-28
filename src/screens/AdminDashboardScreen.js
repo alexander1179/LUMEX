@@ -508,6 +508,7 @@ export default function AdminDashboardScreen({ navigation, route }) {
           nombre: editNombre.trim(),
           email: editEmail.trim().toLowerCase(),
           rol: editRol.trim().toLowerCase(),
+          executorId: me?.id_usuario || me?.id
         })
       });
       const data = await response.json().catch(() => ({}));
@@ -548,7 +549,7 @@ export default function AdminDashboardScreen({ navigation, route }) {
             }
 
             try {
-              const response = await fetch(`${getApiUrl()}/admin/user/${userId}`, {
+              const response = await fetch(`${getApiUrl()}/admin/user/${userId}?executorId=${me?.id_usuario || me?.id}`, {
                 method: 'DELETE',
                 headers: { 'Content-Type': 'application/json' }
               });
@@ -588,7 +589,7 @@ export default function AdminDashboardScreen({ navigation, route }) {
       const response = await fetch(`${getApiUrl()}/admin/block-user`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id_usuario: userId, blocked: nextValue })
+        body: JSON.stringify({ id_usuario: userId, blocked: nextValue, executorId: me?.id_usuario || me?.id })
       });
       const data = await response.json().catch(() => ({}));
       
@@ -974,7 +975,7 @@ export default function AdminDashboardScreen({ navigation, route }) {
       const res = await fetch(`${getApiUrl()}/admin/update-user`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
+        body: JSON.stringify({ ...payload, executorId: me?.id_usuario || me?.id })
       });
       const data = await res.json();
       

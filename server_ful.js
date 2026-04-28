@@ -218,7 +218,7 @@ const logAudit = async (userId, action, details, req = null) => {
         if (userId) {
             const [userRows] = await pool.query('SELECT rol FROM usuarios WHERE id_usuario = ?', [userId]);
             if (userRows.length > 0) {
-                const role = userRows[0].rol;
+                const role = userRows[0].rol || 'desconocido';
                 rolePrefix = `[${role.toUpperCase()}] `;
             }
         }
@@ -867,7 +867,7 @@ app.post('/api/superadmin/toggle-admin-permission', async (req, res) => {
         await logAudit(
             executorId, 
             'Cambio de Permiso', 
-            `Permiso "${field}" cambiado a ${value ? 'Activo' : 'Inactivo'} para el ${target.rol.toUpperCase()} ${target.nombre}`, 
+            `Permiso "${field}" cambiado a ${value ? 'Activo' : 'Inactivo'} para el ${(target.rol || 'N/D').toUpperCase()} ${target.nombre || 'Desconocido'}`, 
             req
         );
 
@@ -897,7 +897,7 @@ const updateUserHandler = async (req, res) => {
         await logAudit(
             executorId || id_usuario, 
             'Actualización de Perfil', 
-            `Perfil de ${rol.toUpperCase()} ${nombre} modificado (Usuario: ${usuario})`, 
+            `Perfil de ${(rol || 'N/D').toUpperCase()} ${nombre || 'Desconocido'} modificado (Usuario: ${usuario})`, 
             req
         );
 
@@ -937,7 +937,7 @@ const blockUserHandler = async (req, res) => {
         await logAudit(
             executorId, 
             blocked ? 'Bloqueo de Usuario' : 'Desbloqueo de Usuario', 
-            `La cuenta de ${target.nombre} (${target.rol.toUpperCase()}) fue marcada como: ${estado}`, 
+            `La cuenta de ${target.nombre || 'Desconocido'} (${(target.rol || 'N/D').toUpperCase()}) fue marcada como: ${estado}`, 
             req
         );
 
@@ -964,7 +964,7 @@ const deleteUser = async (req, res) => {
             return res.status(404).json({ success: false, message: 'Usuario no encontrado o ya eliminado.' });
         }
 
-        await logAudit(executorId, 'Eliminación Definitiva', `El ${target.rol.toUpperCase()} ${target.nombre} ha sido eliminado definitivamente del sistema`, req);
+        await logAudit(executorId, 'Eliminación Definitiva', `El ${(target.rol || 'N/D').toUpperCase()} ${target.nombre || 'Desconocido'} ha sido eliminado definitivamente del sistema`, req);
 
         res.json({ success: true, message: 'Usuario eliminado definitivamente del sistema.' });
     } catch (error) {

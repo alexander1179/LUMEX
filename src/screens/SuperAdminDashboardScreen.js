@@ -701,8 +701,7 @@ export default function SuperAdminDashboardScreen({ navigation }) {
     const auditModules = [
       { id: 'superadministrador', label: 'Superadministrador', icon: 'shield-checkmark-outline', color: '#8e44ad', description: 'Acciones de nivel raíz y seguridad global' },
       { id: 'administrador', label: 'Administrador', icon: 'person-circle-outline', color: '#2980b9', description: 'Gestión operativa, usuarios y permisos' },
-      { id: 'usuario', label: 'Usuarios', icon: 'people-outline', color: '#27ae60', description: 'Actividad de pacientes y usuarios finales' },
-      { id: 'sistema', label: 'Sistema / Otros', icon: 'settings-outline', color: '#7f8c8d', description: 'Acciones automáticas o sin usuario identificado' },
+      { id: 'usuario', label: 'Usuarios', icon: 'people-outline', color: '#27ae60', description: 'Actividad de pacientes y usuarios finales' }
     ];
 
     const handleOpenRoleAudit = (roleId) => {
@@ -1422,16 +1421,13 @@ export default function SuperAdminDashboardScreen({ navigation }) {
                   const d = (log.detalles || '').toLowerCase();
                   
                   if (selectedAuditRole === 'superadministrador') {
-                    return r.includes('superadmin') || d.includes('(superadministrador)');
+                    return r === 'superadministrador' || r === 'superadmin';
                   }
                   if (selectedAuditRole === 'administrador') {
-                    return r === 'administrador' || r === 'admin' || d.includes('(administrador)');
+                    return r === 'administrador' || r === 'admin';
                   }
                   if (selectedAuditRole === 'usuario') {
-                    return r === 'usuario' || d.includes('(usuario)');
-                  }
-                  if (selectedAuditRole === 'sistema') {
-                    return !log.id_usuario || (!r && !d.includes('('));
+                    return r === 'usuario';
                   }
                   return r === selectedAuditRole.toLowerCase();
                 });
@@ -1441,13 +1437,10 @@ export default function SuperAdminDashboardScreen({ navigation }) {
                 logsForRole.forEach(log => {
                   const uid = log.id_usuario || 'sistema';
                   if (!userMap.has(uid)) {
-                    let nombreFallback = 'Sistema/Admin';
-                    if (log.detalles && log.detalles.includes('Permiso')) nombreFallback = 'Gestión Permisos';
-                    
                     userMap.set(uid, {
                       id_usuario: log.id_usuario,
-                      nombre: log.usuario_nombre || log.usuario_username || nombreFallback,
-                      rol: log.usuario_rol || (selectedAuditRole === 'sistema' ? 'sistema' : selectedAuditRole),
+                      nombre: log.usuario_nombre || log.usuario_username || 'Desconocido',
+                      rol: log.usuario_rol || selectedAuditRole,
                       count: 0,
                       logs: []
                     });

@@ -834,9 +834,8 @@ app.get('/api/admin/users', getAllUsersBackoffice);
 app.get('/api/superadmin/users', getAllUsersBackoffice);
 
 app.post('/api/superadmin/toggle-admin-permission', async (req, res) => {
-    const { id_usuario, field, value } = req.body;
+    const { id_usuario, field, value, executorId } = req.body;
 
-    // Lista blanca de campos permitidos para evitar inyección SQL en el nombre de la columna
     const allowedFields = [
         'puede_gestionar_usuarios', 'permiso_editar', 'permiso_bloquear',
         'mod_nuevo_paciente', 'mod_gestion_usuarios', 'mod_reportes', 'mod_actividad', 'mod_alertas', 'mod_pagos'
@@ -849,7 +848,8 @@ app.post('/api/superadmin/toggle-admin-permission', async (req, res) => {
         const query = `UPDATE usuarios SET ${field} = ? WHERE id_usuario = ?`;
         await pool.query(query, [value ? 1 : 0, id_usuario]);
 
-        await logAudit(null, 'Cambio de Permiso', `Permiso ${field} cambiado a ${value} para usuario ID ${id_usuario}`, req);
+        // Registrar quién hizo el cambio
+        await logAudit(executorId, 'Cambio de Permiso', `Se cambió el permiso "${field}" a ${value ? 'Activo' : 'Inactivo'} para el usuario ID ${id_usuario}`, req);
 
         res.json({ success: true, message: `Permiso ${field} actualizado` });
     } catch (error) {
@@ -858,7 +858,7 @@ app.post('/api/superadmin/toggle-admin-permission', async (req, res) => {
 });
 
 const updateUserHandler = async (req, res) => {
-    const { id_usuario, nombre, email, usuario, rol, telefono, passwordHash } = req.body;
+    const { id_usuario, nombre, email, usuario, rol, telefono, passwordHash, executorId } = req.body;
     try {
         let query = 'UPDATE usuarios SET nombre=?, email=?, usuario=?, rol=?, telefono=?';
         let params = [nombre, email, usuario, rol, telefono];
@@ -873,11 +873,11 @@ const updateUserHandler = async (req, res) => {
 
         await pool.query(query, params);
 
-        // Registrar en Auditoría
+        // Registrar quién hizo la actualización
         await logAudit(
-            id_usuario, 
+            executorId || id_usuario, 
             'Actualización de Perfil', 
-            `Perfil de usuario modificado (Rol asignado: ${rol})`, 
+            `Perfil de usuario ${usuario} modificado (ID: ${id_usuario}, Rol: ${rol})`, 
             req
         );
 
@@ -904,16 +904,16 @@ app.post('/api/auth/get-user', async (req, res) => {
 });
 
 const blockUserHandler = async (req, res) => {
-    const { id_usuario, blocked } = req.body;
+    const { id_usuario, blocked, executorId } = req.body;
     try {
         const estado = blocked ? 'bloqueado' : 'activo';
         await pool.query('UPDATE usuarios SET estado = ? WHERE id_usuario = ?', [estado, id_usuario]);
         
-        // Registrar en Auditoría
+        // Registrar quién bloqueó/desbloqueó
         await logAudit(
-            id_usuario, 
+            executorId, 
             blocked ? 'Bloqueo de Usuario' : 'Desbloqueo de Usuario', 
-            `El administrador ha marcado la cuenta como: ${estado}`, 
+            `El administrador ha marcado la cuenta (ID: ${id_usuario}) como: ${estado}`, 
             req
         );
 
@@ -929,13 +929,14 @@ app.post('/admin/block-user', blockUserHandler);
 // ELIMINAR USUARIO DEFINITIVAMENTE
 const deleteUser = async (req, res) => {
     const { userId } = req.params;
+    const { executorId } = req.query; // Pasamos executorId por query param en DELETE
     try {
         const [result] = await pool.query('DELETE FROM usuarios WHERE id_usuario = ?', [userId]);
         if (result.affectedRows === 0) {
             return res.status(404).json({ success: false, message: 'Usuario no encontrado o ya eliminado.' });
         }
 
-        await logAudit(userId, 'Eliminación Definitiva', 'Usuario eliminado del sistema', req);
+        await logAudit(executorId, 'Eliminación Definitiva', `Usuario ID ${userId} eliminado del sistema`, req);
 
         res.json({ success: true, message: 'Usuario eliminado definitivamente del sistema.' });
     } catch (error) {
@@ -946,7 +947,7 @@ const deleteUser = async (req, res) => {
 app.get('/api/superadmin/audit-logs', async (req, res) => {
     try {
         const query = `
-            SELECT l.*, u.nombre as usuario_nombre, u.usuario as usuario_username 
+            SELECT l.*, u.nombre as usuario_nombre, u.usuario as usuario_username, u.rol as usuario_rol
             FROM audit_logs l 
             LEFT JOIN usuarios u ON l.id_usuario = u.id_usuario 
             ORDER BY l.fecha DESC LIMIT 100

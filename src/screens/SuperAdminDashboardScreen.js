@@ -143,6 +143,10 @@ export default function SuperAdminDashboardScreen({ navigation }) {
   // Auditoría
   const [auditLogs, setAuditLogs] = useState([]);
   const [loadingAudit, setLoadingAudit] = useState(false);
+  const [selectedAuditRole, setSelectedAuditRole] = useState('todos');
+  const [showAuditModal, setShowAuditModal] = useState(false);
+  const [selectedAuditUser, setSelectedAuditUser] = useState(null); // Usuario seleccionado para el detalle
+  const [showAuditDetailModal, setShowAuditDetailModal] = useState(false);
 
   useEffect(() => {
     if (activeTab === 'auditoria') {
@@ -192,6 +196,23 @@ export default function SuperAdminDashboardScreen({ navigation }) {
     } finally {
       setLoadingAudit(false);
     }
+  };
+
+  const formatDetailedDate = (value) => {
+    if (!value) return { date: 'N/A', time: 'N/A' };
+    const d = new Date(value);
+    if (isNaN(d.getTime())) return { date: String(value), time: 'N/A' };
+    
+    const day = d.getDate().toString().padStart(2, '0');
+    const month = (d.getMonth() + 1).toString().padStart(2, '0');
+    const year = d.getFullYear();
+    const hours = d.getHours().toString().padStart(2, '0');
+    const minutes = d.getMinutes().toString().padStart(2, '0');
+    
+    return {
+      date: `Día: ${day}, Mes: ${month}, Año: ${year}`,
+      time: `Hora: ${hours}:${minutes}`
+    };
   };
 
   const formatDateTime = (value) => {
@@ -252,7 +273,7 @@ export default function SuperAdminDashboardScreen({ navigation }) {
       const res = await fetch(`${getApiUrl()}/admin/update-user`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
+        body: JSON.stringify({ ...payload, executorId: user?.id_usuario || user?.id })
       });
       const data = await res.json();
       if (!res.ok || !data.success) throw new Error(data.message || 'Fallo actualizando administrador');
@@ -271,10 +292,21 @@ export default function SuperAdminDashboardScreen({ navigation }) {
       const mapped = allUsers.map(u => u.id_usuario === adminId ? { ...u, [field]: newValue ? 1 : 0 } : u);
       setAllUsers(mapped);
       
-      const res = await updateAdminPermission(adminId, field, newValue ? 1 : 0);
-      if(!res) {
+      const res = await fetch(`${getApiUrl()}/superadmin/toggle-admin-permission`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          id_usuario: adminId, 
+          field, 
+          value: newValue ? 1 : 0, 
+          executorId: currentUser?.id_usuario || currentUser?.id 
+        })
+      });
+      if(!res.ok) {
          Alert.alert('Error', 'No se guardó el permiso en el DB.');
          loadUsers();
+      } else {
+         loadAuditLogs(); // Recargar historial tras éxito
       }
     } catch (e) { 
       Alert.alert('Falla', e.message);
@@ -379,20 +411,12 @@ export default function SuperAdminDashboardScreen({ navigation }) {
         payload.passwordHash = await hashPassword(localFormData.nuevaPassword);
       }
 
-      const result = await updateUser(payload);
+      const result = await updateUser({ ...payload, executorId: currentUser?.id_usuario || currentUser?.id });
       if (result.success) {
         Alert.alert('Éxito', result.message);
         setShowDetailModal(false);
-        const updatedUsers = await fetchAllUsers();
-        setAllUsers(updatedUsers);
-        // Usamos una comparación segura por si seleccionRole es null
-        setFilteredUsers(updatedUsers.filter(u => {
-           if (!selectedRole || selectedRole === 'Usuarios y Administradores') {
-              const r = String(u.rol || '').toLowerCase();
-              return r !== 'superadmin' && r !== 'superadministrador';
-           }
-           return String(u.rol).toLowerCase() === selectedRole.toLowerCase();
-        }));
+        loadUsers();
+        loadAuditLogs(); // Recargar historial tras éxito
       } else { Alert.alert('Error de Guardado', result.message); }
     } catch (err) { Alert.alert('Error', err.message); } 
     finally { setLoading(false); }
@@ -493,10 +517,15 @@ export default function SuperAdminDashboardScreen({ navigation }) {
     Alert.alert('¿Eliminar?', `Borrarás a ${editingUser.usuario}.`, [
       { text: 'Cancelar', style: 'cancel' },
       { text: 'Eliminar', style: 'destructive', onPress: async () => {
-          const success = await deleteUser(editingUser.id_usuario);
+              const res = await fetch(`${getApiUrl()}/api/admin/user/${editingUser.id_usuario}?executorId=${currentUser?.id_usuario || currentUser?.id}`, {
+                method: 'DELETE'
+              });
+              const success = res.ok;
           if (success) {
             Alert.alert('Eliminado', 'Borrado.');
-            setShowDetailModal(false); setShowListModal(false); loadUsers();
+            setShowDetailModal(false); setShowListModal(false); 
+            loadUsers();
+            loadAuditLogs(); // Recargar historial tras éxito
           } else { Alert.alert('Error', 'No eliminado'); }
       }}
     ]);
@@ -526,6 +555,7 @@ export default function SuperAdminDashboardScreen({ navigation }) {
         setShowRegisterModal(false);
         setRegisterFormData({ nombre: '', usuario: '', email: '', telefono: '', password: '', rol: 'usuario' });
         loadUsers();
+        loadAuditLogs(); // Recargar historial tras éxito
       } else {
         Alert.alert('Fallo en Registro', result.message);
       }
@@ -548,10 +578,18 @@ export default function SuperAdminDashboardScreen({ navigation }) {
       const response = await fetch(`${getApiUrl()}/admin/block-user`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id_usuario: user.id_usuario, blocked: nextBlocked })
+        body: JSON.stringify({ 
+          id_usuario: user.id_usuario, 
+          blocked: nextBlocked, 
+          executorId: currentUser?.id_usuario || currentUser?.id 
+        })
       });
       const data = await response.json();
       if (!response.ok || !data.success) throw new Error(data.message || 'Fallo de conexión');
+      
+      Alert.alert('Éxito', `Usuario ${nextBlocked ? 'bloqueado' : 'desbloqueado'}`);
+      loadUsers();
+      loadAuditLogs(); // Recargar historial tras éxito
     } catch (err) {
       Alert.alert('Error', err.message);
       loadUsers();
@@ -647,64 +685,73 @@ export default function SuperAdminDashboardScreen({ navigation }) {
     return '#7f8c8d';
   };
 
-  const renderAuditoria = () => (
-    <View style={{flex: 1}}>
-      <View style={styles.moduleHeader}>
-        <Text style={styles.moduleTitle}>Registro de Auditoría</Text>
-        <Text style={styles.moduleDescription}>
-          Historial detallado de todas las acciones críticas ejecutadas en la plataforma Lumex.
-        </Text>
-      </View>
+  const getRoleConfig = (role) => {
+    const r = (role || '').toLowerCase();
+    if (r === 'superadministrador' || r === 'superadmin') {
+      return { label: 'SuperAdmin', color: '#8e44ad', bg: '#f4ecf7', icon: 'shield-checkmark' };
+    }
+    if (r === 'administrador') {
+      return { label: 'Admin', color: '#2980b9', bg: '#ebf5fb', icon: 'person-circle' };
+    }
+    if (r === 'usuario') {
+      return { label: 'Usuario', color: '#27ae60', bg: '#e9f7ef', icon: 'person' };
+    }
+    return { label: 'Sistema', color: '#7f8c8d', bg: '#f2f4f4', icon: 'settings' };
+  };
 
-      <TouchableOpacity 
-        style={styles.refreshButton}
-        onPress={loadAuditLogs}
-        disabled={loadingAudit}
-      >
-        <Ionicons name="refresh-outline" size={16} color="#fff" />
-        <Text style={styles.refreshButtonText}>{loadingAudit ? 'Actualizando...' : 'Actualizar Historial'}</Text>
-      </TouchableOpacity>
+  const renderAuditoria = () => {
+    const auditModules = [
+      { id: 'superadministrador', label: 'Superadministrador', icon: 'shield-checkmark-outline', color: '#8e44ad', description: 'Acciones de nivel raíz y seguridad global' },
+      { id: 'administrador', label: 'Administrador', icon: 'person-circle-outline', color: '#2980b9', description: 'Gestión operativa, usuarios y permisos' },
+      { id: 'usuario', label: 'Usuarios', icon: 'people-outline', color: '#27ae60', description: 'Actividad de pacientes y usuarios finales' },
+      { id: 'sistema', label: 'Sistema / Otros', icon: 'settings-outline', color: '#7f8c8d', description: 'Acciones automáticas o sin usuario identificado' },
+    ];
 
-      {loadingAudit ? (
-        <ActivityIndicator size="large" color="#0f6d78" style={{ marginTop: 40 }} />
-      ) : auditLogs.length === 0 ? (
-        <View style={styles.emptyState}>
-          <Ionicons name="documents-outline" size={40} color="#ccc" />
-          <Text style={styles.emptyText}>No hay registros de auditoría aún.</Text>
+    const handleOpenRoleAudit = (roleId) => {
+      setSelectedAuditRole(roleId);
+      setShowAuditModal(true);
+    };
+
+    return (
+      <View style={{flex: 1}}>
+        <View style={styles.moduleHeader}>
+          <Text style={styles.moduleTitle}>Módulos de Auditoría</Text>
+          <Text style={styles.moduleDescription}>
+            Selecciona un nivel de acceso para ver el historial detallado de acciones realizadas.
+          </Text>
         </View>
-      ) : (
-        <View style={styles.auditList}>
-          {auditLogs.map((log, idx) => (
-            <View key={`audit-${log.id_log || idx}`} style={styles.auditCard}>
-              <View style={styles.auditCardHeader}>
-                <View style={[styles.actionBadge, { backgroundColor: getActionColor(log.accion) }]}>
-                  <Text style={styles.actionBadgeText}>{log.accion}</Text>
-                </View>
-                <Text style={styles.auditTime}>{formatDateTime(log.fecha)}</Text>
+
+        <View style={{ gap: 15 }}>
+          {auditModules.map((item) => (
+            <TouchableOpacity 
+              key={item.id} 
+              style={[styles.roleCard, { borderLeftWidth: 6, borderLeftColor: item.color }]} 
+              onPress={() => handleOpenRoleAudit(item.id)} 
+              activeOpacity={0.8}
+            >
+              <View style={[styles.roleIconBox, { backgroundColor: item.color + '15' }]}>
+                <Ionicons name={item.icon} size={30} color={item.color} />
               </View>
-              
-              <Text style={styles.auditDetails}>{log.detalles}</Text>
-              
-              <View style={styles.auditFooter}>
-                <View style={styles.auditUser}>
-                  <Ionicons name="person-outline" size={12} color="#7f8c8d" />
-                  <Text style={styles.auditUserText}>
-                    {log.usuario_nombre || log.usuario_username || 'Sistema/Admin'}
-                  </Text>
-                </View>
-                {log.ip_address && (
-                  <View style={styles.auditIP}>
-                    <Ionicons name="globe-outline" size={12} color="#7f8c8d" />
-                    <Text style={styles.auditIPText}>{log.ip_address}</Text>
-                  </View>
-                )}
+              <View style={styles.roleTextContent}>
+                <Text style={[styles.roleLabel, { color: item.color }]}>{item.label}</Text>
+                <Text style={styles.roleDescription}>{item.description}</Text>
               </View>
-            </View>
+              <Ionicons name="chevron-forward" size={20} color="#ccc" />
+            </TouchableOpacity>
           ))}
         </View>
-      )}
-    </View>
-  );
+
+        <TouchableOpacity 
+          style={[styles.refreshButton, { marginTop: 30, alignSelf: 'center' }]}
+          onPress={loadAuditLogs}
+          disabled={loadingAudit}
+        >
+          <Ionicons name="refresh-outline" size={16} color="#fff" />
+          <Text style={styles.refreshButtonText}>{loadingAudit ? 'Sincronizando...' : 'Sincronizar Datos'}</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  };
 
   const renderTabContent = () => {
     if (activeTab === 'auditoria') return renderAuditoria();
@@ -1349,6 +1396,153 @@ export default function SuperAdminDashboardScreen({ navigation }) {
           </View>
         </View>
       </Modal>
+
+      {/* Modal 1: Lista de Usuarios con Acciones */}
+      <Modal visible={showAuditModal} animationType="slide" transparent={true}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContainer}>
+            <View style={styles.modalHeader}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                <View style={[styles.roleIconBox, { width: 40, height: 40, backgroundColor: getRoleConfig(selectedAuditRole).bg }]}>
+                   <Ionicons name={getRoleConfig(selectedAuditRole).icon} size={20} color={getRoleConfig(selectedAuditRole).color} />
+                </View>
+                <View>
+                  <Text style={styles.modalHeaderTitle}>Acciones por: {getRoleConfig(selectedAuditRole).label}</Text>
+                  <Text style={styles.modalHeaderSub}>Selecciona una persona para ver su detalle</Text>
+                </View>
+              </View>
+              <TouchableOpacity onPress={() => setShowAuditModal(false)}>
+                <Ionicons name="close-circle" size={32} color="#ccc" />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView contentContainerStyle={styles.auditList}>
+              {(() => {
+                const logsForRole = auditLogs.filter(log => {
+                  const r = (log.usuario_rol || '').toLowerCase().trim();
+                  const d = (log.detalles || '').toLowerCase();
+                  
+                  if (selectedAuditRole === 'superadministrador') {
+                    return r.includes('superadmin') || d.includes('(superadministrador)');
+                  }
+                  if (selectedAuditRole === 'administrador') {
+                    return r === 'administrador' || r === 'admin' || d.includes('(administrador)');
+                  }
+                  if (selectedAuditRole === 'usuario') {
+                    return r === 'usuario' || d.includes('(usuario)');
+                  }
+                  if (selectedAuditRole === 'sistema') {
+                    return !log.id_usuario || (!r && !d.includes('('));
+                  }
+                  return r === selectedAuditRole.toLowerCase();
+                });
+
+                // Agrupar por usuario
+                const userMap = new Map();
+                logsForRole.forEach(log => {
+                  const uid = log.id_usuario || 'sistema';
+                  if (!userMap.has(uid)) {
+                    let nombreFallback = 'Sistema/Admin';
+                    if (log.detalles && log.detalles.includes('Permiso')) nombreFallback = 'Gestión Permisos';
+                    
+                    userMap.set(uid, {
+                      id_usuario: log.id_usuario,
+                      nombre: log.usuario_nombre || log.usuario_username || nombreFallback,
+                      rol: log.usuario_rol || (selectedAuditRole === 'sistema' ? 'sistema' : selectedAuditRole),
+                      count: 0,
+                      logs: []
+                    });
+                  }
+                  const u = userMap.get(uid);
+                  u.count += 1;
+                  u.logs.push(log);
+                });
+
+                const users = Array.from(userMap.values());
+
+                if (users.length === 0) {
+                  return (
+                    <View style={[styles.emptyState, { marginTop: 100 }]}>
+                      <Ionicons name="alert-circle-outline" size={50} color="#ccc" />
+                      <Text style={styles.emptyText}>No hay acciones registradas aún.</Text>
+                    </View>
+                  );
+                }
+
+                return users.map((user, idx) => (
+                  <TouchableOpacity 
+                    key={`audit-user-${idx}`} 
+                    style={styles.userListItem} 
+                    onPress={() => {
+                      setSelectedAuditUser(user);
+                      setShowAuditDetailModal(true);
+                    }}
+                  >
+                    <View style={[styles.userListAvatar, { backgroundColor: getRoleConfig(user.rol).color }]}>
+                      <Text style={styles.userListAvatarText}>{(user.nombre || 'U')[0].toUpperCase()}</Text>
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.userListName}>{user.nombre}</Text>
+                      <Text style={styles.userListEmail}>{user.count} acciones registradas</Text>
+                    </View>
+                  </TouchableOpacity>
+                ));
+              })()}
+            </ScrollView>
+
+            <View style={{ paddingVertical: 20, borderTopWidth: 1, borderTopColor: '#f0f0f0', alignItems: 'center' }}>
+               <TouchableOpacity style={[styles.btnSave, { backgroundColor: '#5d7f8d', paddingHorizontal: 50 }]} onPress={() => setShowAuditModal(false)}>
+                  <Text style={styles.btnSaveText}>Cerrar Lista</Text>
+               </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Modal 2: Historial Detallado del Usuario */}
+      <Modal visible={showAuditDetailModal} animationType="slide" transparent={true}>
+        <View style={styles.modalOverlayDark}>
+          <View style={[styles.detailCard, { height: '80%', width: '95%' }]}>
+            <View style={styles.detailHeader}>
+              <View>
+                <Text style={styles.detailTitle}>Historial Detallado</Text>
+                <Text style={{ fontSize: 13, color: '#6d8a91' }}>{selectedAuditUser?.nombre}</Text>
+              </View>
+              <TouchableOpacity onPress={() => setShowAuditDetailModal(false)}>
+                <Ionicons name="close" size={24} color="#666" />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView contentContainerStyle={{ paddingBottom: 20 }}>
+              {(selectedAuditUser?.logs || []).map((log, idx) => {
+                const { date, time } = formatDetailedDate(log.fecha);
+                return (
+                  <View key={`detail-log-${idx}`} style={[styles.auditCard, { marginBottom: 15, borderLeftWidth: 4, borderLeftColor: getRoleConfig(selectedAuditRole).color }]}>
+                    <View style={{ marginBottom: 10, borderBottomWidth: 1, borderBottomColor: '#f0f0f0', paddingBottom: 8 }}>
+                      <Text style={{ fontSize: 12, color: '#7f8c8d', fontWeight: '700' }}>{date}</Text>
+                      <Text style={{ fontSize: 12, color: '#7f8c8d' }}>{time}</Text>
+                    </View>
+                    
+                    <View style={{ flexDirection: 'row', gap: 10, alignItems: 'flex-start' }}>
+                       <View style={[styles.actionBadge, { backgroundColor: getActionColor(log.accion), alignSelf: 'flex-start' }]}>
+                          <Text style={styles.actionBadgeText}>{log.accion}</Text>
+                       </View>
+                       <Text style={[styles.auditDetails, { flex: 1, marginBottom: 0 }]}>{log.detalles}</Text>
+                    </View>
+                  </View>
+                );
+              })}
+            </ScrollView>
+
+            <View style={{ paddingTop: 15, borderTopWidth: 1, borderTopColor: '#f0f0f0', alignItems: 'center' }}>
+               <TouchableOpacity style={[styles.btnSave, { backgroundColor: getRoleConfig(selectedAuditRole).color }]} onPress={() => setShowAuditDetailModal(false)}>
+                  <Text style={styles.btnSaveText}>Regresar</Text>
+               </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
     </View>
   );
 }
@@ -1614,5 +1808,46 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginTop: 60,
     gap: 10,
+  },
+  auditRoleSelector: {
+    flexDirection: 'row',
+    marginBottom: 20,
+  },
+  auditRoleTab: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 15,
+    paddingVertical: 10,
+    borderRadius: 12,
+    backgroundColor: '#fff',
+    marginRight: 10,
+    borderWidth: 1,
+    borderColor: '#e1eef0',
+    gap: 8,
+  },
+  auditRoleTabActive: {
+    backgroundColor: '#0f6d78',
+    borderColor: '#0f6d78',
+  },
+  auditRoleTabText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#6d8a91',
+  },
+  auditRoleTabTextActive: {
+    color: '#fff',
+  },
+  auditRoleBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    gap: 4,
+  },
+  auditRoleBadgeText: {
+    fontSize: 10,
+    fontWeight: 'bold',
+    textTransform: 'uppercase',
   },
 });

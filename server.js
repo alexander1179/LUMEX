@@ -481,8 +481,9 @@ app.post('/api/auth/forgot-password', async (req, res) => {
         otpMemCache.set(email, { otp, expiresAt });
 
         if (!transporter) {
-            console.error(`⚠️ [SMTP ERROR] No se puede enviar OTP a ${email} porque SMTP no está configurado.`);
-            console.log(`👉 OTP generado para pruebas: ${otp}`);
+            console.log(`\n[AVISO] El sistema de correos (SMTP) no está configurado.`);
+            console.log(`[INFO] Modo manual activo. Entregue este código al usuario de ${email}:`);
+            console.log(`👉 CÓDIGO OTP: ${otp}\n`);
             return res.json({ 
                 success: true, 
                 message: 'No hay SMTP configurado. Revisa la consola o ingresa este código por defecto.',

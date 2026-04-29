@@ -514,44 +514,48 @@ app.post('/api/auth/forgot-password', async (req, res) => {
         const expiresAt = Date.now() + OTP_EXPIRY_MINUTES * 60000;
         otpMemCache.set(email, { otp, expiresAt });
 
-        if (!transporter) {
+        if (!process.env.MAILTRAP_TOKEN) {
             console.log(`\n--- ERROR DE CONFIGURACIÓN ---`);
-            console.log(`SMTP_HOST: ${process.env.SMTP_HOST ? 'OK' : 'VACÍO'}`);
-            console.log(`SMTP_PORT: ${process.env.SMTP_PORT ? 'OK' : 'VACÍO'}`);
-            console.log(`SMTP_USER: ${process.env.SMTP_USER ? 'OK' : 'VACÍO'}`);
-            console.log(`SMTP_PASS: ${process.env.SMTP_PASS ? 'OK' : 'VACÍO'}`);
-            console.log(`SMTP_FROM: ${process.env.SMTP_FROM ? 'OK' : 'VACÍO'}`);
-            console.log(`------------------------------`);
-            console.log(`[AVISO] El sistema de correos (SMTP) no está configurado.`);
+            console.log(`MAILTRAP_TOKEN: VACÍO`);
             console.log(`[INFO] Modo manual activo. Entregue este código al usuario de ${email}:`);
             console.log(`👉 CÓDIGO OTP: ${otp}\n`);
             return res.json({ 
                 success: true, 
-                message: 'No hay SMTP configurado. Revisa la consola o ingresa este código por defecto.',
+                message: 'No hay API Token configurado. Revisa la consola o ingresa este código por defecto.',
                 devOtp: otp 
             });
         }
 
         try {
-            console.log(`📧 Intentando enviar correo a ${email}...`);
-            await transporter.sendMail({
-                from: process.env.SMTP_FROM,
-                to: email,
-                subject: 'Código de seguridad - Lumex',
-                text: `Tu código es: ${otp}\nExpira en ${OTP_EXPIRY_MINUTES} minutos.`,
-                html: buildOtpEmailHtml(otp),
+            console.log(`📧 Intentando enviar correo a ${email} vía API HTTP...`);
+            
+            const response = await fetch('https://sandbox.api.mailtrap.io/api/send/4585937', {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${process.env.MAILTRAP_TOKEN}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    from: { email: 'soporte@lumex.com', name: 'Soporte Lumex' },
+                    to: [{ email: email }],
+                    subject: 'Código de seguridad - Lumex',
+                    text: `Tu código es: ${otp}\nExpira en ${OTP_EXPIRY_MINUTES} minutos.`,
+                    html: buildOtpEmailHtml(otp)
+                })
             });
+
+            if (!response.ok) {
+                const errorData = await response.text();
+                throw new Error(`API Error ${response.status}: ${errorData}`);
+            }
+
             console.log(`✅ OTP enviado exitosamente a ${email}`);
             return res.json({ success: true, message: 'Código enviado correctamente a tu correo' });
         } catch (mailError) {
-            console.error(`❌ [SMTP ERROR] Error al enviar a ${email}:`);
-            console.error(`- Mensaje: ${mailError.message}`);
-            console.error(`- Código: ${mailError.code}`);
-            console.error(`- Comando: ${mailError.command}`);
-            
+            console.error(`❌ [API ERROR] Error al enviar a ${email}:`, mailError.message);
             return res.status(500).json({ 
                 success: false, 
-                message: `Error enviando correo: ${mailError.code || 'Timeout'}. Verifica los logs.` 
+                message: `Error enviando correo HTTP. Verifica los logs.` 
             });
         }
     } catch (err) {

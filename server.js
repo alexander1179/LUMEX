@@ -244,6 +244,15 @@ const smtpConfigured = [
     process.env.SMTP_FROM,
 ].every((value) => !!value);
 
+console.log('--- ESTADO DE VARIABLES SMTP ---');
+console.log('SMTP_HOST:', process.env.SMTP_HOST ? 'OK' : 'FALTA');
+console.log('SMTP_PORT:', process.env.SMTP_PORT ? 'OK' : 'FALTA');
+console.log('SMTP_USER:', process.env.SMTP_USER ? 'OK' : 'FALTA');
+console.log('SMTP_PASS:', process.env.SMTP_PASS ? 'OK' : 'FALTA');
+console.log('SMTP_FROM:', process.env.SMTP_FROM ? 'OK' : 'FALTA');
+console.log('¿SMTP Configurado?', smtpConfigured ? 'SÍ' : 'NO');
+console.log('---------------------------------');
+
 const transporter = smtpConfigured
     ? nodemailer.createTransport({
         host: process.env.SMTP_HOST,
@@ -481,7 +490,14 @@ app.post('/api/auth/forgot-password', async (req, res) => {
         otpMemCache.set(email, { otp, expiresAt });
 
         if (!transporter) {
-            console.log(`\n[AVISO] El sistema de correos (SMTP) no está configurado.`);
+            console.log(`\n--- ERROR DE CONFIGURACIÓN ---`);
+            console.log(`SMTP_HOST: ${process.env.SMTP_HOST ? 'OK' : 'VACÍO'}`);
+            console.log(`SMTP_PORT: ${process.env.SMTP_PORT ? 'OK' : 'VACÍO'}`);
+            console.log(`SMTP_USER: ${process.env.SMTP_USER ? 'OK' : 'VACÍO'}`);
+            console.log(`SMTP_PASS: ${process.env.SMTP_PASS ? 'OK' : 'VACÍO'}`);
+            console.log(`SMTP_FROM: ${process.env.SMTP_FROM ? 'OK' : 'VACÍO'}`);
+            console.log(`------------------------------`);
+            console.log(`[AVISO] El sistema de correos (SMTP) no está configurado.`);
             console.log(`[INFO] Modo manual activo. Entregue este código al usuario de ${email}:`);
             console.log(`👉 CÓDIGO OTP: ${otp}\n`);
             return res.json({ 

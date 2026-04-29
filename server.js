@@ -10,6 +10,8 @@ const nodemailer = require('nodemailer');
 const crypto = require('crypto');
 
 const app = express();
+app.set('trust proxy', 1); // Confiar en el proxy
+
 const PORT = process.env.PORT || 3000;
 
 // ===== Configuración de Entorno (Debug) =====
@@ -245,12 +247,12 @@ const smtpConfigured = [
 ].every((value) => !!value);
 
 console.log('--- ESTADO DE VARIABLES SMTP ---');
-console.log('SMTP_HOST:', process.env.SMTP_HOST ? 'OK' : 'FALTA');
-console.log('SMTP_PORT:', process.env.SMTP_PORT ? 'OK' : 'FALTA');
-console.log('SMTP_USER:', process.env.SMTP_USER ? 'OK' : 'FALTA');
-console.log('SMTP_PASS:', process.env.SMTP_PASS ? 'OK' : 'FALTA');
-console.log('SMTP_FROM:', process.env.SMTP_FROM ? 'OK' : 'FALTA');
-console.log('¿SMTP Configurado?', smtpConfigured ? 'SÍ' : 'NO');
+console.log('SMTP_HOST:', process.env.SMTP_HOST ? '✅ OK' : '❌ FALTA');
+console.log('SMTP_PORT:', process.env.SMTP_PORT ? '✅ OK' : '❌ FALTA');
+console.log('SMTP_USER:', process.env.SMTP_USER ? '✅ OK' : '❌ FALTA');
+console.log('SMTP_PASS:', process.env.SMTP_PASS ? '✅ OK' : '❌ FALTA');
+console.log('SMTP_FROM:', process.env.SMTP_FROM ? '✅ OK' : '❌ FALTA');
+console.log('¿SMTP Configurado?', smtpConfigured ? '🟢 SÍ' : '🔴 NO (Funciones de correo desactivadas)');
 console.log('---------------------------------');
 
 const transporter = smtpConfigured
@@ -262,6 +264,8 @@ const transporter = smtpConfigured
             user: process.env.SMTP_USER,
             pass: process.env.SMTP_PASS,
         },
+        connectionTimeout: 10000,
+        greetingTimeout: 10000,
     })
     : null;
 
@@ -508,6 +512,7 @@ app.post('/api/auth/forgot-password', async (req, res) => {
         }
 
         try {
+            console.log(`📧 Intentando enviar correo a ${email}...`);
             await transporter.sendMail({
                 from: process.env.SMTP_FROM,
                 to: email,
@@ -515,13 +520,17 @@ app.post('/api/auth/forgot-password', async (req, res) => {
                 text: `Tu código es: ${otp}\nExpira en ${OTP_EXPIRY_MINUTES} minutos.`,
                 html: buildOtpEmailHtml(otp),
             });
-            console.log(`✅ OTP enviado por correo a ${email}`);
+            console.log(`✅ OTP enviado exitosamente a ${email}`);
             return res.json({ success: true, message: 'Código enviado correctamente a tu correo' });
         } catch (mailError) {
-            console.error(`❌ [MAIL ERROR] Fallo al enviar correo a ${email}:`, mailError.message);
+            console.error(`❌ [SMTP ERROR] Error al enviar a ${email}:`);
+            console.error(`- Mensaje: ${mailError.message}`);
+            console.error(`- Código: ${mailError.code}`);
+            console.error(`- Comando: ${mailError.command}`);
+            
             return res.status(500).json({ 
                 success: false, 
-                message: 'Error al enviar el correo electrónico. Inténtalo más tarde.' 
+                message: `Error enviando correo: ${mailError.code || 'Timeout'}. Verifica los logs.` 
             });
         }
     } catch (err) {
@@ -931,18 +940,8 @@ const updateUserHandler = async (req, res) => {
 app.post('/api/admin/update-user', updateUserHandler);
 app.post('/admin/update-user', updateUserHandler);
 
-// Obtener usuario actual (refresco)
-app.post('/api/auth/get-user', async (req, res) => {
-    const { userId } = req.body;
-    try {
-        const [rows] = await pool.query('SELECT * FROM usuarios WHERE id_usuario = ?', [userId]);
-        if (rows.length === 0) return res.status(404).json({ success: false });
-        const { contrasena, ...safeUser } = rows[0];
-        res.json({ success: true, user: safeUser });
-    } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
-    }
-});
+// (Ruta duplicada eliminada)
+
 
 const blockUserHandler = async (req, res) => {
     const { id_usuario, blocked, executorId } = req.body;

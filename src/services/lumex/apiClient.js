@@ -25,7 +25,7 @@ export async function getApiClient(endpoint, options = {}) {
     };
 
     // Timeout por cada intento (5 segundos es suficiente para fallback rápido)
-    const timeoutMs = options.timeout || 5000; 
+    const timeoutMs = options.timeout || 15000; 
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 

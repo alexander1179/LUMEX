@@ -264,8 +264,8 @@ const transporter = smtpConfigured
             user: process.env.SMTP_USER,
             pass: process.env.SMTP_PASS,
         },
-        connectionTimeout: 10000, // 10 segundos máximo para conectar
-        greetingTimeout: 10000,   // 10 segundos máximo para el saludo inicial
+        connectionTimeout: 3000, // Fallar rápido para que la app no tire timeout
+        greetingTimeout: 3000,
     })
     : null;
 

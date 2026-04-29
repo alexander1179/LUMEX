@@ -493,33 +493,34 @@ app.post('/api/auth/forgot-password', async (req, res) => {
         const expiresAt = Date.now() + OTP_EXPIRY_MINUTES * 60000;
         otpMemCache.set(email, { otp, expiresAt });
 
-        if (!process.env.MAILTRAP_TOKEN) {
+        if (!process.env.BREVO_API_KEY) {
             console.log(`\n--- ERROR DE CONFIGURACIÓN ---`);
-            console.log(`MAILTRAP_TOKEN: VACÍO`);
+            console.log(`BREVO_API_KEY: VACÍO`);
             console.log(`[INFO] Modo manual activo. Entregue este código al usuario de ${email}:`);
             console.log(`👉 CÓDIGO OTP: ${otp}\n`);
             return res.json({ 
                 success: true, 
-                message: 'No hay API Token configurado. Revisa la consola o ingresa este código por defecto.',
+                message: 'No hay API Key configurada. Revisa la consola o ingresa este código por defecto.',
                 devOtp: otp 
             });
         }
 
         try {
-            console.log(`📧 Intentando enviar correo a ${email} vía API HTTP...`);
+            console.log(`📧 Intentando enviar correo a ${email} vía Brevo API HTTP...`);
             
-            const response = await fetch('https://sandbox.api.mailtrap.io/api/send/4585937', {
+            const response = await fetch('https://api.brevo.com/v3/smtp/email', {
                 method: 'POST',
                 headers: {
-                    'Authorization': `Bearer ${process.env.MAILTRAP_TOKEN}`,
-                    'Content-Type': 'application/json'
+                    'accept': 'application/json',
+                    'api-key': process.env.BREVO_API_KEY,
+                    'content-type': 'application/json'
                 },
                 body: JSON.stringify({
-                    from: { email: 'soporte@lumex.com', name: 'Soporte Lumex' },
+                    sender: { name: 'Soporte Lumex', email: process.env.BREVO_SENDER_EMAIL || 'soporte@lumex.com' },
                     to: [{ email: email }],
                     subject: 'Código de seguridad - Lumex',
-                    text: `Tu código es: ${otp}\nExpira en ${OTP_EXPIRY_MINUTES} minutos.`,
-                    html: buildOtpEmailHtml(otp)
+                    textContent: `Tu código es: ${otp}\nExpira en ${OTP_EXPIRY_MINUTES} minutos.`,
+                    htmlContent: buildOtpEmailHtml(otp)
                 })
             });
 

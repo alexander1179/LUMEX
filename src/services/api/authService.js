@@ -78,17 +78,17 @@ export const loginUser = async (identifier, password, acceptTermsIfNeeded = fals
 };
 
 
-export const forgotPassword = async (email) => {
+export const forgotPassword = async (email, tipo_evento = 'recuperacion') => {
   try {
     const { data: resData, ok } = await getApiClient('/api/auth/forgot-password', {
       method: 'POST',
-      body: JSON.stringify({ email }),
+      body: JSON.stringify({ email, tipo_evento }),
     });
 
     if (!ok || !resData?.success) {
       return { success: false, message: resData?.message || 'Error enviando correo' };
     }
-    return { success: true, message: resData.message, email, devOtp: resData.devOtp };
+    return { success: true, message: resData.message, email, devOtp: resData.devOtp, idRegistro: resData.idRegistro };
   } catch (error) {
     return { success: false, message: error.message };
   }
@@ -140,6 +140,22 @@ export const logoutUser = async () => {
   try {
     await AsyncStorage.removeItem(SESSION_KEY);
     return { success: true, message: 'Sesión cerrada' };
+  } catch (error) {
+    return { success: false, message: error.message };
+  }
+};
+
+export const logoutUserSession = async (id_registro, motivo_cierre) => {
+  try {
+    const { data: resData, ok } = await getApiClient('/api/auth/logout', {
+      method: 'POST',
+      body: JSON.stringify({ id_registro, motivo_cierre }),
+    });
+
+    if (!ok || !resData?.success) {
+      return { success: false, message: resData?.message || 'Error registrando cierre' };
+    }
+    return { success: true, message: resData.message };
   } catch (error) {
     return { success: false, message: error.message };
   }

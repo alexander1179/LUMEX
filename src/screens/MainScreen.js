@@ -27,6 +27,7 @@ import { captureRef } from 'react-native-view-shot';
 import { BloodPressureModal } from '../components/health/BloodPressureModal';
 import { HeartRateModal } from '../components/health/HeartRateModal';
 import { storageService } from '../services/storage/storageService';
+import { logoutUserSession } from '../services/api/authService';
 import {
   fetchAnalysisHistoryByUser,
   isDatasetFileSupported,
@@ -1018,6 +1019,10 @@ export default function MainScreen({ navigation }) {
 
   const handleLogout = async () => {
     try {
+      const user = await storageService.getUser();
+      if (user?.id_registro) {
+        await logoutUserSession(user.id_registro, 'cierre por usuario');
+      }
       await storageService.removeUser();
       navigation.replace('Login');
     } catch (error) {

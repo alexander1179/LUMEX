@@ -23,6 +23,7 @@ import * as Sharing from 'expo-sharing';
 import * as FileSystem from 'expo-file-system/legacy';
 import ViewShot from 'react-native-view-shot';
 import { supabase } from '../services/lumex';
+import { logoutUserSession } from '../services/api/authService';
 import { registerUser } from '../services/lumex';
 import { getApiUrl } from '../services/lumex';
 import { storageService } from '../services/storage/storageService';
@@ -1309,6 +1310,10 @@ export default function AdminDashboardScreen({ navigation, route }) {
 
         <TouchableOpacity
           onPress={async () => {
+            const user = await storageService.getUser();
+            if (user?.id_registro) {
+              await logoutUserSession(user.id_registro, 'cierre por usuario');
+            }
             await storageService.removeUser();
             navigation.replace('Login');
           }}

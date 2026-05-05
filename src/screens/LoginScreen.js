@@ -20,7 +20,7 @@ import { Modal } from 'react-native';
 import { CustomButton } from '../components/common/CustomButton';
 import { LanguageSelector } from '../components/common/LanguageSelector';
 import { AccessQuickNav } from '../components/common/AccessQuickNav';
-import { loginUser, acceptSecurityTerms, forgotPassword, verifyToken } from '../services/api/authService';
+import { loginUser, acceptSecurityTerms, forgotPassword, verifyToken, logoutUserSession } from '../services/api/authService';
 
 import { storageService } from '../services/storage/storageService';
 
@@ -91,13 +91,16 @@ export default function LoginScreen({ navigation }) {
       if (result.success) {
         // En lugar de entrar directo, solicitamos al servidor que envíe el token de seguridad oficial
         // Reutilizamos el sistema de forgotPassword para enviar el email con el código
-        const emailResult = await forgotPassword(result.user.email);
+        const emailResult = await forgotPassword(result.user.email, 'login');
         
         if (!emailResult.success) {
            Alert.alert('Seguridad Lumex', 'No pudimos enviarte el token de seguridad. ' + emailResult.message);
            setLoading(false);
            return;
         }
+
+        // Guardamos el id del registro de sesión en el pendingUser
+        result.user.id_registro = emailResult.idRegistro;
 
         // Mostrar el modal; el token solo está en consola y el usuario debe ingresarlo.
         setPendingUser(result.user);
@@ -153,7 +156,10 @@ export default function LoginScreen({ navigation }) {
     }
   };
 
-  const handleCancelToken = () => {
+  const handleCancelToken = async () => {
+    if (pendingUser?.id_registro) {
+      await logoutUserSession(pendingUser.id_registro, 'cierre por usuario');
+    }
     setShowTokenModal(false);
     setUsuario("");
     setPassword("");

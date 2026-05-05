@@ -9,6 +9,7 @@ import * as Sharing from 'expo-sharing';
 import * as FileSystem from 'expo-file-system/legacy';
 import ViewShot from 'react-native-view-shot';
 import { fetchAllUsers, updateUser, deleteUser, updateAdminPermission, hashPassword, registerUser } from '../services/lumex/authService';
+import { logoutUserSession } from '../services/api/authService';
 import { storageService } from '../services/storage/storageService';
 import { getApiUrl } from '../services/lumex';
 
@@ -764,7 +765,14 @@ export default function SuperAdminDashboardScreen({ navigation }) {
           <Text style={styles.headerSubtitle}>Hola, {currentUser?.nombre || currentUser?.usuario || 'Super Admin'}</Text>
           <Text style={styles.headerTitle}>Superadministrador</Text>
         </View>
-        <TouchableOpacity style={styles.logoutBtn} onPress={async () => { await storageService.removeUser(); navigation.replace('Login'); }}>
+        <TouchableOpacity style={styles.logoutBtn} onPress={async () => { 
+          const user = await storageService.getUser();
+          if (user?.id_registro) {
+            await logoutUserSession(user.id_registro, 'cierre por usuario');
+          }
+          await storageService.removeUser(); 
+          navigation.replace('Login'); 
+        }}>
           <Ionicons name="power-outline" size={24} color="#fff" />
         </TouchableOpacity>
       </View>

@@ -180,6 +180,20 @@ const runMigrations = async () => {
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
         `);
 
+        // 8. Crear tabla registro_tokens
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS registro_tokens (
+                id_registro INT AUTO_INCREMENT PRIMARY KEY,
+                id_usuario INT,
+                email VARCHAR(255),
+                tipo_evento VARCHAR(50),
+                hora_envio DATETIME,
+                estado_sesion VARCHAR(50) NULL,
+                fecha_cierre DATETIME NULL,
+                FOREIGN KEY (id_usuario) REFERENCES usuarios(id_usuario) ON DELETE CASCADE
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+        `);
+
         // Migrar columnas adicionales en usuarios si ya existe
         const [columns] = await pool.query('SHOW COLUMNS FROM usuarios');
         const names = columns.map(c => c.Field);
@@ -502,6 +516,8 @@ app.post('/api/auth/accept-terms', async (req, res) => {
 // Recuperar contraseña
 app.post('/api/auth/forgot-password', async (req, res) => {
     const email = normalizeEmail(req.body?.email);
+    const tipo_evento = req.body?.tipo_evento || 'recuperacion';
+    
     if (!email) return res.status(400).json({ success: false, message: 'El correo es requerido' });
 
     try {
@@ -510,9 +526,19 @@ app.post('/api/auth/forgot-password', async (req, res) => {
             return res.status(404).json({ success: false, message: 'Correo no registrado' });
         }
 
+        const id_usuario = rows[0].id_usuario;
         const otp = generateOtp();
         const expiresAt = Date.now() + OTP_EXPIRY_MINUTES * 60000;
         otpMemCache.set(email, { otp, expiresAt });
+
+        const estado_sesion = tipo_evento === 'login' ? 'sesion activa' : null;
+        
+        // Registrar en base de datos
+        const [insertResult] = await pool.query(
+            'INSERT INTO registro_tokens (id_usuario, email, tipo_evento, hora_envio, estado_sesion) VALUES (?, ?, ?, NOW(), ?)',
+            [id_usuario, email, tipo_evento, estado_sesion]
+        );
+        const id_registro = insertResult.insertId;
 
         if (!process.env.BREVO_API_KEY) {
             console.log(`\n--- ERROR DE CONFIGURACIÓN ---`);
@@ -522,7 +548,8 @@ app.post('/api/auth/forgot-password', async (req, res) => {
             return res.json({ 
                 success: true, 
                 message: 'No hay API Key configurada. Revisa la consola o ingresa este código por defecto.',
-                devOtp: otp 
+                devOtp: otp,
+                idRegistro: id_registro
             });
         }
 
@@ -551,7 +578,7 @@ app.post('/api/auth/forgot-password', async (req, res) => {
             }
 
             console.log(`✅ OTP enviado exitosamente a ${email}`);
-            return res.json({ success: true, message: 'Código enviado correctamente a tu correo' });
+            return res.json({ success: true, message: 'Código enviado correctamente a tu correo', idRegistro: id_registro });
         } catch (mailError) {
             console.error(`❌ [API ERROR] Error al enviar a ${email}:`, mailError.message);
             return res.status(500).json({ 
@@ -562,6 +589,25 @@ app.post('/api/auth/forgot-password', async (req, res) => {
     } catch (err) {
         console.error(err);
         res.status(500).json({ success: false, message: 'Error interno al procesar recuperación' });
+    }
+});
+
+app.post('/api/auth/logout', async (req, res) => {
+    const { id_registro, motivo_cierre } = req.body;
+    
+    if (!id_registro || !motivo_cierre) {
+        return res.status(400).json({ success: false, message: 'Faltan parámetros requeridos.' });
+    }
+
+    try {
+        await pool.query(
+            'UPDATE registro_tokens SET estado_sesion = ?, fecha_cierre = NOW() WHERE id_registro = ?',
+            [motivo_cierre, id_registro]
+        );
+        res.json({ success: true, message: 'Sesión finalizada y registrada correctamente.' });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ success: false, message: 'Error interno al registrar cierre.' });
     }
 });
 

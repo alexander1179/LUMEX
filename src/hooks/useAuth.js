@@ -1,7 +1,7 @@
 // src/hooks/useAuth.js
 import { useState, useEffect } from 'react';
 import { Alert } from 'react-native';
-import { loginUser, getCurrentUser, logoutUser } from '../services/api/authService';
+import { loginUser, getCurrentUser, logoutUser, logoutUserSession } from '../services/api/authService';
 import { storageService } from '../services/storage/storageService';
 import { MESSAGES } from '../utils/constants';
 
@@ -62,6 +62,10 @@ export const useAuth = (navigation) => {
 
   const logout = async (navigation) => {
     try {
+      const currentUser = await storageService.getUser();
+      if (currentUser?.id_registro) {
+        await logoutUserSession(currentUser.id_registro, 'cierre por usuario');
+      }
       const result = await logoutUser();
       if (result.success) {
         await storageService.removeUser();

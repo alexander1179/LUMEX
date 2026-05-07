@@ -16,6 +16,7 @@ import { colors } from '../styles/colors';
 import { validators } from '../utils/validators';
 import { CustomButton } from '../components/common/CustomButton';
 import { PasswordRequirements } from '../components/auth/PasswordRequirements';
+import { SuccessModal } from '../components/common/SuccessModal';
 
 const { width } = Dimensions.get('window');
 
@@ -27,6 +28,7 @@ export default function ResetPasswordScreen({ route, navigation }) {
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [passwordReqs, setPasswordReqs] = useState({
     length: false,
     uppercase: false,
@@ -80,11 +82,7 @@ export default function ResetPasswordScreen({ route, navigation }) {
       const result = await resetPassword(email, newPassword);
 
       if (result.success) {
-        Alert.alert(
-          "✅ Contraseña actualizada",
-          "Tu contraseña ha sido cambiada exitosamente",
-          [{ text: "OK", onPress: () => navigation.replace("Login") }]
-        );
+        setShowSuccessModal(true);
       } else {
         Alert.alert("Error", result.message);
       }
@@ -172,6 +170,17 @@ export default function ResetPasswordScreen({ route, navigation }) {
           />
         </View>
       </View>
+
+      <SuccessModal 
+        visible={showSuccessModal}
+        title="¡Contraseña Actualizada!"
+        message="Tu nueva contraseña ha sido establecida correctamente. Ya puedes iniciar sesión de forma segura."
+        buttonText="Ir al inicio"
+        onConfirm={() => {
+          setShowSuccessModal(false);
+          navigation.replace("Login");
+        }}
+      />
     </View>
   );
 }

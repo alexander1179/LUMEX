@@ -15,6 +15,7 @@ import { forgotPassword } from '../services/api/authService';
 
 import { colors } from '../styles/colors';
 import { CustomButton } from '../components/common/CustomButton';
+import { SuccessModal } from '../components/common/SuccessModal';
 
 const { width } = Dimensions.get('window');
 
@@ -23,6 +24,7 @@ export default function ForgotPasswordScreen({ navigation }) {
   const [email, setEmail] = useState('');
   const [loading, setLoading] = useState(false);
   const [countdown, setCountdown] = useState(0);
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
   const timerRef = useRef(null);
 
   const theme = {
@@ -75,19 +77,7 @@ export default function ForgotPasswordScreen({ navigation }) {
 
       if (result.success) {
         startCountdown(60);
-        Alert.alert(
-          "Código enviado",
-          "Ingresa el código que recibiste en tu correo.",
-          [
-            {
-              text: "OK",
-              onPress: () => navigation.navigate("VerifyToken", {
-                email: normalizedEmail,
-                metodo: 'email'
-              })
-            }
-          ]
-        );
+        setShowSuccessModal(true);
       } else {
         if (result.rateLimited && result.waitSeconds) {
           startCountdown(result.waitSeconds);
@@ -152,6 +142,20 @@ export default function ForgotPasswordScreen({ navigation }) {
           </TouchableOpacity>
         </View>
       </Animated.View>
+
+      <SuccessModal 
+        visible={showSuccessModal}
+        title="¡Código enviado!"
+        message="Hemos enviado un código seguro de recuperación a tu correo electrónico. Recuerda revisar tu bandeja de spam."
+        buttonText="Ingresar Código"
+        onConfirm={() => {
+          setShowSuccessModal(false);
+          navigation.navigate("VerifyToken", {
+            email: email.trim().toLowerCase(),
+            metodo: 'email'
+          });
+        }}
+      />
     </View>
   );
 }

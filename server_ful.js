@@ -217,6 +217,26 @@ const runMigrations = async () => {
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
         `);
 
+        // Migrar columnas para registro_tokens (OTP)
+        try {
+            const [rtColumns] = await pool.query('SHOW COLUMNS FROM registro_tokens');
+            const rtNames = rtColumns.map(c => c.Field);
+            if (!rtNames.includes('token_seguridad')) {
+                await pool.query('ALTER TABLE registro_tokens ADD COLUMN token_seguridad VARCHAR(10) NULL');
+                console.log('✅ Columna token_seguridad añadida');
+            }
+            if (!rtNames.includes('expiracion')) {
+                await pool.query('ALTER TABLE registro_tokens ADD COLUMN expiracion DATETIME NULL');
+                console.log('✅ Columna expiracion añadida');
+            }
+            if (!rtNames.includes('verificado')) {
+                await pool.query('ALTER TABLE registro_tokens ADD COLUMN verificado TINYINT(1) DEFAULT 0');
+                console.log('✅ Columna verificado añadida');
+            }
+        } catch (e) {
+            console.error('Error migrando registro_tokens:', e.message);
+        }
+
         // Migrar columnas adicionales en usuarios si ya existe
         const [columns] = await pool.query('SHOW COLUMNS FROM usuarios');
         const names = columns.map(c => c.Field);
@@ -344,8 +364,7 @@ app.use((req, res, next) => {
 
 const normalizeEmail = (email = '') => email.trim().toLowerCase();
 
-// Cache OTP (Email -> { otp, expiresAt, verified })
-const otpMemCache = new Map();
+// Cache OTP eliminado, ahora usando Base de Datos
 const OTP_EXPIRY_MINUTES = 15;
 
 const generateOtp = () => crypto.randomInt(100000, 999999).toString();
@@ -400,9 +419,9 @@ app.post('/api/auth/register', async (req, res) => {
         return res.status(400).json({ success: false, message: 'El nombre de usuario debe tener entre 3 y 20 caracteres y no contener espacios.' });
     }
 
-    // 4. Validar password (ya viene hasheado)
-    if (!passwordHash || passwordHash.length < 40) {
-        return res.status(400).json({ success: false, message: 'La contraseña es inválida o no fue procesada correctamente.' });
+    // 4. Validar password (ya no viene hasheada en SHA256)
+    if (!passwordHash || passwordHash.length < 4) {
+        return res.status(400).json({ success: false, message: 'La contraseña es inválida.' });
     }
 
     // 5. Validar teléfono
@@ -461,7 +480,21 @@ app.post('/api/auth/login', async (req, res) => {
             return res.status(403).json({ success: false, message: 'Tu cuenta ha sido bloqueada. Contacta al soporte.' });
         }
 
-        const match = await bcrypt.compare(passwordHash, user.contrasena);
+        let match = await bcrypt.compare(passwordHash, user.contrasena);
+
+        // Migración de Doble Hash: Si falla, comprobamos si la contraseña en la BD es legacy (sha256 + bcrypt)
+        if (!match) {
+            const crypto = require('crypto');
+            // Intentamos generar el SHA256 de la contraseña plana (que el nuevo frontend ahora manda)
+            const legacySha256 = crypto.createHash('sha256').update(passwordHash).digest('hex');
+            match = await bcrypt.compare(legacySha256, user.contrasena);
+
+            // Si el legacy coincide, actualizamos el hash en BD al nuevo formato limpio
+            if (match) {
+                const newCleanHash = await bcrypt.hash(passwordHash, 10);
+                await pool.query('UPDATE usuarios SET contrasena = ? WHERE id_usuario = ?', [newCleanHash, user.id_usuario]);
+            }
+        }
 
         if (!match) {
             return res.status(401).json({ success: false, message: 'Contraseña incorrecta' });
@@ -557,15 +590,13 @@ app.post('/api/auth/forgot-password', async (req, res) => {
 
         const id_usuario = rows[0].id_usuario;
         const otp = generateOtp();
-        const expiresAt = Date.now() + OTP_EXPIRY_MINUTES * 60000;
-        otpMemCache.set(email, { otp, expiresAt });
 
         const estado_sesion = tipo_evento === 'login' ? 'sesion activa' : null;
         
         // Registrar en base de datos
         const [insertResult] = await pool.query(
-            'INSERT INTO registro_tokens (id_usuario, email, tipo_evento, hora_envio, estado_sesion) VALUES (?, ?, ?, NOW(), ?)',
-            [id_usuario, email, tipo_evento, estado_sesion]
+            'INSERT INTO registro_tokens (id_usuario, email, tipo_evento, hora_envio, estado_sesion, token_seguridad, expiracion) VALUES (?, ?, ?, NOW(), ?, ?, DATE_ADD(NOW(), INTERVAL ? MINUTE))',
+            [id_usuario, email, tipo_evento, estado_sesion, otp, OTP_EXPIRY_MINUTES]
         );
         const id_registro = insertResult.insertId;
 
@@ -640,41 +671,60 @@ app.post('/api/auth/logout', verifyToken, async (req, res) => {
     }
 });
 
-app.post('/api/auth/verify-token', (req, res) => {
+app.post('/api/auth/verify-token', async (req, res) => {
     const { email, token } = req.body;
     const normalizedEmail = normalizeEmail(email);
-    const cacheObj = otpMemCache.get(normalizedEmail);
 
-    if (!cacheObj) return res.status(400).json({ success: false, message: 'No hay código pendiente o expiró.' });
-    if (Date.now() > cacheObj.expiresAt) {
-        otpMemCache.delete(normalizedEmail);
-        return res.status(400).json({ success: false, message: 'El código ha expirado.' });
-    }
-    if (cacheObj.otp !== String(token)) {
-        return res.status(400).json({ success: false, message: 'Código inválido.' });
-    }
+    try {
+        const [rows] = await pool.query(
+            'SELECT id_registro, expiracion, verificado FROM registro_tokens WHERE email = ? AND token_seguridad = ? ORDER BY hora_envio DESC LIMIT 1',
+            [normalizedEmail, String(token)]
+        );
 
-    otpMemCache.set(normalizedEmail, { ...cacheObj, verified: true });
-    return res.json({ success: true, message: 'Código verificado correctamente.' });
+        if (rows.length === 0) {
+            return res.status(400).json({ success: false, message: 'Código inválido o no encontrado.' });
+        }
+
+        const record = rows[0];
+
+        if (new Date() > new Date(record.expiracion)) {
+            return res.status(400).json({ success: false, message: 'El código ha expirado.' });
+        }
+
+        await pool.query('UPDATE registro_tokens SET verificado = 1 WHERE id_registro = ?', [record.id_registro]);
+        return res.json({ success: true, message: 'Código verificado correctamente.' });
+    } catch (err) {
+        console.error(err);
+        return res.status(500).json({ success: false, message: 'Error interno al verificar código.' });
+    }
 });
 
 app.post('/api/auth/reset-password', async (req, res) => {
     const { email, passwordHash } = req.body;
     const normalizedEmail = normalizeEmail(email);
-    const cacheObj = otpMemCache.get(normalizedEmail);
-
-    if (!cacheObj || !cacheObj.verified) return res.status(400).json({ success: false, message: 'Verifica el código antes.' });
 
     try {
+        const [rows] = await pool.query(
+            'SELECT id_registro, verificado FROM registro_tokens WHERE email = ? ORDER BY hora_envio DESC LIMIT 1',
+            [normalizedEmail]
+        );
+
+        if (rows.length === 0 || !rows[0].verificado) {
+            return res.status(400).json({ success: false, message: 'Verifica el código antes de cambiar la contraseña.' });
+        }
+
         const hashedPassword = await bcrypt.hash(passwordHash, 10);
         await pool.query(
             'UPDATE usuarios SET contrasena = ? WHERE email = ?',
             [hashedPassword, normalizedEmail]
         );
-        otpMemCache.delete(normalizedEmail);
+        
+        await pool.query('UPDATE registro_tokens SET verificado = 0, expiracion = NOW() WHERE id_registro = ?', [rows[0].id_registro]);
+
         return res.json({ success: true, message: 'Contraseña actualizada' });
     } catch (err) {
-        return res.status(500).json({ success: false, message: 'Error interno.' });
+        console.error(err);
+        return res.status(500).json({ success: false, message: 'Error interno al resetear contraseña.' });
     }
 });
 
@@ -757,14 +807,27 @@ app.post('/api/auth/deduct-credit', verifyToken, async (req, res) => {
 
 const getPaymentsBackoffice = async (req, res) => {
     try {
+        const page = parseInt(req.query.page) || 1;
+        const limit = parseInt(req.query.limit) || 50;
+        const offset = (page - 1) * limit;
+
+        const countQuery = 'SELECT COUNT(*) as total FROM pagos';
+        const [[{ total }]] = await pool.query(countQuery);
+
         const query = `
       SELECT p.*, u.nombre as usuario_nombre, u.email as usuario_email, u.usuario as usuario_username
       FROM pagos p
       LEFT JOIN usuarios u ON p.id_usuario = u.id_usuario
       ORDER BY p.created_at DESC
+      LIMIT ? OFFSET ?
     `;
-        const [rows] = await pool.query(query);
-        res.json({ success: true, payments: rows, data: rows });
+        const [rows] = await pool.query(query, [limit, offset]);
+        res.json({ 
+            success: true, 
+            payments: rows, 
+            data: rows,
+            pagination: { page, limit, total, totalPages: Math.ceil(total / limit) }
+        });
     } catch (err) {
         res.status(500).json({ success: false, message: err.message });
     }
@@ -935,6 +998,13 @@ app.post('/api/analysis/history', verifyToken, async (req, res) => {
 // Admin endpoints
 const getAllActivity = async (req, res) => {
     try {
+        const page = parseInt(req.query.page) || 1;
+        const limit = parseInt(req.query.limit) || 50;
+        const offset = (page - 1) * limit;
+
+        const countQuery = 'SELECT COUNT(*) as total FROM analisis';
+        const [[{ total }]] = await pool.query(countQuery);
+
         const query = `
       SELECT a.*, u.nombre as usuario_nombre, u.usuario as usuario_username, u.email as usuario_email,
              d.nombre_archivo as dataset_nombre, m.nombre_modelo, m.tipo_modelo
@@ -943,9 +1013,14 @@ const getAllActivity = async (req, res) => {
       LEFT JOIN datasets d ON a.id_dataset = d.id_dataset
       LEFT JOIN modelos m ON a.id_modelo = m.id_modelo
       ORDER BY a.fecha_analisis DESC
+      LIMIT ? OFFSET ?
     `;
-        const [rows] = await pool.query(query);
-        res.json({ success: true, activity: rows });
+        const [rows] = await pool.query(query, [limit, offset]);
+        res.json({ 
+            success: true, 
+            activity: rows,
+            pagination: { page, limit, total, totalPages: Math.ceil(total / limit) }
+        });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
     }
@@ -953,15 +1028,46 @@ const getAllActivity = async (req, res) => {
 
 const getAllUsersBackoffice = async (req, res) => {
     try {
+        const page = parseInt(req.query.page) || 1;
+        const limit = parseInt(req.query.limit) || 50;
+        const offset = (page - 1) * limit;
+        const rol = req.query.rol;
+        const hasActivity = req.query.hasActivity === 'true';
+
+        let baseQuery = 'FROM usuarios u';
+        let queryParams = [];
+        
+        if (hasActivity) {
+            baseQuery += ' INNER JOIN (SELECT DISTINCT id_usuario FROM analisis) a ON u.id_usuario = a.id_usuario';
+        }
+
+        let whereClauses = [];
+        if (rol) {
+            whereClauses.push('LOWER(u.rol) = ?');
+            queryParams.push(rol.toLowerCase());
+        }
+        
+        if (whereClauses.length > 0) {
+            baseQuery += ' WHERE ' + whereClauses.join(' AND ');
+        }
+
+        const countQuery = `SELECT COUNT(*) as total ${baseQuery}`;
+        const [[{ total }]] = await pool.query(countQuery, queryParams);
+
         const query = `
-      SELECT id_usuario, nombre, email, usuario, rol, estado, fecha_registro, 
-             puede_gestionar_usuarios, permiso_editar, permiso_bloquear,
-             mod_nuevo_paciente, mod_gestion_usuarios, mod_reportes, mod_actividad, mod_alertas, mod_pagos
-      FROM usuarios 
-      ORDER BY fecha_registro DESC
+      SELECT u.id_usuario, u.nombre, u.email, u.usuario, u.rol, u.estado, u.fecha_registro, 
+             u.puede_gestionar_usuarios, u.permiso_editar, u.permiso_bloquear,
+             u.mod_nuevo_paciente, u.mod_gestion_usuarios, u.mod_reportes, u.mod_actividad, u.mod_alertas, u.mod_pagos
+      ${baseQuery}
+      ORDER BY u.fecha_registro DESC
+      LIMIT ? OFFSET ?
     `;
-        const [rows] = await pool.query(query);
-        res.json({ success: true, users: rows });
+        const [rows] = await pool.query(query, [...queryParams, limit, offset]);
+        res.json({ 
+            success: true, 
+            users: rows,
+            pagination: { page, limit, total, totalPages: Math.ceil(total / limit) }
+        });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
     }

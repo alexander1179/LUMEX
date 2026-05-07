@@ -3,20 +3,9 @@ import { getApiClient } from './apiClient';
 
 const SESSION_KEY = 'lumex_user_session';
 
-// Hash SHA-256 (igual al que usaba antes para mantener compatibilidad de hashes en DB)
+// El servidor ahora se encarga exclusivamente del hashing con bcrypt
 export const hashPassword = async (password) => {
-  try {
-    const encoder = new TextEncoder();
-    const buf = encoder.encode(String(password));
-    const hashBuffer = await global.crypto.subtle.digest('SHA-256', buf);
-    const hashArray = Array.from(new Uint8Array(hashBuffer));
-    return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-  } catch {
-    let h = 5381;
-    const s = String(password);
-    for (let i = 0; i < s.length; i++) h = ((h << 5) + h) ^ s.charCodeAt(i);
-    return Math.abs(h).toString(16).padStart(8, '0').repeat(8);
-  }
+  return password;
 };
 
 export const registerUser = async (userData) => {
@@ -186,9 +175,13 @@ export const resetPassword = async (email, newPassword) => {
 };
 
 // --- MÉTODOS DE ADMIN ---
-export const fetchAllUsers = async () => {
-  const { data, ok } = await getApiClient('/api/superadmin/users');
-  return ok ? data.users : [];
+export const fetchAllUsers = async (page = 1, limit = 50, role = '', hasActivity = false) => {
+  let url = `/api/superadmin/users?page=${page}&limit=${limit}`;
+  if (role) url += `&rol=${role}`;
+  if (hasActivity) url += `&hasActivity=true`;
+  const { data, ok } = await getApiClient(url);
+  if (!ok) return { users: [], pagination: null };
+  return { users: data.users || [], pagination: data.pagination || null };
 };
 
 export const updateAdminPermission = async (userId, field, value) => {

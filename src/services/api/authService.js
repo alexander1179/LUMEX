@@ -3,19 +3,9 @@ import { getApiClient } from './apiClient';
 
 const SESSION_KEY = 'lumex_user_session';
 
+// El servidor ahora se encarga exclusivamente del hashing con bcrypt
 const hashPassword = async (password) => {
-  try {
-    const encoder = new TextEncoder();
-    const buf = encoder.encode(String(password));
-    const hashBuffer = await global.crypto.subtle.digest('SHA-256', buf);
-    const hashArray = Array.from(new Uint8Array(hashBuffer));
-    return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-  } catch {
-    let h = 5381;
-    const s = String(password);
-    for (let i = 0; i < s.length; i++) h = ((h << 5) + h) ^ s.charCodeAt(i);
-    return Math.abs(h).toString(16).padStart(8, '0').repeat(8);
-  }
+  return password;
 };
 
 export const registerUser = async (userData) => {

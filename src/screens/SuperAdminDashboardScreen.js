@@ -100,6 +100,9 @@ export default function SuperAdminDashboardScreen({ navigation }) {
   const [allUsers, setAllUsers] = useState([]);
   const [filteredUsers, setFilteredUsers] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [usersPage, setUsersPage] = useState(1);
+  const [hasMoreUsers, setHasMoreUsers] = useState(true);
+  const [loadingMoreUsers, setLoadingMoreUsers] = useState(false);
   const [selectedRole, setSelectedRole] = useState(null);
   const [activeTab, setActiveTab] = useState('inicio');
   const [currentSubView, setCurrentSubView] = useState('main'); // 'main' o 'role_selection'
@@ -174,7 +177,7 @@ export default function SuperAdminDashboardScreen({ navigation }) {
   const loadUserActivity = async () => {
     setLoadingActivity(true);
     try {
-      const response = await fetch(`${getApiUrl()}/admin/activity`);
+      const response = await fetch(`${getApiUrl()}/admin/activity?page=1&limit=200`);
       const json = await response.json();
       if (json.success) setActivityRows(json.activity || []);
     } catch { 
@@ -187,11 +190,20 @@ export default function SuperAdminDashboardScreen({ navigation }) {
   const loadAuditLogs = async () => {
     setLoadingAudit(true);
     try {
-      const response = await fetch(`${getApiUrl()}/superadmin/audit-logs`);
-      const json = await response.json();
-      if (json.success) setAuditLogs(json.logs || []);
-    } catch {
-      //
+      const response = await fetch(`${getApiUrl()}/api/superadmin/audit-logs`);
+      const text = await response.text();
+      let json;
+      try {
+        json = JSON.parse(text);
+      } catch (e) {
+        console.error("Respuesta no es JSON válido:", text.substring(0, 100));
+        return;
+      }
+      if (json.success) {
+        setAuditLogs(json.logs || []);
+      }
+    } catch (err) {
+      console.error("Error al cargar auditoría:", err);
     } finally {
       setLoadingAudit(false);
     }
@@ -238,8 +250,8 @@ export default function SuperAdminDashboardScreen({ navigation }) {
   const loadUsers = async () => {
     setLoading(true);
     try {
-      const data = await fetchAllUsers();
-      setAllUsers(data);
+      const data = await fetchAllUsers(1, 50);
+      setAllUsers(data.users);
     } catch (err) {
       Alert.alert('Error', 'No se pudieron cargar los usuarios.');
     } finally {
@@ -315,11 +327,18 @@ export default function SuperAdminDashboardScreen({ navigation }) {
 
   const isMaster = currentUser?.usuario === 'superadmin01' || currentUser?.id_usuario === 1;
 
-  const handleSelectRole = (roleId) => {
+  const handleSelectRole = async (roleId) => {
     if (roleId === 'reportes_globales') {
-      // Filtrar solo usuarios finales para reportes clínicos
-      const patients = allUsers.filter(u => String(u.rol || '').toLowerCase() === 'usuario');
-      setFilteredUsers(patients);
+      setLoading(true);
+      // Fetchear solo los usuarios que tienen actividad registrada (historial)
+      const data = await fetchAllUsers(1, 100, 'usuario', true);
+      
+      // Doble filtro local basado en el historial cargado (activityRows)
+      const validIds = new Set(activityRows.map(a => String(a.id_usuario)));
+      const absolutelyFiltered = data.users.filter(u => validIds.has(String(u.id_usuario)));
+
+      setFilteredUsers(absolutelyFiltered);
+      setLoading(false);
       setShowReportesGlobalesModal(true);
       return;
     }
@@ -334,21 +353,73 @@ export default function SuperAdminDashboardScreen({ navigation }) {
       return;
     }
     
-    // Si llegamos aquí es porque seleccionamos un rol específico desde la sub-vista
-    const list = allUsers.filter(u => {
-      const r = String(u.rol || '').toLowerCase();
-      return r === roleId.toLowerCase() && u.id_usuario !== currentUser?.id_usuario;
-    });
+    setLoading(true);
+    const roleString = roleId.toLowerCase();
+    const data = await fetchAllUsers(1, 50, roleString);
     
-    setFilteredUsers(list);
+    // Filtro local estricto para asegurar que no se mezclen roles (Doble validación)
+    const strictUsers = data.users.filter(u => {
+      if (u.id_usuario === currentUser?.id_usuario) return false;
+      const r = String(u.rol || '').toLowerCase();
+      // Si el módulo es "administrador", excluir a los que son explícitamente "usuario" (Pacientes)
+      // Si el módulo es "usuario", incluir solo a los que son "usuario"
+      if (roleString === 'administrador') {
+        return r !== 'usuario';
+      } else {
+        return r === 'usuario';
+      }
+    });
+
+    setFilteredUsers(strictUsers);
     setSelectedRole(roleId);
+    setUsersPage(1);
+    setHasMoreUsers(data.pagination ? data.pagination.page < data.pagination.totalPages : false);
     setShowListModal(true);
+    setLoading(false);
+  };
+
+  const handleLoadMoreUsers = async () => {
+    if (!hasMoreUsers || loadingMoreUsers) return;
+    setLoadingMoreUsers(true);
+    try {
+      const nextPage = usersPage + 1;
+      const roleString = selectedRole.toLowerCase();
+      const data = await fetchAllUsers(nextPage, 50, roleString);
+      
+      if (data.users.length > 0) {
+        // Filtro local estricto (Doble validación)
+        const strictNewUsers = data.users.filter(u => {
+          if (u.id_usuario === currentUser?.id_usuario) return false;
+          const r = String(u.rol || '').toLowerCase();
+          if (roleString === 'administrador') {
+            return r !== 'usuario';
+          } else {
+            return r === 'usuario';
+          }
+        });
+
+        setFilteredUsers(prev => {
+          const combined = [...prev, ...strictNewUsers];
+          // Eliminar duplicados por si acaso
+          const unique = Array.from(new Map(combined.map(item => [item.id_usuario, item])).values());
+          return unique;
+        });
+        setUsersPage(nextPage);
+        setHasMoreUsers(data.pagination ? data.pagination.page < data.pagination.totalPages : false);
+      } else {
+        setHasMoreUsers(false);
+      }
+    } catch (err) {
+      console.log('Error loading more users', err);
+    } finally {
+      setLoadingMoreUsers(false);
+    }
   };
 
   const fetchPaymentsAndShow = async () => {
     setLoadingPagos(true);
     try {
-      const response = await fetch(`${getApiUrl()}/admin/payments`);
+      const response = await fetch(`${getApiUrl()}/admin/payments?page=1&limit=200`);
       const json = await response.json();
       if (json.success) {
         setAllPayments(json.payments);
@@ -689,13 +760,13 @@ export default function SuperAdminDashboardScreen({ navigation }) {
     if (r === 'superadministrador' || r === 'superadmin') {
       return { label: 'SuperAdmin', color: '#8e44ad', bg: '#f4ecf7', icon: 'shield-checkmark' };
     }
-    if (r === 'administrador') {
+    if (r === 'administrador' || r === 'admin') {
       return { label: 'Admin', color: '#2980b9', bg: '#ebf5fb', icon: 'person-circle' };
     }
-    if (r === 'usuario') {
+    if (r === 'usuario' || r === 'doctor' || r === 'enfermero') {
       return { label: 'Usuario', color: '#27ae60', bg: '#e9f7ef', icon: 'person' };
     }
-    return { label: 'Sistema', color: '#7f8c8d', bg: '#f2f4f4', icon: 'settings' };
+    return { label: role ? role : 'Sistema', color: '#7f8c8d', bg: '#f2f4f4', icon: 'settings' };
   };
 
   const renderAuditoria = () => {
@@ -820,6 +891,9 @@ export default function SuperAdminDashboardScreen({ navigation }) {
                    </View>
                 </View>
               )}
+              onEndReached={handleLoadMoreUsers}
+              onEndReachedThreshold={0.5}
+              ListFooterComponent={loadingMoreUsers ? <ActivityIndicator color="#0f6d78" style={{marginVertical: 15}} /> : null}
               ListEmptyComponent={<Text style={styles.emptyText}>No hay personas registradas</Text>}
             />
             <View style={{marginTop: 15, borderTopWidth: 1, borderTopColor: '#f0f0f0', paddingTop: 15, alignItems: 'center'}}>
@@ -1429,13 +1503,13 @@ export default function SuperAdminDashboardScreen({ navigation }) {
                   const d = (log.detalles || '').toLowerCase();
                   
                   if (selectedAuditRole === 'superadministrador') {
-                    return r === 'superadministrador' || r === 'superadmin';
+                    return r === 'superadministrador' || r === 'superadmin' || d.includes('[superadministrador]') || d.includes('[superadmin]');
                   }
                   if (selectedAuditRole === 'administrador') {
-                    return r === 'administrador' || r === 'admin';
+                    return r === 'administrador' || r === 'admin' || (d.includes('[administrador]') && !d.includes('[superadministrador]'));
                   }
                   if (selectedAuditRole === 'usuario') {
-                    return r === 'usuario';
+                    return r === 'usuario' || r === 'paciente' || r === 'doctor' || r === 'enfermero' || (d.includes('[usuario]') && !d.includes('[administrador]') && !d.includes('[superadministrador]'));
                   }
                   return r === selectedAuditRole.toLowerCase();
                 });

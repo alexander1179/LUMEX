@@ -1,6 +1,5 @@
 const bcrypt = require('bcrypt');
-
-require('dotenv').config();
+const jwt = require('jsonwebtoken');require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
@@ -14,7 +13,24 @@ app.set('trust proxy', 1); // Confiar en el proxy (necesario para Railway/Heroku
 
 const PORT = process.env.PORT || 3000;
 
-// ===== Configuración de Entorno (Debug) =====
+const JWT_SECRET = process.env.JWT_SECRET || 'fallback_secret_key_change_me_in_prod';
+
+const verifyToken = (req, res, next) => {
+    const authHeader = req.headers['authorization'];
+    const token = authHeader && authHeader.split(' ')[1];
+
+    if (!token) {
+        return res.status(401).json({ success: false, message: 'Acceso denegado. No hay token.' });
+    }
+
+    try {
+        const decoded = jwt.verify(token, JWT_SECRET);
+        req.user = decoded; // Info del token inyectada en req.user
+        next();
+    } catch (err) {
+        return res.status(403).json({ success: false, message: 'Token inválido o expirado.' });
+    }
+};// ===== Configuración de Entorno (Debug) =====
 console.log('🛠️ Iniciando servidor en entorno:', process.env.NODE_ENV || 'development');
 
 // Fallback para MYSQL_URL (típico en algunos entornos de Railway/Heroku)
@@ -454,16 +470,22 @@ app.post('/api/auth/login', async (req, res) => {
         const termsAccepted = !!user.acepta_terminos;
         const { contrasena, ...safeUser } = user;
 
+        const token = jwt.sign(
+            { id_usuario: user.id_usuario, rol: user.rol, email: user.email },
+            JWT_SECRET,
+            { expiresIn: '24h' }
+        );
+
         await logAudit(user.id_usuario, 'Login', `Inicio de sesión exitoso (${user.rol})`, req);
 
-        return res.json({ success: true, user: safeUser, termsAccepted });
+        return res.json({ success: true, user: safeUser, termsAccepted, token });
     } catch (err) {
         console.error(err);
         res.status(500).json({ success: false, message: 'Error interno en login.' });
     }
 });
 
-app.post('/api/auth/get-user', async (req, res) => {
+app.post('/api/auth/get-user', verifyToken, async (req, res) => {
     const { userId } = req.body;
     try {
         const [rows] = await pool.query('SELECT * FROM usuarios WHERE id_usuario = ? LIMIT 1', [userId]);
@@ -496,7 +518,7 @@ app.get('/api/debug-smtp', (req, res) => {
     });
 });
 
-app.post('/api/auth/latest-data', async (req, res) => {
+app.post('/api/auth/latest-data', verifyToken, async (req, res) => {
     const { userId } = req.body;
     try {
         const [rows] = await pool.query(
@@ -510,7 +532,7 @@ app.post('/api/auth/latest-data', async (req, res) => {
     }
 });
 
-app.post('/api/auth/accept-terms', async (req, res) => {
+app.post('/api/auth/accept-terms', verifyToken, async (req, res) => {
     const { userId } = req.body;
     try {
         await pool.query('UPDATE usuarios SET acepta_terminos = true, fecha_aceptacion_terminos = NOW() WHERE id_usuario = ?', [userId]);
@@ -599,7 +621,7 @@ app.post('/api/auth/forgot-password', async (req, res) => {
     }
 });
 
-app.post('/api/auth/logout', async (req, res) => {
+app.post('/api/auth/logout', verifyToken, async (req, res) => {
     const { id_registro, motivo_cierre } = req.body;
     
     if (!id_registro || !motivo_cierre) {
@@ -660,7 +682,7 @@ app.post('/api/auth/reset-password', async (req, res) => {
 // PAYMENTS & CREDITS
 // ==========================================
 
-app.post('/api/payments/register', async (req, res) => {
+app.post('/api/payments/register', verifyToken, async (req, res) => {
     const { userId, amount, monto, metodoPago, metodo, description, descripcion, credits, creditsToAdd } = req.body;
 
     const safeUserId = Number(userId);
@@ -701,11 +723,11 @@ app.post('/api/payments/register', async (req, res) => {
     }
 });
 
-app.post('/api/auth/add-credits', async (req, res) => {
+app.post('/api/auth/add-credits', verifyToken, async (req, res) => {
     return app._router.handle({ method: 'POST', url: '/api/payments/register', body: req.body }, res);
 });
 
-app.post('/api/payments/consume', async (req, res) => {
+app.post('/api/payments/consume', verifyToken, async (req, res) => {
     const { userId } = req.body;
     try {
         const [result] = await pool.query(
@@ -719,7 +741,7 @@ app.post('/api/payments/consume', async (req, res) => {
     }
 });
 
-app.post('/api/auth/deduct-credit', async (req, res) => {
+app.post('/api/auth/deduct-credit', verifyToken, async (req, res) => {
     const { userId } = req.body;
     try {
         const [result] = await pool.query(
@@ -748,8 +770,8 @@ const getPaymentsBackoffice = async (req, res) => {
     }
 };
 
-app.get('/api/payments/all', getPaymentsBackoffice);
-app.get('/api/admin/payments', getPaymentsBackoffice);
+app.get('/api/payments/all', verifyToken, getPaymentsBackoffice);
+app.get('/api/admin/payments', verifyToken, getPaymentsBackoffice);
 
 // ==========================================
 // ANALYSIS
@@ -811,7 +833,7 @@ const MODEL_BY_ANALYSIS = {
     clustering: { nombre: 'KMeans', descripcion: 'Clustering', tipo: 'clustering' },
 };
 
-app.post('/api/analysis/save', async (req, res) => {
+app.post('/api/analysis/save', verifyToken, async (req, res) => {
     try {
         const {
             userId, analysisType, datasetName, datasetPath, parsedDataset,
@@ -880,7 +902,7 @@ app.post('/api/analysis/save', async (req, res) => {
     }
 });
 
-app.post('/api/analysis/history', async (req, res) => {
+app.post('/api/analysis/history', verifyToken, async (req, res) => {
     const { userId } = req.body;
     try {
         const query = `
@@ -945,11 +967,11 @@ const getAllUsersBackoffice = async (req, res) => {
     }
 };
 
-app.get('/api/admin/activity', getAllActivity);
-app.get('/api/admin/users', getAllUsersBackoffice);
-app.get('/api/superadmin/users', getAllUsersBackoffice);
+app.get('/api/admin/activity', verifyToken, getAllActivity);
+app.get('/api/admin/users', verifyToken, getAllUsersBackoffice);
+app.get('/api/superadmin/users', verifyToken, getAllUsersBackoffice);
 
-app.post('/api/superadmin/toggle-admin-permission', async (req, res) => {
+app.post('/api/superadmin/toggle-admin-permission', verifyToken, async (req, res) => {
     const { id_usuario, field, value, executorId } = req.body;
 
     if (!executorId) {
@@ -1016,8 +1038,8 @@ const updateUserHandler = async (req, res) => {
     }
 };
 
-app.post('/api/admin/update-user', updateUserHandler);
-app.post('/admin/update-user', updateUserHandler);
+app.post('/api/admin/update-user', verifyToken, updateUserHandler);
+app.post('/admin/update-user', verifyToken, updateUserHandler);
 
 // (Ruta duplicada eliminada)
 
@@ -1050,8 +1072,8 @@ const blockUserHandler = async (req, res) => {
     }
 };
 
-app.post('/api/admin/block-user', blockUserHandler);
-app.post('/admin/block-user', blockUserHandler);
+app.post('/api/admin/block-user', verifyToken, blockUserHandler);
+app.post('/admin/block-user', verifyToken, blockUserHandler);
 
 // ELIMINAR USUARIO DEFINITIVAMENTE
 const deleteUser = async (req, res) => {
@@ -1079,7 +1101,7 @@ const deleteUser = async (req, res) => {
     }
 };
 
-app.get('/api/superadmin/audit-logs', async (req, res) => {
+app.get('/api/superadmin/audit-logs', verifyToken, async (req, res) => {
     try {
         const query = `
             SELECT l.*, u.nombre as usuario_nombre, u.usuario as usuario_username, u.rol as usuario_rol
@@ -1094,8 +1116,8 @@ app.get('/api/superadmin/audit-logs', async (req, res) => {
     }
 });
 
-app.delete('/api/admin/user/:userId', deleteUser);
-app.delete('/admin/user/:userId', deleteUser);
+app.delete('/api/admin/user/:userId', verifyToken, deleteUser);
+app.delete('/admin/user/:userId', verifyToken, deleteUser);
 
 // Final Handlers
 app.use((req, res) => {

@@ -54,8 +54,9 @@ export const loginUser = async (identifier, password, acceptTermsIfNeeded = fals
 
     if (!ok) return { success: false, message: data?.message || 'Credenciales inválidas' };
 
-    const { user, termsAccepted } = data;
+    const { user, termsAccepted, token } = data;
     await AsyncStorage.setItem(SESSION_KEY, JSON.stringify(user));
+    if (token) await AsyncStorage.setItem('lumex_jwt_token', token);
 
     if (!termsAccepted && acceptTermsIfNeeded) {
       await acceptSecurityTerms(user.id_usuario);
@@ -74,6 +75,7 @@ export const loginUser = async (identifier, password, acceptTermsIfNeeded = fals
 export const logoutUser = async () => {
   try {
     await AsyncStorage.removeItem(SESSION_KEY);
+    await AsyncStorage.removeItem('lumex_jwt_token');
     return { success: true };
   } catch (error) {
     return { success: false, message: error.message };

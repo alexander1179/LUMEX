@@ -63,9 +63,10 @@ export const loginUser = async (identifier, password, acceptTermsIfNeeded = fals
       return { success: false, message: resData?.message || 'Error de login' };
     }
 
-    const { user, termsAccepted } = resData;
+    const { user, termsAccepted, token } = resData;
 
     await AsyncStorage.setItem(SESSION_KEY, JSON.stringify(user));
+    if (token) await AsyncStorage.setItem('lumex_jwt_token', token);
 
     if (!termsAccepted && acceptTermsIfNeeded) {
       await acceptSecurityTerms(user.id_usuario, deviceInfo);
@@ -139,6 +140,7 @@ export const resetPassword = async (email, newPassword) => {
 export const logoutUser = async () => {
   try {
     await AsyncStorage.removeItem(SESSION_KEY);
+    await AsyncStorage.removeItem('lumex_jwt_token');
     return { success: true, message: 'Sesión cerrada' };
   } catch (error) {
     return { success: false, message: error.message };

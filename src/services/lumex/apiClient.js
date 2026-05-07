@@ -1,5 +1,6 @@
 // src/services/lumex/apiClient.js
 import { getApiUrlCandidates } from './apiConfig';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 /**
  * Cliente de API inteligente que intenta conectarse a múltiples candidatos 
@@ -23,6 +24,11 @@ export async function getApiClient(endpoint, options = {}) {
         ...options.headers,
       },
     };
+
+    try {
+      const token = await AsyncStorage.getItem('lumex_jwt_token');
+      if (token) config.headers['Authorization'] = `Bearer ${token}`;
+    } catch (e) {}
 
     // Timeout por cada intento (5 segundos es suficiente para fallback rápido)
     const timeoutMs = options.timeout || 15000; 

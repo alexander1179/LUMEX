@@ -1,5 +1,6 @@
 import { Platform } from 'react-native';
 import Constants from 'expo-constants';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // IP local de la máquina de desarrollo — actualizar si cambia la red
 // ⚠️ DEBE coincidir con la IP del PC en la red Wi-Fi (ejecuta 'ipconfig' para verificar)
@@ -37,6 +38,13 @@ export const getApiClient = async (endpoint, options = {}) => {
     'Content-Type': 'application/json',
     ...options.headers,
   };
+
+  try {
+    const token = await AsyncStorage.getItem('lumex_jwt_token');
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+  } catch (e) {}
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);

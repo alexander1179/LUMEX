@@ -590,28 +590,27 @@ app.post('/api/auth/forgot-password', async (req, res) => {
         }
 
         const id_usuario = rows[0].id_usuario;
-        const otp = generateOtp();
+        const otp = String(generateOtp()); // Forzar a string
         const estado_sesion = tipo_evento === 'login' ? 'sesion activa' : 'recuperacion';
         
-        console.log(`[DB] Intentando registrar token ${otp} para usuario ${id_usuario} (${email})...`);
+        console.log(`[DB-DEBUG] Preparando registro: Usuario=${id_usuario}, Email=${email}, Token=${otp}`);
 
-        // Registrar en base de datos de forma explícita
-        const [insertResult] = await pool.query(
-            'INSERT INTO registro_tokens (id_usuario, email, tipo_evento, hora_envio, estado_sesion, token_seguridad, expiracion) VALUES (?, ?, ?, NOW(), ?, ?, DATE_ADD(NOW(), INTERVAL ? MINUTE))',
-            [id_usuario, email, tipo_evento, estado_sesion, otp, OTP_EXPIRY_MINUTES]
-        );
-        
-        const id_registro = insertResult.insertId;
-        console.log(`[DB] ✅ Token registrado con ID: ${id_registro}. Token: ${otp}`);
+        // Registrar en base de datos primero y esperar confirmación
+        let id_registro;
+        try {
+            const [insertResult] = await pool.query(
+                'INSERT INTO registro_tokens (id_usuario, email, tipo_evento, hora_envio, estado_sesion, token_seguridad, expiracion) VALUES (?, ?, ?, NOW(), ?, ?, DATE_ADD(NOW(), INTERVAL ? MINUTE))',
+                [id_usuario, email, tipo_evento, estado_sesion, otp, 30] // Forzado 30 min
+            );
+            id_registro = insertResult.insertId;
+            console.log(`[DB-DEBUG] ✅ Fila insertada exitosamente con ID: ${id_registro}`);
+        } catch (dbError) {
+            console.error(`[DB-ERROR] Falló la inserción en registro_tokens:`, dbError.message);
+            return res.status(500).json({ success: false, message: 'Error crítico al registrar token en base de datos.' });
+        }
 
         if (!process.env.BREVO_API_KEY) {
-            console.log(`\n⚠️ ERROR: Falta BREVO_API_KEY en las variables de entorno de Railway.`);
-            return res.json({ 
-                success: true, 
-                message: `Servidor no configurado. Código manual: ${otp}`,
-                devOtp: otp,
-                idRegistro: id_registro
-            });
+            return res.json({ success: true, message: 'Modo manual: ' + otp, devOtp: otp, idRegistro: id_registro });
         }
 
         try {

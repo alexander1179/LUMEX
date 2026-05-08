@@ -615,8 +615,7 @@ app.post('/api/auth/forgot-password', async (req, res) => {
         }
 
         try {
-            console.log(`📧 Intentando enviar correo a ${email} vía Brevo API HTTP...`);
-            
+            console.log(`📧 Enviando token a ${email}...`);
             const response = await fetch('https://api.brevo.com/v3/smtp/email', {
                 method: 'POST',
                 headers: {
@@ -625,24 +624,18 @@ app.post('/api/auth/forgot-password', async (req, res) => {
                     'content-type': 'application/json'
                 },
                 body: JSON.stringify({
-                    sender: { name: 'LUMEX App', email: process.env.BREVO_SENDER_EMAIL || 'soporte@lumex-app.com' },
+                    sender: { name: 'Soporte Lumex', email: process.env.BREVO_SENDER_EMAIL || 'soporte@lumex-app.com' },
                     to: [{ email: email }],
-                    subject: `Tu Codigo Lumex: ${otp}`,
-                    textContent: `Tu codigo de seguridad es ${otp}. Expira en 15 minutos.`,
-                    htmlContent: `
-                        <div style="font-family:sans-serif; padding:30px; text-align:center; border:1px solid #eee; border-radius:12px; max-width:480px; margin:auto;">
-                            <h2 style="color:#0f6d78; margin-bottom:10px;">Verificación Lumex</h2>
-                            <p style="color:#444;">Utiliza el siguiente código para acceder:</p>
-                            <div style="font-size:42px; font-weight:bold; letter-spacing:8px; color:#d32f2f; margin:25px 0; background:#fcfcfc; padding:15px; border-radius:8px; border:1px dashed #ddd;">${otp}</div>
-                            <p style="color:#888; font-size:12px;">Válido por 15 minutos. Si no solicitaste esto, ignora este correo.</p>
-                        </div>
-                    `
+                    subject: `Codigo: ${otp}`,
+                    textContent: `Tu codigo Lumex es: ${otp}. Expira en 30 min.`,
+                    htmlContent: `<p>Tu codigo de seguridad es: <b>${otp}</b></p><p>Expira en 30 min.</p>`
                 })
             });
 
+            const responseData = await response.json();
+
             if (!response.ok) {
-                const errorData = await response.text();
-                console.error(`❌ [BREVO ERROR] ${response.status}: ${errorData}`);
+                console.error(`❌ [BREVO ERROR] ${response.status}:`, responseData);
                 return res.status(500).json({ 
                     success: false, 
                     message: `Error al enviar correo. USA ESTE CODIGO: ${otp}`,
@@ -651,8 +644,8 @@ app.post('/api/auth/forgot-password', async (req, res) => {
                 });
             }
 
-            console.log(`✅ OTP enviado exitosamente a ${email}`);
-            return res.json({ success: true, message: 'Código enviado correctamente a tu correo', idRegistro: id_registro });
+            console.log(`✅ Token enviado a ${email}. ID: ${responseData.messageId}`);
+            return res.json({ success: true, message: 'Codigo enviado al correo.', idRegistro: id_registro });
         } catch (mailError) {
             console.error(`❌ [API ERROR] Error al enviar a ${email}:`, mailError.message);
             return res.status(500).json({ 

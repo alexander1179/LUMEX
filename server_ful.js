@@ -590,7 +590,15 @@ app.post('/api/auth/forgot-password', async (req, res) => {
         }
 
         const id_usuario = rows[0].id_usuario;
-        const otp = String(generateOtp()); // Forzar a string
+        
+        // INVALIDAR TOKENS PREVIOS: Antes de crear uno nuevo, expiramos los anteriores
+        // Esto evita que peticiones duplicadas confundan al usuario
+        await pool.query(
+            'UPDATE registro_tokens SET expiracion = NOW() WHERE email = ? AND verificado = 0',
+            [email]
+        );
+
+        const otp = String(generateOtp()); 
         const estado_sesion = tipo_evento === 'login' ? 'sesion activa' : 'recuperacion';
         
         console.log(`[DB-DEBUG] Preparando registro: Usuario=${id_usuario}, Email=${email}, Token=${otp}`);
@@ -683,8 +691,9 @@ app.post('/api/auth/verify-token', async (req, res) => {
 
     try {
         // Validamos usando NOW() de la base de datos para evitar desfases horarios con el servidor
+        // Añadimos una tolerancia de 2 minutos (DATE_ADD) por si el reloj del celular está algo adelantado
         const [rows] = await pool.query(
-            'SELECT id_registro FROM registro_tokens WHERE email = ? AND token_seguridad = ? AND expiracion > NOW() ORDER BY hora_envio DESC LIMIT 1',
+            'SELECT id_registro FROM registro_tokens WHERE email = ? AND token_seguridad = ? AND DATE_ADD(expiracion, INTERVAL 2 MINUTE) > NOW() ORDER BY hora_envio DESC LIMIT 1',
             [normalizedEmail, String(token)]
         );
 

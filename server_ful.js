@@ -591,24 +591,24 @@ app.post('/api/auth/forgot-password', async (req, res) => {
 
         const id_usuario = rows[0].id_usuario;
         const otp = generateOtp();
-
-        const estado_sesion = tipo_evento === 'login' ? 'sesion activa' : null;
+        const estado_sesion = tipo_evento === 'login' ? 'sesion activa' : 'recuperacion';
         
-        // Registrar en base de datos
+        console.log(`[DB] Intentando registrar token ${otp} para usuario ${id_usuario} (${email})...`);
+
+        // Registrar en base de datos de forma explícita
         const [insertResult] = await pool.query(
             'INSERT INTO registro_tokens (id_usuario, email, tipo_evento, hora_envio, estado_sesion, token_seguridad, expiracion) VALUES (?, ?, ?, NOW(), ?, ?, DATE_ADD(NOW(), INTERVAL ? MINUTE))',
             [id_usuario, email, tipo_evento, estado_sesion, otp, OTP_EXPIRY_MINUTES]
         );
+        
         const id_registro = insertResult.insertId;
+        console.log(`[DB] ✅ Token registrado con ID: ${id_registro}. Token: ${otp}`);
 
         if (!process.env.BREVO_API_KEY) {
-            console.log(`\n--- ERROR DE CONFIGURACIÓN ---`);
-            console.log(`BREVO_API_KEY: VACÍO`);
-            console.log(`[INFO] Modo manual activo. Entregue este código al usuario de ${email}:`);
-            console.log(`👉 CÓDIGO OTP: ${otp}\n`);
+            console.log(`\n⚠️ ERROR: Falta BREVO_API_KEY en las variables de entorno de Railway.`);
             return res.json({ 
                 success: true, 
-                message: 'No hay API Key configurada. Revisa la consola o ingresa este código por defecto.',
+                message: `Servidor no configurado. Código manual: ${otp}`,
                 devOtp: otp,
                 idRegistro: id_registro
             });
@@ -625,16 +625,16 @@ app.post('/api/auth/forgot-password', async (req, res) => {
                     'content-type': 'application/json'
                 },
                 body: JSON.stringify({
-                    sender: { name: 'LUMEX App', email: process.env.BREVO_SENDER_EMAIL || 'notificaciones@lumex.com' },
+                    sender: { name: 'LUMEX App', email: process.env.BREVO_SENDER_EMAIL || 'soporte@lumex-app.com' },
                     to: [{ email: email }],
-                    subject: 'Tu Codigo Lumex: ' + otp,
+                    subject: `Tu Codigo Lumex: ${otp}`,
                     textContent: `Tu codigo de seguridad es ${otp}. Expira en 15 minutos.`,
                     htmlContent: `
-                        <div style="font-family:Arial; padding:40px; text-align:center;">
-                            <h2 style="color:#0f6d78;">Codigo de Acceso</h2>
-                            <p style="font-size:16px;">Usa este codigo para entrar a tu cuenta:</p>
-                            <div style="font-size:48px; font-weight:bold; color:#d32f2f; margin:30px 0; letter-spacing:10px;">${otp}</div>
-                            <p style="color:#999; font-size:12px;">Este codigo es valido por 15 minutos.</p>
+                        <div style="font-family:sans-serif; padding:30px; text-align:center; border:1px solid #eee; border-radius:12px; max-width:480px; margin:auto;">
+                            <h2 style="color:#0f6d78; margin-bottom:10px;">Verificación Lumex</h2>
+                            <p style="color:#444;">Utiliza el siguiente código para acceder:</p>
+                            <div style="font-size:42px; font-weight:bold; letter-spacing:8px; color:#d32f2f; margin:25px 0; background:#fcfcfc; padding:15px; border-radius:8px; border:1px dashed #ddd;">${otp}</div>
+                            <p style="color:#888; font-size:12px;">Válido por 15 minutos. Si no solicitaste esto, ignora este correo.</p>
                         </div>
                     `
                 })

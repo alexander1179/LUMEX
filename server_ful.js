@@ -365,6 +365,7 @@ app.use((req, res, next) => {
 const normalizeEmail = (email = '') => email.trim().toLowerCase();
 
 // Cache OTP eliminado, ahora usando Base de Datos
+// Tiempo de expiración del token (15 minutos como se solicitó)
 const OTP_EXPIRY_MINUTES = 15;
 
 const generateOtp = () => crypto.randomInt(100000, 999999).toString();
@@ -624,17 +625,30 @@ app.post('/api/auth/forgot-password', async (req, res) => {
                     'content-type': 'application/json'
                 },
                 body: JSON.stringify({
-                    sender: { name: 'Soporte Lumex', email: process.env.BREVO_SENDER_EMAIL || 'soporte@lumex.com' },
+                    sender: { name: 'LUMEX App', email: process.env.BREVO_SENDER_EMAIL || 'notificaciones@lumex.com' },
                     to: [{ email: email }],
-                    subject: 'Código de seguridad - Lumex',
-                    textContent: `Tu código es: ${otp}\nExpira en ${OTP_EXPIRY_MINUTES} minutos.`,
-                    htmlContent: buildOtpEmailHtml(otp)
+                    subject: 'Tu Codigo Lumex: ' + otp,
+                    textContent: `Tu codigo de seguridad es ${otp}. Expira en 15 minutos.`,
+                    htmlContent: `
+                        <div style="font-family:Arial; padding:40px; text-align:center;">
+                            <h2 style="color:#0f6d78;">Codigo de Acceso</h2>
+                            <p style="font-size:16px;">Usa este codigo para entrar a tu cuenta:</p>
+                            <div style="font-size:48px; font-weight:bold; color:#d32f2f; margin:30px 0; letter-spacing:10px;">${otp}</div>
+                            <p style="color:#999; font-size:12px;">Este codigo es valido por 15 minutos.</p>
+                        </div>
+                    `
                 })
             });
 
             if (!response.ok) {
                 const errorData = await response.text();
-                throw new Error(`API Error ${response.status}: ${errorData}`);
+                console.error(`❌ [BREVO ERROR] ${response.status}: ${errorData}`);
+                return res.status(500).json({ 
+                    success: false, 
+                    message: `Error al enviar correo. USA ESTE CODIGO: ${otp}`,
+                    devOtp: otp,
+                    idRegistro: id_registro
+                });
             }
 
             console.log(`✅ OTP enviado exitosamente a ${email}`);

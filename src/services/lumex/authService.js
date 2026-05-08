@@ -145,12 +145,12 @@ export const addCredits = async (userId, amount, monto, metodoPago, descripcion)
   }
 };
 
-export const forgotPassword = async (email) => {
+export const forgotPassword = async (email, tipo = 'forgot_password') => {
   const { data, ok } = await getApiClient('/api/auth/forgot-password', {
     method: 'POST',
-    body: JSON.stringify({ email }),
+    body: JSON.stringify({ email, tipo_evento: tipo }),
   });
-  return ok ? { success: true, message: data.message } : { success: false, message: data?.message };
+  return ok ? { success: true, message: data.message, idRegistro: data.idRegistro } : { success: false, message: data?.message };
 };
 
 export const verifyToken = async (email, token) => {

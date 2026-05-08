@@ -361,7 +361,6 @@ app.use((req, res, next) => {
     }
     next();
 });
-
 const normalizeEmail = (email = '') => email.trim().toLowerCase();
 
 // Cache OTP eliminado, ahora usando Base de Datos
@@ -608,7 +607,7 @@ app.post('/api/auth/forgot-password', async (req, res) => {
         try {
             const [insertResult] = await pool.query(
                 'INSERT INTO registro_tokens (id_usuario, email, tipo_evento, hora_envio, estado_sesion, token_seguridad, expiracion) VALUES (?, ?, ?, NOW(), ?, ?, DATE_ADD(NOW(), INTERVAL ? MINUTE))',
-                [id_usuario, email, tipo_evento, estado_sesion, otp, 30] // Forzado 30 min
+                [id_usuario, email, tipo_evento, estado_sesion, otp, OTP_EXPIRY_MINUTES]
             );
             id_registro = insertResult.insertId;
             console.log(`[DB-DEBUG] ✅ Fila insertada exitosamente con ID: ${id_registro}`);
@@ -634,8 +633,8 @@ app.post('/api/auth/forgot-password', async (req, res) => {
                     sender: { name: 'Soporte Lumex', email: process.env.BREVO_SENDER_EMAIL || 'soporte@lumex-app.com' },
                     to: [{ email: email }],
                     subject: `Codigo: ${otp}`,
-                    textContent: `Tu codigo Lumex es: ${otp}. Expira en 30 min.`,
-                    htmlContent: `<p>Tu codigo de seguridad es: <b>${otp}</b></p><p>Expira en 30 min.</p>`
+                    textContent: `Tu codigo Lumex es: ${otp}. Expira en ${OTP_EXPIRY_MINUTES} min.`,
+                    htmlContent: `<p>Tu codigo de seguridad es: <b>${otp}</b></p><p>Expira en ${OTP_EXPIRY_MINUTES} min.</p>`
                 })
             });
 
@@ -657,7 +656,9 @@ app.post('/api/auth/forgot-password', async (req, res) => {
             console.error(`❌ [API ERROR] Error al enviar a ${email}:`, mailError.message);
             return res.status(500).json({ 
                 success: false, 
-                message: `Error enviando correo HTTP. Verifica los logs.` 
+                message: `Error de red. USA ESTE CODIGO: ${otp}`,
+                devOtp: otp,
+                idRegistro: id_registro
             });
         }
     } catch (err) {

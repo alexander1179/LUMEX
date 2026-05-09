@@ -27,6 +27,7 @@ import { logoutUserSession } from '../services/api/authService';
 import { registerUser } from '../services/lumex';
 import { getApiUrl } from '../services/lumex';
 import { storageService } from '../services/storage/storageService';
+import { SuccessModal } from '../components/common/SuccessModal';
 
 const TABS = [
   { key: 'inicio', label: 'Inicio', icon: 'home-outline' },
@@ -152,6 +153,7 @@ export default function AdminDashboardScreen({ navigation, route }) {
   const [profileEmail, setProfileEmail] = useState('');
   const [profileUsuario, setProfileUsuario] = useState('');
   const [savingProfile, setSavingProfile] = useState(false);
+  const [infoModal, setInfoModal] = useState({ visible: false, title: '', message: '', iconName: '', iconColor: '', iconBgColor: '' });
 
   const resultadoOptions = [
     { id: 'diagnosticos', nombre: 'Diagnósticos', detalle: 'Resultados de valoración clínica' },
@@ -1266,7 +1268,14 @@ export default function AdminDashboardScreen({ navigation, route }) {
 
         <Pressable
           style={({ pressed }) => [styles.settingsButton, { backgroundColor: pressed ? '#c8dfe9' : '#eef6f8', borderWidth: 1, borderColor: '#d4e7ee' }]}
-          onPress={() => Alert.alert('Seguridad', 'El cambio de contraseña y 2FA estarán habilitados en la próxima actualización.')}
+          onPress={() => setInfoModal({
+            visible: true,
+            title: 'Privacidad y Seguridad',
+            message: 'El cambio de contraseña y autenticación de dos factores (2FA) estarán habilitados en la próxima gran actualización de la plataforma.',
+            iconName: 'shield-checkmark',
+            iconColor: '#2f7a96',
+            iconBgColor: '#eef6f8'
+          })}
         >
           <Ionicons name="shield-checkmark-outline" size={18} color="#2f7a96" />
           <Text style={[styles.settingsButtonText, { color: '#2f7a96' }]}>Privacidad y Seguridad</Text>
@@ -1274,7 +1283,14 @@ export default function AdminDashboardScreen({ navigation, route }) {
 
         <Pressable
           style={({ pressed }) => [styles.settingsButton, { backgroundColor: pressed ? '#c8dfe9' : '#eef6f8', borderWidth: 1, borderColor: '#d4e7ee' }]}
-          onPress={() => Alert.alert('Notificaciones', 'El módulo de reglas de alertas está en desarrollo.')}
+          onPress={() => setInfoModal({
+            visible: true,
+            title: 'Reglas de Notificación',
+            message: 'El módulo avanzado de alertas automáticas y reglas de notificación está actualmente en fase de desarrollo.',
+            iconName: 'notifications',
+            iconColor: '#2f7a96',
+            iconBgColor: '#eef6f8'
+          })}
         >
           <Ionicons name="notifications-outline" size={18} color="#2f7a96" />
           <Text style={[styles.settingsButtonText, { color: '#2f7a96' }]}>Reglas de Notificación</Text>
@@ -1282,7 +1298,14 @@ export default function AdminDashboardScreen({ navigation, route }) {
 
         <Pressable
           style={({ pressed }) => [styles.settingsButton, { backgroundColor: pressed ? '#ead1d0' : '#fcf4f4', borderWidth: 1, borderColor: '#f2d7d5' }]}
-          onPress={() => Alert.alert('Soporte', 'Generando ticket de asistencia remota...')}
+          onPress={() => setInfoModal({
+            visible: true,
+            title: 'Soporte Técnico',
+            message: 'Generando ticket de asistencia remota. Un técnico de Lumex se comunicará contigo a la brevedad.',
+            iconName: 'help-buoy',
+            iconColor: '#c0392b',
+            iconBgColor: '#fcf4f4'
+          })}
         >
           <Ionicons name="help-buoy-outline" size={18} color="#c0392b" />
           <Text style={[styles.settingsButtonText, { color: '#c0392b' }]}>Soporte Técnico de Lumex</Text>
@@ -2676,6 +2699,17 @@ export default function AdminDashboardScreen({ navigation, route }) {
           );
         })}
       </View>
+
+      <SuccessModal
+        visible={infoModal.visible}
+        title={infoModal.title}
+        message={infoModal.message}
+        buttonText="Entendido"
+        iconName={infoModal.iconName}
+        iconColor={infoModal.iconColor}
+        iconBgColor={infoModal.iconBgColor}
+        onConfirm={() => setInfoModal({ ...infoModal, visible: false })}
+      />
     </View>
   );
 }

@@ -26,6 +26,7 @@ import * as Sharing from 'expo-sharing';
 import { captureRef } from 'react-native-view-shot';
 import { BloodPressureModal } from '../components/health/BloodPressureModal';
 import { HeartRateModal } from '../components/health/HeartRateModal';
+import { SuccessModal } from '../components/common/SuccessModal';
 import { storageService } from '../services/storage/storageService';
 import { logoutUserSession } from '../services/api/authService';
 import {
@@ -497,6 +498,7 @@ export default function MainScreen({ navigation }) {
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
   const [isDownloadingReport, setIsDownloadingReport] = useState(false);
   const [downloadFormat, setDownloadFormat] = useState('pdf');
+  const [infoModal, setInfoModal] = useState({ visible: false, title: '', message: '', iconName: '', iconColor: '', iconBgColor: '' });
 
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const successMessageAnim = useRef(new Animated.Value(-width)).current;
@@ -1033,12 +1035,26 @@ export default function MainScreen({ navigation }) {
 
   const handleAnalyze = async () => {
     if (!datasetName.trim()) {
-      Alert.alert('Campo requerido', 'Ingresa un nombre para el dataset.');
+      setInfoModal({
+        visible: true,
+        title: 'Campo requerido',
+        message: 'Ingresa un nombre para el dataset antes de analizar.',
+        iconName: 'warning',
+        iconColor: '#e07b21',
+        iconBgColor: 'rgba(224, 123, 33, 0.1)'
+      });
       return;
     }
 
     if (!datasetContent.trim()) {
-      Alert.alert('Datos requeridos', 'Carga un archivo CSV/Excel o ingresa el contenido del dataset.');
+      setInfoModal({
+        visible: true,
+        title: 'Datos requeridos',
+        message: 'Carga un archivo CSV/Excel o ingresa el contenido del dataset.',
+        iconName: 'warning',
+        iconColor: '#e07b21',
+        iconBgColor: 'rgba(224, 123, 33, 0.1)'
+      });
       return;
     }
 
@@ -1172,10 +1188,24 @@ export default function MainScreen({ navigation }) {
         fileUri: datasetFile.fileUri,
       });
 
-      Alert.alert('Archivo cargado', `${datasetFile.fileName} listo para analizar.`);
+      setInfoModal({
+        visible: true,
+        title: 'Archivo cargado',
+        message: `${datasetFile.fileName} está listo para ser analizado.`,
+        iconName: 'document-text',
+        iconColor: '#2f9b6f',
+        iconBgColor: 'rgba(47, 155, 111, 0.1)'
+      });
     } catch (error) {
       console.log('Error loading dataset file:', error);
-      Alert.alert('Error', error?.message || 'No se pudo cargar el archivo seleccionado desde tu dispositivo.');
+      setInfoModal({
+        visible: true,
+        title: 'Error de carga',
+        message: error?.message || 'No se pudo cargar el archivo seleccionado desde tu dispositivo.',
+        iconName: 'alert-circle',
+        iconColor: '#c0392b',
+        iconBgColor: '#fcf4f4'
+      });
     } finally {
       setIsPickingCsv(false);
     }
@@ -2571,6 +2601,17 @@ export default function MainScreen({ navigation }) {
           </Text>
         </View>
       </View>
+
+      <SuccessModal
+        visible={infoModal.visible}
+        title={infoModal.title}
+        message={infoModal.message}
+        buttonText="Entendido"
+        iconName={infoModal.iconName}
+        iconColor={infoModal.iconColor}
+        iconBgColor={infoModal.iconBgColor}
+        onConfirm={() => setInfoModal({ ...infoModal, visible: false })}
+      />
     </Animated.View>
   );
 }

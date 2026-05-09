@@ -2,7 +2,16 @@ import React, { useEffect, useRef } from 'react';
 import { Modal, View, Text, StyleSheet, TouchableOpacity, Animated } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
-export const SuccessModal = ({ visible, title, message, buttonText = "Aceptar", onConfirm }) => {
+export const SuccessModal = ({ 
+  visible, 
+  title, 
+  message, 
+  buttonText = "Aceptar", 
+  onConfirm,
+  iconName = "checkmark-circle",
+  iconColor = "#0f6d78",
+  iconBgColor = "rgba(15, 109, 120, 0.1)"
+}) => {
   const scaleValue = useRef(new Animated.Value(0.8)).current;
   const opacityValue = useRef(new Animated.Value(0)).current;
 
@@ -36,8 +45,8 @@ export const SuccessModal = ({ visible, title, message, buttonText = "Aceptar", 
     >
       <View style={styles.overlay}>
         <Animated.View style={[styles.card, { opacity: opacityValue, transform: [{ scale: scaleValue }] }]}>
-          <View style={styles.iconContainer}>
-            <Ionicons name="checkmark-circle" size={70} color="#0f6d78" />
+          <View style={[styles.iconContainer, { backgroundColor: iconBgColor }]}>
+            <Ionicons name={iconName} size={70} color={iconColor} />
           </View>
           <Text style={styles.title}>{title}</Text>
           <Text style={styles.message}>{message}</Text>

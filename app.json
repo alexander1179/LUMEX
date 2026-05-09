@@ -23,7 +23,7 @@
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
-      "package": "com.higuera042.lumexv3"
+      "package": "com.lumex.app.oficial"
     },
     "web": {
       "favicon": "./assets/favicon.png"

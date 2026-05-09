@@ -80,10 +80,9 @@ export default function LoginScreen({ navigation }) {
   useEffect(() => {
     try {
       const apiUrl = getApiUrl();
-      console.log('Conectando a:', apiUrl);
+      console.log('API conectada a:', apiUrl);
     } catch (error) {
-      console.error('Error al inicializar API:', error);
-      Alert.alert('Error de Configuración', 'La aplicación no pudo inicializar la conexión al servidor.');
+      console.log('Error silencioso inicial:', error);
     }
   }, []);
 

@@ -9,7 +9,16 @@ const nodemailer = require('nodemailer');
 const crypto = require('crypto');
 
 const app = express();
-app.set('trust proxy', 1); // Confiar en el proxy (necesario para Railway/Heroku/Nginx)
+app.set('trust proxy', 1);
+
+// RUTA DE DIAGNÓSTICO (Nivel Superior)
+app.get('/api/test-db', async (req, res) => {
+    res.json({ 
+        status: 'Server Online', 
+        version: '1.0.5',
+        timestamp: new Date().toISOString() 
+    });
+});
 
 const PORT = process.env.PORT || 3000;
 

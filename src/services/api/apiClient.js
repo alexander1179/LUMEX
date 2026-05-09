@@ -2,10 +2,8 @@ import { Platform } from 'react-native';
 import Constants from 'expo-constants';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-// IP local de la máquina de desarrollo — actualizar si cambia la red
-// ⚠️ DEBE coincidir con la IP del PC en la red Wi-Fi (ejecuta 'ipconfig' para verificar)
-// ⚠️ El celular DEBE estar en la MISMA red Wi-Fi que el PC
-const LOCAL_IP = '10.157.25.163'; // IP del PC en red hitronhub.home
+// URL de producción — siempre Railway
+const PRODUCTION_URL = 'https://lumex-production.up.railway.app';
 
 const TIMEOUT_MS = 10000; // 10 segundos máximo de espera
 
@@ -22,8 +20,8 @@ const ENV_API_URL = normalizeUrl(
  */
 export const getBaseUrl = () => {
   if (ENV_API_URL) return ENV_API_URL;
-  if (Platform.OS === 'web') return 'http://localhost:3000';
-  return `http://${LOCAL_IP}:3000`;
+  // Siempre usar producción si no hay variable de entorno
+  return PRODUCTION_URL;
 };
 
 /**

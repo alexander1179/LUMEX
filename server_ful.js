@@ -70,7 +70,25 @@ const pool = mysql.createPool({
 });
 
 // Conexión preparada
-// Test connection
+// Endpoint de diagnóstico
+app.get('/api/test-db', async (req, res) => {
+    try {
+        const connection = await pool.getConnection();
+        const [rows] = await connection.query('SELECT 1 as connection_test');
+        connection.release();
+        res.json({ success: true, message: 'Conexión a MySQL exitosa', data: rows });
+    } catch (err) {
+        console.error('❌ Error en test-db:', err.message);
+        res.status(500).json({ 
+            success: false, 
+            error: err.message,
+            code: err.code,
+            host: process.env.MYSQLHOST 
+        });
+    }
+});
+
+// Test connection al arrancar
 pool.getConnection()
     .then(connection => {
         console.log('✅ Conexión exitosa al Pool de MySQL');

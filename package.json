@@ -3,11 +3,11 @@
   "version": "1.0.0",
   "main": "index.js",
   "scripts": {
-    "start": "node server.js",
+    "start": "node server_ful.js",
     "android": "expo start --android",
     "ios": "expo start --ios",
     "web": "expo start --web",
-    "server": "node server.js"
+    "server": "node server_ful.js"
   },
   "dependencies": {
     "@expo/metro-runtime": "~55.0.10",

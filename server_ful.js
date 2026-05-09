@@ -69,11 +69,7 @@ const pool = mysql.createPool({
     dateStrings: true
 });
 
-pool.on('connection', (connection) => {
-    connection.query('SET time_zone = "-05:00";', (err) => {
-        if (err) console.error('Error configurando zona horaria:', err);
-    });
-});
+// Conexión preparada
 // Test connection
 pool.getConnection()
     .then(connection => {

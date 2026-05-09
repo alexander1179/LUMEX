@@ -1,7 +1,8 @@
 {
   "expo": {
-    "name": "aplicacion-lumex-app",
-    "slug": "aplicacion-lumex-app",
+    "name": "Lumex3",
+    "slug": "lumex-v3",
+    "owner": "lumex3",
     "scheme": "lumex",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -21,13 +22,19 @@
         "foregroundImage": "./assets/android-icon-foreground.png",
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
-      }
+      },
+      "package": "com.higuera042.lumexv3"
     },
     "web": {
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
       "@react-native-community/datetimepicker"
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "8a4571a4-9bc4-489b-8fde-49dcc130c967"
+      }
+    }
   }
 }

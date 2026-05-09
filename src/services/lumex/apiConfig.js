@@ -9,34 +9,16 @@ const LOCAL_IP = '10.157.25.163'; // 🔥 IP del PC en la red Wi-Fi hitronhub
 
 const normalizeUrl = (url) => String(url || '').trim().replace(/\/$/, '');
 
-const ENV_API_URL = normalizeUrl(
-  process.env.EXPO_PUBLIC_API_URL ||
-  Constants?.expoConfig?.extra?.apiUrl ||
-  ''
-);
-
-// Para desarrollo en dispositivo físico
-export const API_URL = Platform.OS === "web" 
-  ? "http://localhost:3000" 
-  : `http://${LOCAL_IP}:3000`;
-
-// Para desarrollo en emulador Android
-export const API_URL_ANDROID = Platform.OS === "android" 
-  ? "http://10.0.2.2:3000" 
-  : `http://${LOCAL_IP}:3000`;
+const ENV_API_URL = 'https://lumex-production.up.railway.app';
 
 // Exportar la URL correcta según el dispositivo
 export const getApiUrl = () => {
-  const candidates = getApiUrlCandidates();
-  return candidates[0] || 'http://localhost:3000';
+  return ENV_API_URL;
 };
 
 export const getApiUrlCandidates = () => {
-  if (ENV_API_URL) {
-    // Si el usuario define una URL pública, la usamos como única fuente
-    // para evitar reintentos lentos a IPs locales no alcanzables.
-    return [ENV_API_URL];
-  }
+  return [ENV_API_URL];
+};
 
   const urls = [];
 

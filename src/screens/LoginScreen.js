@@ -78,11 +78,12 @@ export default function LoginScreen({ navigation }) {
   };
 
   useEffect(() => {
-    // Alerta temporal para depuración de red
-    const apiUrl = getApiUrl();
-    console.log('API URL:', apiUrl);
-    if (__DEV__) {
-      // Alert.alert('Depuración de Red', `Conectando a: ${apiUrl}`);
+    try {
+      const apiUrl = getApiUrl();
+      console.log('Conectando a:', apiUrl);
+    } catch (error) {
+      console.error('Error al inicializar API:', error);
+      Alert.alert('Error de Configuración', 'La aplicación no pudo inicializar la conexión al servidor.');
     }
   }, []);
 

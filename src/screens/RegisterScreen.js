@@ -21,7 +21,8 @@ import { CustomButton } from '../components/common/CustomButton';
 import { PasswordRequirements } from '../components/auth/PasswordRequirements';
 import { LanguageSelector } from '../components/common/LanguageSelector';
 import { AccessQuickNav } from '../components/common/AccessQuickNav';
-import { registerUser } from '../services/api/authService';
+import { registerUser } from '../services/lumex/authService';
+import { getApiUrl } from '../services/lumex/apiConfig';
 
 
 const { width, height } = Dimensions.get('window');
@@ -174,7 +175,11 @@ export default function RegisterScreen({ navigation, route }) {
 
     } catch (error) {
       console.log('❌ Error en registro:', error);
-      Alert.alert('Error', 'Error de conexión con el servidor');
+      const apiUrl = getApiUrl();
+      Alert.alert(
+        'Error de Conexión', 
+        `No se pudo conectar al servidor.\n\nURL: ${apiUrl}\nDetalle: ${error.message}`
+      );
     } finally {
       setLoading(false);
     }

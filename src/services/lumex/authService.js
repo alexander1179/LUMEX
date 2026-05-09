@@ -10,14 +10,20 @@ export const hashPassword = async (password) => {
 
 export const registerUser = async (userData) => {
   try {
-    const passwordHash = await hashPassword(userData.password);
+    // Leer la contraseña desde cualquier campo que envíe la pantalla
+    const rawPassword = userData.passwordHash || userData.password || '';
+    const passwordHash = await hashPassword(rawPassword);
+
+    // Leer la aceptación de términos desde cualquier campo posible
+    const terminos = userData.terminos_aceptados ?? userData.acepta ?? userData.accepted ?? false;
+
     const body = {
       email: userData.email.trim().toLowerCase(),
       username: userData.username.trim().toLowerCase(),
       name: userData.name,
-      phone: userData.phone,
+      phone: userData.phone || null,
       passwordHash,
-      terminos_aceptados: !!userData.accepted
+      terminos_aceptados: terminos ? 1 : 0,
     };
 
     const { data, ok } = await getApiClient('/api/auth/register', {

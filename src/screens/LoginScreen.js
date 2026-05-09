@@ -77,6 +77,15 @@ export default function LoginScreen({ navigation }) {
     Keyboard.dismiss();
   };
 
+  useEffect(() => {
+    // Alerta temporal para depuración de red
+    const apiUrl = getApiUrl();
+    console.log('API URL:', apiUrl);
+    if (__DEV__) {
+      // Alert.alert('Depuración de Red', `Conectando a: ${apiUrl}`);
+    }
+  }, []);
+
   const handleLogin = async () => {
     if (!usuario.trim() || !password.trim()) {
       Alert.alert('Datos requeridos', 'Debes completar usuario y contraseña');

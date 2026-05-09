@@ -156,9 +156,9 @@ export default function RegisterScreen({ navigation, route }) {
         name: nombre.trim(),
         email: email.trim().toLowerCase(),
         username: usuario.trim().toLowerCase(),
-        password: password,
+        passwordHash: password, // Cambiado para coincidir con el servidor
         phone: telefono?.trim() || null,
-        acepta: acepta, // Enviar el estado de aceptación
+        terminos_aceptados: acepta ? 1 : 0, // Cambiado para coincidir con el servidor
       };
 
       const result = await registerUser(userData);

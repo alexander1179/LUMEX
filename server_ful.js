@@ -1264,6 +1264,14 @@ app.use((err, req, res, next) => {
     res.status(500).json({ success: false, message: err?.message || 'Error interno del servidor' });
 });
 
-app.listen(PORT, '0.0.0.0', () => {
-    console.log(`🚀 Servidor MySQL corriendo en puerto ${PORT}`);
+// Iniciar el servidor (Al final de todo)
+const server = app.listen(PORT, '0.0.0.0', () => {
+    console.log(`🚀 Servidor LUMEX desplegado exitosamente`);
+    console.log(`📡 Puerto: ${PORT}`);
+    console.log(`🔗 URL Base: https://lumex-production.up.railway.app`);
+});
+
+// Manejo de errores del servidor
+server.on('error', (err) => {
+    console.error('❌ Error crítico en el servidor Express:', err);
 });

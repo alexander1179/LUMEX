@@ -12,6 +12,7 @@ import { fetchAllUsers, updateUser, deleteUser, updateAdminPermission, hashPassw
 import { logoutUserSession } from '../services/api/authService';
 import { storageService } from '../services/storage/storageService';
 import { getApiUrl, getApiClient } from '../services/lumex';
+import { SuccessModal } from '../components/common/SuccessModal';
 
 const ROLES = [
   { id: 'gestion_personas', label: 'Gestión de Personas', icon: 'people-outline', color: '#0f6d78', description: 'Administración de Usuarios y Personal del Sistema' },
@@ -149,6 +150,24 @@ export default function SuperAdminDashboardScreen({ navigation }) {
   const [showAuditModal, setShowAuditModal] = useState(false);
   const [selectedAuditUser, setSelectedAuditUser] = useState(null); // Usuario seleccionado para el detalle
   const [showAuditDetailModal, setShowAuditDetailModal] = useState(false);
+
+  const [modalConfig, setModalConfig] = useState({
+    visible: false, title: '', message: '', iconName: 'checkmark-circle',
+    iconColor: '#0f6d78', iconBgColor: 'rgba(15, 109, 120, 0.1)', buttonText: 'Aceptar',
+    showCancelButton: false, cancelText: 'Cancelar',
+    onConfirm: () => setModalConfig(prev => ({ ...prev, visible: false })),
+    onCancel: () => setModalConfig(prev => ({ ...prev, visible: false }))
+  });
+
+  const showAlert = (title, message, type = 'success', onConfirm = null, showCancel = false, onCancel = null) => {
+    let iconName = 'checkmark-circle'; let iconColor = '#0f6d78'; let iconBgColor = 'rgba(15, 109, 120, 0.1)'; let btnText = 'Aceptar';
+    if (type === 'error') { iconName = 'alert-circle'; iconColor = '#e05a21'; iconBgColor = 'rgba(224, 90, 33, 0.1)'; }
+    else if (type === 'warning') { iconName = 'warning-outline'; iconColor = '#e67e22'; iconBgColor = 'rgba(230, 126, 34, 0.1)'; btnText = 'Eliminar'; }
+    setModalConfig({ visible: true, title, message, iconName, iconColor, iconBgColor, buttonText: btnText, showCancelButton: showCancel, cancelText: 'Cancelar',
+      onCancel: () => { setModalConfig(prev => ({ ...prev, visible: false })); if (onCancel) onCancel(); },
+      onConfirm: () => { setModalConfig(prev => ({ ...prev, visible: false })); if (onConfirm) onConfirm(); }
+    });
+  };
 
   useEffect(() => {
     if (activeTab === 'auditoria') {
@@ -573,21 +592,30 @@ export default function SuperAdminDashboardScreen({ navigation }) {
   };
 
   const handleDelete = () => {
-    Alert.alert('¿Eliminar?', `Borrarás a ${editingUser.usuario}.`, [
-      { text: 'Cancelar', style: 'cancel' },
-      { text: 'Eliminar', style: 'destructive', onPress: async () => {
-              const res = await getApiClient(`/api/admin/user/${editingUser.id_usuario}?executorId=${currentUser?.id_usuario || currentUser?.id}`, {
-                method: 'DELETE'
-              });
-              const success = res.ok;
-          if (success) {
-            Alert.alert('Eliminado', 'Borrado.');
-            setShowDetailModal(false); setShowListModal(false); 
-            loadUsers();
-            loadAuditLogs(); // Recargar historial tras éxito
-          } else { Alert.alert('Error', 'No eliminado'); }
-      }}
-    ]);
+    showAlert(
+      '¿Eliminar usuario?',
+      `Estás a punto de eliminar permanentemente la cuenta de ${editingUser.usuario}. Esta acción no se puede deshacer.`,
+      'warning',
+      async () => {
+        const res = await getApiClient(`/api/admin/user/${editingUser.id_usuario}?executorId=${currentUser?.id_usuario || currentUser?.id}`, {
+          method: 'DELETE'
+        });
+        const success = res.ok;
+        if (success) {
+          showAlert(
+            'Usuario Eliminado',
+            `La cuenta de ${editingUser.usuario} ha sido eliminada del sistema de forma permanente.`,
+            'success',
+            () => {
+              setShowDetailModal(false); setShowListModal(false); 
+              loadUsers();
+              loadAuditLogs(); // Recargar historial tras éxito
+            }
+          );
+        } else { showAlert('Error', 'No se pudo eliminar el usuario de la base de datos.', 'error'); }
+      },
+      true // showCancel = true
+    );
   };
 
   const handleRegister = async () => {
@@ -1605,6 +1633,7 @@ export default function SuperAdminDashboardScreen({ navigation }) {
         </View>
       </Modal>
 
+      <SuccessModal {...modalConfig} />
     </View>
   );
 }

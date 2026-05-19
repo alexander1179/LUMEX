@@ -10,7 +10,10 @@ export const SuccessModal = ({
   onConfirm,
   iconName = "checkmark-circle",
   iconColor = "#0f6d78",
-  iconBgColor = "rgba(15, 109, 120, 0.1)"
+  iconBgColor = "rgba(15, 109, 120, 0.1)",
+  showCancelButton = false,
+  cancelText = "Cancelar",
+  onCancel
 }) => {
   const scaleValue = useRef(new Animated.Value(0.8)).current;
   const opacityValue = useRef(new Animated.Value(0)).current;
@@ -50,9 +53,16 @@ export const SuccessModal = ({
           </View>
           <Text style={styles.title}>{title}</Text>
           <Text style={styles.message}>{message}</Text>
-          <TouchableOpacity style={styles.button} onPress={onConfirm} activeOpacity={0.8}>
-            <Text style={styles.buttonText}>{buttonText}</Text>
-          </TouchableOpacity>
+          <View style={styles.buttonsRow}>
+            {showCancelButton && (
+              <TouchableOpacity style={[styles.button, styles.cancelButton]} onPress={onCancel} activeOpacity={0.8}>
+                <Text style={[styles.buttonText, styles.cancelButtonText]}>{cancelText}</Text>
+              </TouchableOpacity>
+            )}
+            <TouchableOpacity style={[styles.button, showCancelButton && styles.confirmHalfButton]} onPress={onConfirm} activeOpacity={0.8}>
+              <Text style={styles.buttonText}>{buttonText}</Text>
+            </TouchableOpacity>
+          </View>
         </Animated.View>
       </View>
     </Modal>
@@ -98,22 +108,39 @@ const styles = StyleSheet.create({
     marginBottom: 35,
     lineHeight: 24,
   },
+  buttonsRow: {
+    flexDirection: 'row',
+    width: '100%',
+    justifyContent: 'space-between',
+    gap: 10,
+  },
   button: {
     backgroundColor: '#0f6d78',
     paddingVertical: 16,
-    paddingHorizontal: 40,
+    paddingHorizontal: 20,
     borderRadius: 16,
-    width: '100%',
+    flex: 1,
     shadowColor: '#0f6d78',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
     shadowRadius: 8,
     elevation: 5,
   },
+  confirmHalfButton: {
+    backgroundColor: '#e74c3c',
+    shadowColor: '#e74c3c',
+  },
+  cancelButton: {
+    backgroundColor: '#f1f5f8',
+    shadowColor: '#bdc3c7',
+  },
   buttonText: {
     color: 'white',
-    fontSize: 17,
+    fontSize: 16,
     fontWeight: '700',
     textAlign: 'center',
+  },
+  cancelButtonText: {
+    color: '#4f666c',
   },
 });

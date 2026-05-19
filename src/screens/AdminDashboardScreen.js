@@ -838,9 +838,9 @@ export default function AdminDashboardScreen({ navigation, route }) {
       let error = null;
 
       try {
-        const { data, ok } = await getApiClient('/api/admin/users');
+        const { data: resData, ok } = await getApiClient('/api/admin/users');
         const response = { ok };
-        const json = data || {};
+        const json = resData || {};
         if (!response.ok || !json.success) {
           throw new Error(json.message || 'Error al conectar con MySQL');
         }

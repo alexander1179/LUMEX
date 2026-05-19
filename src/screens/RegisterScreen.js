@@ -21,6 +21,7 @@ import { CustomButton } from '../components/common/CustomButton';
 import { PasswordRequirements } from '../components/auth/PasswordRequirements';
 import { LanguageSelector } from '../components/common/LanguageSelector';
 import { AccessQuickNav } from '../components/common/AccessQuickNav';
+import { SuccessModal } from '../components/common/SuccessModal';
 import { registerUser } from '../services/lumex/authService';
 import { getApiUrl } from '../services/lumex/apiConfig';
 
@@ -43,6 +44,30 @@ export default function RegisterScreen({ navigation, route }) {
   const [passwordReqs, setPasswordReqs] = useState({
     length: false, uppercase: false, lowercase: false, number: false
   });
+  const [modalConfig, setModalConfig] = useState({
+    visible: false,
+    title: '',
+    message: '',
+    iconName: 'checkmark-circle',
+    iconColor: '#0f6d78',
+    iconBgColor: 'rgba(15, 109, 120, 0.1)',
+    onConfirm: () => setModalConfig(prev => ({ ...prev, visible: false }))
+  });
+
+  const showAlert = (title, message, isSuccess = false, onConfirm = null) => {
+    setModalConfig({
+      visible: true,
+      title,
+      message,
+      iconName: isSuccess ? 'checkmark-circle' : 'alert-circle',
+      iconColor: isSuccess ? '#0f6d78' : '#e05a21',
+      iconBgColor: isSuccess ? 'rgba(15, 109, 120, 0.1)' : 'rgba(224, 90, 33, 0.1)',
+      onConfirm: () => {
+        setModalConfig(prev => ({ ...prev, visible: false }));
+        if (onConfirm) onConfirm();
+      }
+    });
+  };
 
   // Animaciones
   const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -117,35 +142,35 @@ export default function RegisterScreen({ navigation, route }) {
     if (loading) return;
     
     if (!nombre || !email || !usuario || !password) {
-      Alert.alert(t('common.error'), t('errors.requiredFields'));
+      showAlert(t('common.error'), t('errors.requiredFields'));
       return;
     }
 
     if (!acepta) {
-      Alert.alert('Atención', 'Debes aceptar las políticas de seguridad para registrarte.');
+      showAlert('Atención', 'Debes aceptar las políticas de seguridad para registrarte.');
       return;
     }
     
     if (!validators.validateEmail(email)) {
-      Alert.alert(t('common.error'), t('errors.invalidEmail'));
+      showAlert(t('common.error'), t('errors.invalidEmail'));
       return;
     }
     
     if (telefono && telefono.trim() !== '') {
       if (!validators.validatePhone(telefono)) {
-        Alert.alert(t('common.error'), t('errors.invalidPhone'));
+        showAlert(t('common.error'), t('errors.invalidPhone'));
         return;
       }
     }
     
     const passwordValidation = validators.validatePassword(password);
     if (!passwordValidation.isValid) {
-      Alert.alert(t('common.error'), t('errors.passwordRequirements'));
+      showAlert(t('common.error'), t('errors.passwordRequirements'));
       return;
     }
     
     if (password !== confirmPassword) {
-      Alert.alert(t('common.error'), t('errors.passwordMismatch'));
+      showAlert(t('common.error'), t('errors.passwordMismatch'));
       return;
     }
 
@@ -164,19 +189,20 @@ export default function RegisterScreen({ navigation, route }) {
       const result = await registerUser(userData);
 
       if (result.success) {
-        Alert.alert(
-          "✅ Registro exitoso",
+        showAlert(
+          "Registro exitoso",
           result.message || "Usuario registrado correctamente. Ahora puedes iniciar sesión.",
-          [{ text: "OK", onPress: () => navigation.replace("Login", { role: 'usuario' }) }]
+          true,
+          () => navigation.replace("Login", { role: 'usuario' })
         );
       } else {
-        Alert.alert('Error', result.message);
+        showAlert('Error', result.message);
       }
 
     } catch (error) {
       console.log('❌ Error en registro:', error);
       const apiUrl = getApiUrl();
-      Alert.alert(
+      showAlert(
         'Error de Conexión', 
         `No se pudo conectar al servidor.\n\nURL: ${apiUrl}\nDetalle: ${error.message}`
       );
@@ -383,6 +409,8 @@ export default function RegisterScreen({ navigation, route }) {
           </TouchableOpacity>
         </Animated.View>
       </View>
+
+      <SuccessModal {...modalConfig} />
     </View>
   );
 }

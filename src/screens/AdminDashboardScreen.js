@@ -25,7 +25,7 @@ import ViewShot from 'react-native-view-shot';
 import { supabase } from '../services/lumex';
 import { logoutUserSession } from '../services/api/authService';
 import { registerUser } from '../services/lumex';
-import { getApiUrl } from '../services/lumex';
+import { getApiUrl, getApiClient } from '../services/lumex';
 import { storageService } from '../services/storage/storageService';
 import { SuccessModal } from '../components/common/SuccessModal';
 
@@ -446,10 +446,8 @@ export default function AdminDashboardScreen({ navigation, route }) {
 
   const deleteUserViaServer = async (user, attempts = []) => {
     try {
-      const apiUrl = getApiUrl();
-      const response = await fetch(`${apiUrl}/admin/delete-user`, {
+      const { data, ok } = await getApiClient('/api/admin/delete-user', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           user: {
             id_usuario: user?.id_usuario ?? null,
@@ -463,9 +461,9 @@ export default function AdminDashboardScreen({ navigation, route }) {
         }),
       });
 
-      const json = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        return { success: false, message: json?.message || `Servidor respondió ${response.status}` };
+      const json = data || {};
+      if (!ok) {
+        return { success: false, message: json?.message || `Servidor respondió error` };
       }
 
       return {
@@ -503,9 +501,8 @@ export default function AdminDashboardScreen({ navigation, route }) {
         return;
       }
 
-      const response = await fetch(`${getApiUrl()}/admin/update-user`, {
+      const { data, ok } = await getApiClient('/api/admin/update-user', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           id_usuario: userId,
           nombre: editNombre.trim(),
@@ -514,10 +511,11 @@ export default function AdminDashboardScreen({ navigation, route }) {
           executorId: me?.id_usuario || me?.id
         })
       });
-      const data = await response.json().catch(() => ({}));
+      const response = { ok };
+      let finalData = data || {};
 
-      if (!response.ok || !data.success) {
-        Alert.alert('Error', data.message || 'No se pudo actualizar el usuario en MySQL.');
+      if (!response.ok || !finalData.success) {
+        Alert.alert('Error', finalData.message || 'No se pudo actualizar el usuario en MySQL.');
         return;
       }
 
@@ -552,14 +550,14 @@ export default function AdminDashboardScreen({ navigation, route }) {
             }
 
             try {
-              const response = await fetch(`${getApiUrl()}/admin/user/${userId}?executorId=${me?.id_usuario || me?.id}`, {
-                method: 'DELETE',
-                headers: { 'Content-Type': 'application/json' }
+              const { data, ok } = await getApiClient(`/api/admin/user/${userId}?executorId=${me?.id_usuario || me?.id}`, {
+                method: 'DELETE'
               });
-              const data = await response.json();
+              const response = { ok };
+              let finalData = data || {};
 
-              if (!response.ok || !data.success) {
-                Alert.alert('Error', data.message || 'No se pudo eliminar el usuario de la base principal.');
+              if (!response.ok || !finalData.success) {
+                Alert.alert('Error', finalData.message || 'No se pudo eliminar el usuario de la base principal.');
                 return;
               }
 
@@ -589,15 +587,15 @@ export default function AdminDashboardScreen({ navigation, route }) {
     setBlockedUsers((prev) => ({ ...prev, [userId]: nextValue }));
 
     try {
-      const response = await fetch(`${getApiUrl()}/admin/block-user`, {
+      const { data, ok } = await getApiClient('/api/admin/block-user', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id_usuario: userId, blocked: nextValue, executorId: me?.id_usuario || me?.id })
       });
-      const data = await response.json().catch(() => ({}));
+      const response = { ok };
+      let finalData = data || {};
       
-      if (!response.ok || !data.success) {
-        throw new Error(data.message || 'Fallo de red');
+      if (!response.ok || !finalData.success) {
+        throw new Error(finalData.message || 'Fallo de red');
       }
     } catch (err) {
       setBlockedUsers((prev) => ({ ...prev, [userId]: currentBlocked }));
@@ -612,8 +610,9 @@ export default function AdminDashboardScreen({ navigation, route }) {
   const loadUserActivity = async () => {
     setLoadingActivity(true);
     try {
-      const response = await fetch(`${getApiUrl()}/admin/activity`);
-      const json = await response.json();
+      const { data, ok } = await getApiClient('/api/admin/activity');
+      const response = { ok };
+      const json = data || {};
       
       if (!response.ok || !json.success) {
         throw new Error(json.message || 'Error al conectar activity');
@@ -676,8 +675,9 @@ export default function AdminDashboardScreen({ navigation, route }) {
   const loadPaymentsData = async () => {
     setLoadingPayments(true);
     try {
-      const response = await fetch(`${getApiUrl()}/admin/payments`);
-      const json = await response.json();
+      const { data, ok } = await getApiClient('/api/admin/payments');
+      const response = { ok };
+      const json = data || {};
       
       if (!response.ok || !json.success) {
         throw new Error(json.message);
@@ -838,8 +838,9 @@ export default function AdminDashboardScreen({ navigation, route }) {
       let error = null;
 
       try {
-        const response = await fetch(`${getApiUrl()}/admin/users`);
-        const json = await response.json();
+        const { data, ok } = await getApiClient('/api/admin/users');
+        const response = { ok };
+        const json = data || {};
         if (!response.ok || !json.success) {
           throw new Error(json.message || 'Error al conectar con MySQL');
         }
@@ -921,13 +922,12 @@ export default function AdminDashboardScreen({ navigation, route }) {
         const storedUser = await storageService.getUser();
         if (storedUser?.id_usuario) {
           // Consultar datos frescos del servidor para reflejar cambios de permisos en tiempo real
-          const response = await fetch(`${getApiUrl()}/auth/get-user`, {
+          const { data, ok } = await getApiClient('/api/auth/get-user', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ userId: storedUser.id_usuario })
           });
-          const json = await response.json();
-          if (json.success && json.user) {
+          const json = data || {};
+          if (ok && json.success && json.user) {
             await storageService.saveUser(json.user);
             setMe(json.user);
             const signerName = json.user.nombre || json.user.name || json.user.usuario || 'Administrador';
@@ -975,12 +975,11 @@ export default function AdminDashboardScreen({ navigation, route }) {
         telefono: user?.telefono || ''
       };
 
-      const res = await fetch(`${getApiUrl()}/admin/update-user`, {
+      const res = await getApiClient('/api/admin/update-user', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ...payload, executorId: me?.id_usuario || me?.id })
       });
-      const data = await res.json();
+      const data = res.data || {};
       
       if (!res.ok || !data.success) {
          throw new Error(data.message || 'Fallo actualizando administrador');

@@ -11,7 +11,7 @@ import ViewShot from 'react-native-view-shot';
 import { fetchAllUsers, updateUser, deleteUser, updateAdminPermission, hashPassword, registerUser } from '../services/lumex/authService';
 import { logoutUserSession } from '../services/api/authService';
 import { storageService } from '../services/storage/storageService';
-import { getApiUrl } from '../services/lumex';
+import { getApiUrl, getApiClient } from '../services/lumex';
 
 const ROLES = [
   { id: 'gestion_personas', label: 'Gestión de Personas', icon: 'people-outline', color: '#0f6d78', description: 'Administración de Usuarios y Personal del Sistema' },
@@ -177,9 +177,8 @@ export default function SuperAdminDashboardScreen({ navigation }) {
   const loadUserActivity = async () => {
     setLoadingActivity(true);
     try {
-      const response = await fetch(`${getApiUrl()}/admin/activity?page=1&limit=200`);
-      const json = await response.json();
-      if (json.success) setActivityRows(json.activity || []);
+      const { data, ok } = await getApiClient('/api/admin/activity?page=1&limit=200');
+      if (ok && data?.success) setActivityRows(data.activity || []);
     } catch { 
       // Silencio
     } finally {
@@ -190,17 +189,9 @@ export default function SuperAdminDashboardScreen({ navigation }) {
   const loadAuditLogs = async () => {
     setLoadingAudit(true);
     try {
-      const response = await fetch(`${getApiUrl()}/api/superadmin/audit-logs`);
-      const text = await response.text();
-      let json;
-      try {
-        json = JSON.parse(text);
-      } catch (e) {
-        console.error("Respuesta no es JSON válido:", text.substring(0, 100));
-        return;
-      }
-      if (json.success) {
-        setAuditLogs(json.logs || []);
+      const { data, ok } = await getApiClient('/api/superadmin/audit-logs');
+      if (ok && data?.success) {
+        setAuditLogs(data.logs || []);
       }
     } catch (err) {
       console.error("Error al cargar auditoría:", err);
@@ -281,13 +272,12 @@ export default function SuperAdminDashboardScreen({ navigation }) {
         rol: user?.rol || 'superadministrador', telefono: user?.telefono || ''
       };
 
-      const res = await fetch(`${getApiUrl()}/admin/update-user`, {
+      const res = await getApiClient('/api/admin/update-user', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ...payload, executorId: user?.id_usuario || user?.id })
       });
-      const data = await res.json();
-      if (!res.ok || !data.success) throw new Error(data.message || 'Fallo actualizando administrador');
+      const data = res.data;
+      if (!res.ok || !data?.success) throw new Error(data?.message || 'Fallo actualizando administrador');
 
       const updatedLocalUser = { ...user, nombre: profileNombre, email: profileEmail, usuario: profileUsuario };
       await storageService.saveUser(updatedLocalUser);
@@ -303,9 +293,8 @@ export default function SuperAdminDashboardScreen({ navigation }) {
       const mapped = allUsers.map(u => u.id_usuario === adminId ? { ...u, [field]: newValue ? 1 : 0 } : u);
       setAllUsers(mapped);
       
-      const res = await fetch(`${getApiUrl()}/superadmin/toggle-admin-permission`, {
+      const res = await getApiClient('/api/superadmin/toggle-admin-permission', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
           id_usuario: adminId, 
           field, 
@@ -419,9 +408,9 @@ export default function SuperAdminDashboardScreen({ navigation }) {
   const fetchPaymentsAndShow = async () => {
     setLoadingPagos(true);
     try {
-      const response = await fetch(`${getApiUrl()}/admin/payments?page=1&limit=200`);
-      const json = await response.json();
-      if (json.success) {
+      const { data, ok } = await getApiClient('/api/admin/payments?page=1&limit=200');
+      const json = data;
+      if (ok && json?.success) {
         setAllPayments(json.payments);
         const map = new Map();
         json.payments.forEach(p => {
@@ -587,7 +576,7 @@ export default function SuperAdminDashboardScreen({ navigation }) {
     Alert.alert('¿Eliminar?', `Borrarás a ${editingUser.usuario}.`, [
       { text: 'Cancelar', style: 'cancel' },
       { text: 'Eliminar', style: 'destructive', onPress: async () => {
-              const res = await fetch(`${getApiUrl()}/api/admin/user/${editingUser.id_usuario}?executorId=${currentUser?.id_usuario || currentUser?.id}`, {
+              const res = await getApiClient(`/api/admin/user/${editingUser.id_usuario}?executorId=${currentUser?.id_usuario || currentUser?.id}`, {
                 method: 'DELETE'
               });
               const success = res.ok;
@@ -645,16 +634,15 @@ export default function SuperAdminDashboardScreen({ navigation }) {
     setFilteredUsers(prev => prev.map(u => u.id_usuario === user.id_usuario ? { ...u, estado: nextBlocked ? 'bloqueado' : 'activo' } : u));
     
     try {
-      const response = await fetch(`${getApiUrl()}/admin/block-user`, {
+      const response = await getApiClient('/api/admin/block-user', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
           id_usuario: user.id_usuario, 
           blocked: nextBlocked, 
           executorId: currentUser?.id_usuario || currentUser?.id 
         })
       });
-      const data = await response.json();
+      const data = response.data || {};
       if (!response.ok || !data.success) throw new Error(data.message || 'Fallo de conexión');
       
       Alert.alert('Éxito', `Usuario ${nextBlocked ? 'bloqueado' : 'desbloqueado'}`);

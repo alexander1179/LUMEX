@@ -1,42 +1,37 @@
-# Learn more https://docs.github.com/en/get-started/getting-started-with-git/ignoring-files
-
-# dependencies
 node_modules/
+.env
+.env.*
+!.env.example
 
-# Expo
+lumex_2_backup.sql
+*.log
+
 .expo/
 dist/
 web-build/
-expo-env.d.ts
 
-# Native
-.kotlin/
-*.orig.*
-*.jks
-*.p8
-*.p12
-*.key
-*.mobileprovision
+.gradle/
+.idea/
+local.properties
+gradle/gradle-daemon-jvm.properties
 
-# Metro
-.metro-health-check*
-
-# debug
-npm-debug.*
-yarn-debug.*
-yarn-error.*
-
-# macOS
 .DS_Store
-*.pem
+Thumbs.db
 
-# local env files
-.env
-.env*.local
+# Proyecto Android de prueba no utilizado por LUMEX
+app/
+build.gradle.kts
+gradle.properties
+gradle/
+gradlew
+gradlew.bat
+settings.gradle.kts
 
-# typescript
-*.tsbuildinfo
-
-# generated native folders
-/ios
-/android
+# Proyecto Android de prueba no utilizado por LUMEX
+app/
+build.gradle.kts
+gradle.properties
+gradle/
+gradlew
+gradlew.bat
+settings.gradle.kts

@@ -1,5 +1,5 @@
 const bcrypt = require('bcrypt');
-const jwt = require('jsonwebtoken');require('dotenv').config();
+const jwt = require('jsonwebtoken'); require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
@@ -13,10 +13,10 @@ app.set('trust proxy', 1);
 
 // RUTA DE DIAGNÓSTICO (Nivel Superior)
 app.get('/api/test-db', async (req, res) => {
-    res.json({ 
-        status: 'Server Online', 
+    res.json({
+        status: 'Server Online',
         version: '1.0.5',
-        timestamp: new Date().toISOString() 
+        timestamp: new Date().toISOString()
     });
 });
 
@@ -554,7 +554,7 @@ app.get('/api/debug-smtp', (req, res) => {
         process.env.SMTP_PASS,
         process.env.SMTP_FROM,
     ].every((value) => !!value);
-    
+
     res.json({
         smtpConfigured,
         variables: {
@@ -595,7 +595,7 @@ app.post('/api/auth/accept-terms', verifyToken, async (req, res) => {
 app.post('/api/auth/forgot-password', async (req, res) => {
     const email = normalizeEmail(req.body?.email);
     const tipo_evento = req.body?.tipo_evento || 'recuperacion';
-    
+
     if (!email) return res.status(400).json({ success: false, message: 'El correo es requerido' });
 
     try {
@@ -605,7 +605,7 @@ app.post('/api/auth/forgot-password', async (req, res) => {
         }
 
         const id_usuario = rows[0].id_usuario;
-        
+
         // INVALIDAR TOKENS PREVIOS: Antes de crear uno nuevo, expiramos los anteriores
         // Esto evita que peticiones duplicadas confundan al usuario
         await pool.query(
@@ -613,9 +613,9 @@ app.post('/api/auth/forgot-password', async (req, res) => {
             [email]
         );
 
-        const otp = String(generateOtp()); 
+        const otp = String(generateOtp());
         const estado_sesion = tipo_evento === 'login' ? 'sesion activa' : 'recuperacion';
-        
+
         console.log(`[DB-DEBUG] Preparando registro: Usuario=${id_usuario}, Email=${email}, Token=${otp}`);
 
         // Registrar en base de datos primero y esperar confirmación
@@ -658,8 +658,8 @@ app.post('/api/auth/forgot-password', async (req, res) => {
 
             if (!response.ok) {
                 console.error(`❌ [BREVO ERROR] ${response.status}:`, responseData);
-                return res.status(500).json({ 
-                    success: false, 
+                return res.status(500).json({
+                    success: false,
                     message: `Error al enviar correo. USA ESTE CODIGO: ${otp}`,
                     devOtp: otp,
                     idRegistro: id_registro
@@ -670,8 +670,8 @@ app.post('/api/auth/forgot-password', async (req, res) => {
             return res.json({ success: true, message: 'Codigo enviado al correo.', idRegistro: id_registro });
         } catch (mailError) {
             console.error(`❌ [API ERROR] Error al enviar a ${email}:`, mailError.message);
-            return res.status(500).json({ 
-                success: false, 
+            return res.status(500).json({
+                success: false,
                 message: `Error de red. USA ESTE CODIGO: ${otp}`,
                 devOtp: otp,
                 idRegistro: id_registro
@@ -685,7 +685,7 @@ app.post('/api/auth/forgot-password', async (req, res) => {
 
 app.post('/api/auth/logout', verifyToken, async (req, res) => {
     const { id_registro, motivo_cierre } = req.body;
-    
+
     if (!id_registro || !motivo_cierre) {
         return res.status(400).json({ success: false, message: 'Faltan parámetros requeridos.' });
     }
@@ -747,7 +747,7 @@ app.post('/api/auth/reset-password', async (req, res) => {
             'UPDATE usuarios SET contrasena = ? WHERE email = ?',
             [hashedPassword, normalizedEmail]
         );
-        
+
         await pool.query('UPDATE registro_tokens SET verificado = 0, expiracion = NOW() WHERE id_registro = ?', [rows[0].id_registro]);
 
         return res.json({ success: true, message: 'Contraseña actualizada' });
@@ -789,10 +789,10 @@ app.post('/api/payments/register', verifyToken, async (req, res) => {
         );
 
         await conn.commit();
-        res.json({ 
-            success: true, 
+        res.json({
+            success: true,
             message: `¡Pago exitoso! Se han añadido ${safeCredits} créditos a tu cuenta. ¡Gracias por tu compra! Ahora puedes proceder a realizar tus análisis.`,
-            newCredits: safeCredits 
+            newCredits: safeCredits
         });
     } catch (err) {
         await conn.rollback();
@@ -851,9 +851,9 @@ const getPaymentsBackoffice = async (req, res) => {
       LIMIT ? OFFSET ?
     `;
         const [rows] = await pool.query(query, [limit, offset]);
-        res.json({ 
-            success: true, 
-            payments: rows, 
+        res.json({
+            success: true,
+            payments: rows,
             data: rows,
             pagination: { page, limit, total, totalPages: Math.ceil(total / limit) }
         });
@@ -1045,8 +1045,8 @@ const getAllActivity = async (req, res) => {
       LIMIT ? OFFSET ?
     `;
         const [rows] = await pool.query(query, [limit, offset]);
-        res.json({ 
-            success: true, 
+        res.json({
+            success: true,
             activity: rows,
             pagination: { page, limit, total, totalPages: Math.ceil(total / limit) }
         });
@@ -1065,7 +1065,7 @@ const getAllUsersBackoffice = async (req, res) => {
 
         let baseQuery = 'FROM usuarios u';
         let queryParams = [];
-        
+
         if (hasActivity) {
             baseQuery += ' INNER JOIN (SELECT DISTINCT id_usuario FROM analisis) a ON u.id_usuario = a.id_usuario';
         }
@@ -1075,7 +1075,7 @@ const getAllUsersBackoffice = async (req, res) => {
             whereClauses.push('LOWER(u.rol) = ?');
             queryParams.push(rol.toLowerCase());
         }
-        
+
         if (whereClauses.length > 0) {
             baseQuery += ' WHERE ' + whereClauses.join(' AND ');
         }
@@ -1092,8 +1092,8 @@ const getAllUsersBackoffice = async (req, res) => {
       LIMIT ? OFFSET ?
     `;
         const [rows] = await pool.query(query, [...queryParams, limit, offset]);
-        res.json({ 
-            success: true, 
+        res.json({
+            success: true,
             users: rows,
             pagination: { page, limit, total, totalPages: Math.ceil(total / limit) }
         });
@@ -1131,9 +1131,9 @@ app.post('/api/superadmin/toggle-admin-permission', verifyToken, async (req, res
 
         // Registrar quién hizo el cambio con info detallada del objetivo
         await logAudit(
-            executorId, 
-            'Cambio de Permiso', 
-            `Permiso "${field}" cambiado a ${value ? 'Activo' : 'Inactivo'} para el ${(target.rol || 'N/D').toUpperCase()} ${target.nombre || 'Desconocido'}`, 
+            executorId,
+            'Cambio de Permiso',
+            `Permiso "${field}" cambiado a ${value ? 'Activo' : 'Inactivo'} para el ${(target.rol || 'N/D').toUpperCase()} ${target.nombre || 'Desconocido'}`,
             req
         );
 
@@ -1161,9 +1161,9 @@ const updateUserHandler = async (req, res) => {
 
         // Registrar quién hizo la actualización
         await logAudit(
-            executorId || id_usuario, 
-            'Actualización de Perfil', 
-            `Perfil de ${(rol || 'N/D').toUpperCase()} ${nombre || 'Desconocido'} modificado (Usuario: ${usuario})`, 
+            executorId || id_usuario,
+            'Actualización de Perfil',
+            `Perfil de ${(rol || 'N/D').toUpperCase()} ${nombre || 'Desconocido'} modificado (Usuario: ${usuario})`,
             req
         );
 
@@ -1181,7 +1181,7 @@ app.post('/admin/update-user', verifyToken, updateUserHandler);
 
 const blockUserHandler = async (req, res) => {
     const { id_usuario, blocked, executorId } = req.body;
-    
+
     if (!executorId) {
         return res.status(400).json({ success: false, message: 'ACTUALIZA TU APP: La aplicación no está enviando tu ID (executorId).' });
     }
@@ -1192,12 +1192,12 @@ const blockUserHandler = async (req, res) => {
 
         const estado = blocked ? 'bloqueado' : 'activo';
         await pool.query('UPDATE usuarios SET estado = ? WHERE id_usuario = ?', [estado, id_usuario]);
-        
+
         // Registrar quién bloqueó/desbloqueó con info detallada
         await logAudit(
-            executorId, 
-            blocked ? 'Bloqueo de Usuario' : 'Desbloqueo de Usuario', 
-            `La cuenta de ${target.nombre || 'Desconocido'} (${(target.rol || 'N/D').toUpperCase()}) fue marcada como: ${estado}`, 
+            executorId,
+            blocked ? 'Bloqueo de Usuario' : 'Desbloqueo de Usuario',
+            `La cuenta de ${target.nombre || 'Desconocido'} (${(target.rol || 'N/D').toUpperCase()}) fue marcada como: ${estado}`,
             req
         );
 
@@ -1214,7 +1214,7 @@ app.post('/admin/block-user', verifyToken, blockUserHandler);
 const deleteUser = async (req, res) => {
     const { userId } = req.params;
     const { executorId } = req.query; // Pasamos executorId por query param en DELETE
-    
+
     if (!executorId) {
         return res.status(400).json({ success: false, message: 'ACTUALIZA TU APP: La aplicación no está enviando tu ID (executorId).' });
     }
@@ -1268,7 +1268,7 @@ app.use((err, req, res, next) => {
 const server = app.listen(PORT, '0.0.0.0', () => {
     console.log(`🚀 Servidor LUMEX desplegado exitosamente`);
     console.log(`📡 Puerto: ${PORT}`);
-    console.log(`🔗 URL Base: https://lumex-production.up.railway.app`);
+    console.log(`🔗 URL Base: https://lumex-production-fbef.up.railway.app`);
 });
 
 // Manejo de errores del servidor

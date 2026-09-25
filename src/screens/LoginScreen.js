@@ -21,6 +21,7 @@ import { CustomButton } from '../components/common/CustomButton';
 import { LanguageSelector } from '../components/common/LanguageSelector';
 import { AccessQuickNav } from '../components/common/AccessQuickNav';
 import { loginUser, acceptSecurityTerms, forgotPassword, verifyToken, logoutUserSession } from '../services/api/authService';
+import { getApiUrl } from '../services/lumex/apiConfig';
 
 import { storageService } from '../services/storage/storageService';
 

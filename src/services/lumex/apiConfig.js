@@ -1,7 +1,7 @@
 import { Platform } from 'react-native';
 
 // URL DE PRODUCCIÓN DEFINITIVA
-const ENV_API_URL = 'https://lumex-production.up.railway.app';
+const ENV_API_URL = process.env.EXPO_PUBLIC_API_URL || 'https://lumex-production-fbef.up.railway.app';
 
 export const API_URL = ENV_API_URL;
 

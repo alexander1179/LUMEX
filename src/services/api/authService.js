@@ -109,7 +109,7 @@ export const resetPassword = async (email, newPassword) => {
       newPassword = email;
       email = await AsyncStorage.getItem('recovery_email');
     }
-    
+
     const passwordHash = await hashPassword(newPassword);
     if (!email) throw new Error('No hay sesión de recuperación pendiente.');
 

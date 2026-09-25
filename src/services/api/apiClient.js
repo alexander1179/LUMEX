@@ -3,7 +3,7 @@ import Constants from 'expo-constants';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // URL de producción — siempre Railway
-const PRODUCTION_URL = 'https://lumex-production.up.railway.app';
+const PRODUCTION_URL = 'https://lumex-production-fbef.up.railway.app';
 
 const TIMEOUT_MS = 10000; // 10 segundos máximo de espera
 
@@ -42,7 +42,7 @@ export const getApiClient = async (endpoint, options = {}) => {
     if (token) {
       headers['Authorization'] = `Bearer ${token}`;
     }
-  } catch (e) {}
+  } catch (e) { }
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
